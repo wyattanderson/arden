@@ -16,10 +16,14 @@ network retries.
 
 ## Status
 
-Design only. No implementation has started.
+Phase 1 is implemented: the evidence index, RFC 4511 protocol inventory,
+transport-independent contracts, error taxonomy, and compile-checked API shapes
+are frozen. Networking and BER codecs intentionally begin in later phases.
 
 See [PROJECT_PLAN.md](PROJECT_PLAN.md) and the individual plans in
-[docs/phases](docs/phases).
+[docs/phases](docs/phases). Phase 1 outputs are summarized in
+[docs/contracts.md](docs/contracts.md), [docs/protocol-inventory.md](docs/protocol-inventory.md),
+and [docs/research-index.md](docs/research-index.md).
 
 ## Compatibility target
 
@@ -113,4 +117,3 @@ vectors or code.
 - [asn1c](https://github.com/vlm/asn1c)
 - [389 Directory Server](https://github.com/389ds/389-ds-base)
 - [FreeIPA](https://github.com/freeipa/freeipa)
-

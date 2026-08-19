@@ -1,5 +1,8 @@
 # Phase 1: research and contracts
 
+**Status:** complete. The frozen outputs are [the research index](../research-index.md),
+[protocol inventory](../protocol-inventory.md), and [public contract notes](../contracts.md).
+
 ## Goal
 
 Turn the current design into a small set of precise public contracts and a

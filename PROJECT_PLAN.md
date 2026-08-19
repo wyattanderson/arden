@@ -69,7 +69,9 @@ typed consumer after routing.
 
 This contract is used even after the consumer cancels: the connection can
 discard responses until the terminal tag arrives and then safely reuse the
-message ID. An invalid tag is a connection-level protocol failure.
+message ID. If an Abandon may have succeeded, RFC 4511 suppresses that terminal
+response; the target message ID remains tombstoned until the connection closes.
+An invalid tag is a connection-level protocol failure.
 
 ## Setup-time discovery and immutable profiles
 
@@ -91,7 +93,8 @@ not global across a replicated topology. Replacement connections may validate
 the frozen profile, but the core will not continuously rediscover it.
 
 RFC 3909 support is a future use of this seam. The initial runtime may define a
-cancellation policy but implement only conservative Abandon-and-drain behavior.
+cancellation policy but implement only conservative drain behavior, with
+Abandon-and-tombstone when an operation must be interrupted server-side.
 
 ## Endpoint routing
 

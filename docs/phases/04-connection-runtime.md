@@ -46,7 +46,9 @@ only classification logic in that path.
 - Dial, TLS, and pre-ready setup use their contexts directly.
 - An operation context governs its entire lifetime.
 - Never apply one operation's deadline to the shared socket.
-- Initial cancellation support may use Abandon-and-drain.
+- Initial cancellation support may drain to a terminal response. If it sends
+  Abandon, it must tombstone the target message ID because a successful
+  Abandon suppresses the terminal response.
 - Define the policy seam for future RFC 3909 Cancel without implementing
   capability discovery or Cancel immediately.
 - Noncancelable and no-response operations follow explicit lifecycle rules.
@@ -91,7 +93,7 @@ peers so most tests do not require a server.
 - LDAPS dialer and connection lifecycle.
 - Public request, response pattern, operation, and message APIs.
 - Internal reader/router and serialized writer.
-- Abandon-and-drain cancellation baseline.
+- Drain cancellation plus an Abandon-and-tombstone baseline.
 - Typed transport/protocol errors.
 - Race-tested unit and integration suites.
 
@@ -101,4 +103,3 @@ The race detector and fuzz corpus pass; one stalled or canceled operation
 cannot stall unrelated operations; malformed routing input retires the
 connection; and a caller can implement a custom binary operation without
 modifying the core.
-

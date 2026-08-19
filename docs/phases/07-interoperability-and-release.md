@@ -43,7 +43,7 @@ Exercise at least:
 - Search-shaped streaming responses, referrals, and intermediates.
 - Controls with absent, empty, unknown, and critical values.
 - Large binary attribute values and configured size limits.
-- Abandon-and-drain races.
+- Drain races and Abandon-and-tombstone behavior.
 - Notice of Disconnection and abrupt server restart.
 - Concurrent operations across one and several connections.
 - Exact endpoint routing in a replicated topology.
@@ -77,4 +77,3 @@ delay the base release for it.
 The acceptance criteria in `PROJECT_PLAN.md` pass, known compatibility choices
 are documented with evidence, and the base library is useful without GSSAPI or
 generic LDAP CRUD helpers.
-
