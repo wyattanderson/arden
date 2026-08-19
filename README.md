@@ -16,9 +16,11 @@ network retries.
 
 ## Status
 
-Phase 1 is implemented: the evidence index, RFC 4511 protocol inventory,
-transport-independent contracts, error taxonomy, and compile-checked API shapes
-are frozen. Networking and BER codecs intentionally begin in later phases.
+Phases 1 and 2 are implemented. The evidence index, RFC 4511 protocol
+inventory, transport-independent contracts, error taxonomy, and compile-checked
+API shapes are frozen. The `ber` package now provides bounded definite-length
+BER parsing and encoding, strict LDAP primitive handling, and incremental owned
+frame acquisition. Typed RFC 4511 codecs and networking begin in later phases.
 
 See [PROJECT_PLAN.md](PROJECT_PLAN.md) and the individual plans in
 [docs/phases](docs/phases). Phase 1 outputs are summarized in

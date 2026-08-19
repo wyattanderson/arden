@@ -1,0 +1,4 @@
+# LDAPMessage ::= SEQUENCE { messageID INTEGER 1 }
+# RFC 4511 §4.1.1 envelope shape; protocolOp is intentionally omitted because
+# this is a structural BER fixture rather than a valid complete LDAP message.
+3003020101

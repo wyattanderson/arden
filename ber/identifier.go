@@ -54,3 +54,39 @@ func (c Class) String() string {
 type Marshaler interface {
 	AppendBER(dst []byte) ([]byte, error)
 }
+
+// AppendIdentifier appends id in BER identifier form. Tag numbers through 30
+// use the compact form; all other numbers use high-tag-number form.
+func AppendIdentifier(dst []byte, id Identifier, maxTagNumber uint32) ([]byte, error) {
+	if !id.Valid() {
+		return dst, fmt.Errorf("%w: %s", ErrInvalidIdentifier, id)
+	}
+	if id.Number > maxTagNumber {
+		return dst, &LimitError{Limit: "tag number", Value: uint64(id.Number), Max: uint64(maxTagNumber)}
+	}
+
+	first := byte(id.Class << 6)
+	if id.Constructed {
+		first |= 0x20
+	}
+	if id.Number < 31 {
+		return append(dst, first|byte(id.Number)), nil
+	}
+
+	first |= 0x1f
+	var encoded [5]byte
+	n := len(encoded)
+	value := id.Number
+	for {
+		n--
+		encoded[n] = byte(value & 0x7f)
+		value >>= 7
+		if value == 0 {
+			break
+		}
+	}
+	for i := n; i < len(encoded)-1; i++ {
+		encoded[i] |= 0x80
+	}
+	return append(append(dst, first), encoded[n:]...), nil
+}
