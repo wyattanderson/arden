@@ -15,7 +15,7 @@ type MessageID int32
 
 const MaxMessageID MessageID = 1<<31 - 1
 
-// ProtocolOperation is implemented by generated and handwritten LDAP protocol
+// ProtocolOperation is implemented by hand-authored RFC 4511 and extension
 // operations alike. AppendBER encodes only the protocolOp value, not the
 // LDAPMessage envelope.
 type ProtocolOperation interface {
@@ -164,12 +164,35 @@ func (op Operation) Validate() error {
 	return nil
 }
 
-// Response owns Bytes. The caller may retain or modify them after Next
-// returns; no connection buffer aliases the slice.
+// Response owns Bytes. Protocol and the raw Control elements are views into
+// Bytes; none of them alias the socket reader. The caller may retain or modify
+// the response after Next returns.
 type Response struct {
 	MessageID  MessageID
 	ProtocolID ber.Identifier
 	Bytes      []byte
+	Protocol   []byte
+	Controls   []ber.Element
+}
+
+// UnmarshalProtocol decodes the complete protocolOp value using a caller-
+// selected public codec. It runs in the consumer goroutine, never the socket
+// reader, and rejects trailing bytes after the decoded value.
+func (r Response) UnmarshalProtocol(dst ber.Unmarshaler, limits ber.Limits) error {
+	if dst == nil {
+		return errors.New("arden: nil protocol unmarshaler")
+	}
+	if len(r.Protocol) == 0 {
+		return errors.New("arden: response has no protocol value")
+	}
+	reader, err := ber.NewReader(r.Protocol, limits)
+	if err != nil {
+		return err
+	}
+	if err := dst.UnmarshalBER(reader); err != nil {
+		return err
+	}
+	return reader.RequireEmpty()
 }
 
 // ResponseStream is the consumer side of one operation. Next returns owned

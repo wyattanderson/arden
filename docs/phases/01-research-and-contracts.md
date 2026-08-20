@@ -18,8 +18,6 @@ or general codecs in this phase.
   results, abandon operations, and respond to malformed input.
 - Locate the corresponding 389 DS request dispatch, BER failure, Bind, Abandon,
   and connection shutdown paths.
-- Review asn1c's parser-to-normalizer-to-generator structure; reuse the staging
-  idea, not its generated C runtime.
 
 Maintain a short research index containing links, inspected revisions, the
 question being answered, and the observed behavior. Avoid a general knowledge
@@ -87,5 +85,5 @@ paper before accepting the contracts:
 ## Exit criteria
 
 The public shapes support all scenarios above without payload inspection,
-string conversion, or a privileged generated-code path. Remaining uncertainty
-is listed explicitly for implementation experiments.
+string conversion, or a privileged RFC-codec path. Remaining uncertainty is
+listed explicitly for implementation experiments.

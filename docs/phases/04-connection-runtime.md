@@ -17,13 +17,22 @@ response correctly, and fails predictably under cancellation and network loss.
 
 ## Operation lifecycle
 
+The codec, operation, response-header, classifier, and per-operation
+registration contracts are specified in detail in
+[Phase 3](03-rfc4511-wire.md). In particular, registration is a pending
+message-ID record, not registration of an RFC Go type; the reader never
+consults a global codec or classifier registry.
+
 1. Validate the request and response pattern.
 2. Reserve a nonzero message ID not used by an outstanding operation.
-3. Encode the LDAP envelope and write it completely.
-4. Route received messages by message ID.
-5. Apply the immutable response pattern to the protocol-operation tag.
-6. Deliver owned messages to the consumer.
-7. On terminal response, retire the operation and eventually reuse its ID.
+3. Encode the complete LDAP envelope.
+4. Install the pending record before any request bytes can reach the peer.
+5. Serialize the complete write and handle definitely-unsent versus ambiguous
+   failure.
+6. Route received messages by message ID.
+7. Apply the immutable response pattern to the protocol-operation tag.
+8. Deliver owned messages to the consumer, or discard them while canceled.
+9. On terminal response, retire the operation and eventually reuse its ID.
 
 Message ID zero is handled separately as an unsolicited notification. Unknown
 nonzero IDs and response-contract violations are connection failures.
@@ -69,7 +78,7 @@ Provide distinct errors for:
 - Unsolicited Notice of Disconnection.
 
 Do not automatically turn every LDAP result code into a connection error. Most
-result interpretation belongs to the generated or application layer.
+result interpretation belongs to the RFC or application layer.
 
 ## Testing
 

@@ -28,7 +28,7 @@ STRING values, and the specified true Boolean representation when encoding.
 - Return owned top-level message bytes in the first implementation.
 - Do not expose a mutable, generic `Packet` tree as the primary API.
 - Separate framing errors from schema/type errors.
-- Reject trailing bytes where a generated type requires complete consumption;
+- Reject trailing bytes where a typed codec requires complete consumption;
   preserve trailing sequence components where RFC extensibility requires it.
 
 ## Implementation instructions
@@ -55,9 +55,9 @@ need.
   and invalid primitive/constructed forms.
 - Encode/decode properties for supported primitives.
 - Fuzzing with strict allocation and time budgets.
-- Differential vectors generated independently with asn1c or another BER tool.
+- Differential vectors produced independently with another BER tool.
 
-Inspect asn1c and mature LDAP libraries when BER behavior is unclear. Do not
+Inspect independent BER tools and mature LDAP libraries when behavior is unclear. Do not
 adopt behavior that conflicts with RFC 4511 merely because a permissive decoder
 accepts it. Test disputed encodings against 389 DS and document the result.
 
@@ -73,5 +73,5 @@ accepts it. Test disputed encodings against 389 DS and document the result.
 
 The runtime can safely frame and parse valid LDAP messages from arbitrary read
 boundaries, rejects hostile lengths without excessive allocation, and exposes
-everything required by generated codecs without LDAP-specific object trees.
-
+everything required by hand-authored RFC and extension codecs without
+LDAP-specific object trees.

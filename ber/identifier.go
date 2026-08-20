@@ -55,6 +55,13 @@ type Marshaler interface {
 	AppendBER(dst []byte) ([]byte, error)
 }
 
+// Unmarshaler consumes one complete BER value of its expected type from r.
+// Implementations must leave their receiver unchanged when they return an
+// error. The reader position is unspecified after an error.
+type Unmarshaler interface {
+	UnmarshalBER(r *Reader) error
+}
+
 // AppendIdentifier appends id in BER identifier form. Tag numbers through 30
 // use the compact form; all other numbers use high-tag-number form.
 func AppendIdentifier(dst []byte, id Identifier, maxTagNumber uint32) ([]byte, error) {

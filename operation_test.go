@@ -23,6 +23,20 @@ type rawOperation struct {
 	value []byte
 }
 
+type rawUnmarshaler struct {
+	id    ber.Identifier
+	value []byte
+}
+
+func (u *rawUnmarshaler) UnmarshalBER(r *ber.Reader) error {
+	value, err := r.Primitive(u.id)
+	if err != nil {
+		return err
+	}
+	u.value = append(u.value[:0], value...)
+	return nil
+}
+
 func (o rawOperation) ProtocolIdentifier() ber.Identifier { return o.id }
 func (o rawOperation) AppendBER(dst []byte) ([]byte, error) {
 	return append(dst, o.value...), nil
@@ -96,6 +110,36 @@ func TestCompileOnlyContracts(t *testing.T) {
 	var _ arden.Authenticator = authenticatorContract{}
 	var _ arden.Initializer[profile] = initializerContract{}
 	var _ arden.Tracer = tracerContract{}
+	var _ ber.Unmarshaler = (*rawUnmarshaler)(nil)
+}
+
+func TestResponseUnmarshalProtocol(t *testing.T) {
+	id := ber.Identifier{Class: ber.ClassApplication, Number: 9}
+	protocol, err := ber.AppendPrimitive(nil, id, []byte("result"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := arden.Response{
+		MessageID:  7,
+		ProtocolID: id,
+		Bytes:      protocol,
+		Protocol:   protocol,
+	}
+
+	var decoded rawUnmarshaler
+	decoded.id = id
+	if err := response.UnmarshalProtocol(&decoded, ber.DefaultLimits()); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := string(decoded.value), "result"; got != want {
+		t.Fatalf("decoded value = %q, want %q", got, want)
+	}
+
+	withTrailing := response
+	withTrailing.Protocol = append(append([]byte(nil), protocol...), 0x05, 0x00)
+	if err := withTrailing.UnmarshalProtocol(&rawUnmarshaler{id: id}, ber.DefaultLimits()); !errors.Is(err, ber.ErrTrailingData) {
+		t.Fatalf("trailing decode error = %v, want ErrTrailingData", err)
+	}
 }
 
 func TestTransportErrorIdentity(t *testing.T) {

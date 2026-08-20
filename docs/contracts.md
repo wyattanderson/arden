@@ -5,20 +5,20 @@
 ```text
 ber
  └── root package (operations, setup/auth seams, errors, tracing metadata)
-      ├── wire (generated codecs and standard patterns)
+      ├── rfc4511 (hand-authored codecs, values, filters, and patterns)
       ├── auth (anonymous, Simple Bind, mechanism providers)
       │    └── auth/gssapi (optional cgo implementation)
       ├── pool (endpoint routing, leases, admission)
       └── otelldap (optional tracing adapter)
-
-internal/cmd/asn1gen ──> generated wire source only
 ```
 
-`ber` has no Arden dependency. The root package imports only `ber`. `wire`,
+`ber` has no Arden dependency. The root package imports only `ber`. `rfc4511`,
 `auth`, and `pool` may import the root package; the root never imports them.
-Generated and handwritten protocol values implement the same `ber.Marshaler`
-and `arden.ProtocolOperation` contracts. Optional adapters may add dependencies;
-the runtime remains standard-library-only.
+Hand-authored RFC 4511 and external extension values implement the same
+`ber.Marshaler`, `ber.Unmarshaler`, and `arden.ProtocolOperation` contracts.
+The RFC package has no internal runtime access or registration privilege.
+Optional adapters may add dependencies; the runtime remains
+standard-library-only.
 
 ## Public shapes
 
@@ -34,15 +34,22 @@ The Phase 1 compile-checked definitions live in `ber/identifier.go`,
   input slice unchanged. The Phase 2 reader contract is a concrete bounded
   cursor over caller-owned bytes: constructing it requires validated limits;
   entering a constructed element returns a child reader limited to that
-  element; primitive reads advance only on success; generated `UnmarshalBER`
+  element; primitive reads advance only on success; typed `UnmarshalBER`
   methods take that reader and reject trailing bytes except at an explicit RFC
-  extension point. Phase 1 intentionally does not add a fake reader.
+  extension point. The full codec contract—including receiver atomicity,
+  retained-byte ownership, and the rule that RFC codecs have no privileged
+  runtime access—is specified in [Phase 3](phases/03-rfc4511-wire.md).
 - `Operation` contains a protocol operation, ordered controls, immutable
   `ResponsePattern`, cancellation mode, and safe metadata. Classification uses
   one BER application identifier and yields continue, complete, or invalid.
+  Pattern publication, local configuration, pending-record registration, and
+  reader dispatch are specified in [Phase 3](phases/03-rfc4511-wire.md);
+  there is no global codec or classifier registry.
 - `Response` owns the complete LDAP message bytes. The consumer may retain or
-  mutate them; they never alias the socket reader. Typed decoding occurs after
-  routing in the consumer goroutine.
+  mutate them; they never alias the socket reader. It also exposes the complete
+  `protocolOp` encoding and raw control elements as views into those owned
+  bytes. `UnmarshalProtocol` invokes any public `ber.Unmarshaler` after routing
+  in the consumer goroutine.
 - `EndpointID` is stable caller vocabulary independent of address.
   `pool.Any()` and `pool.Endpoint(id)` distinguish load-balanced and exact
   routing; exact routing never degrades silently. A Phase 6 lease will bind one
@@ -92,7 +99,7 @@ existing lease can fail, but neither can reroute.
 | Authentication/initialization/profile validation | `*SetupError` | `ErrSetup`; underlying error |
 | RFC 4511 Notice of Disconnection | `*NoticeError` | `ErrNoticeOfDisconnection`; connection is retired |
 | Caller cancellation/deadline | wrapped context error | `context.Canceled` or `context.DeadlineExceeded`; any request outcome marker is preserved separately by the transport error |
-| LDAP result code | generated/application result | Not a core connection error by default |
+| LDAP result code | RFC/application result | Not a core connection error by default |
 
 `errors.As` exposes every typed error above. Error strings and trace fields must
 not include BER payloads or authentication material.
@@ -149,8 +156,9 @@ required to receive an explicit validated limit set.
 
 - Phase 2 will determine concrete numeric BER defaults and whether interoperability
   requires accepting any noncanonical-but-definite encodings.
-- Reported RFC 4511 erratum 5292 about `not` filter tagging requires a generated
-  vector plus a 389 DS/FreeIPA experiment in Phase 3; it is not adopted now.
+- Reported RFC 4511 erratum 5292 about `not` filter tagging requires a
+  hand-authored vector plus a 389 DS/FreeIPA experiment in Phase 3; it is not
+  adopted now.
 - Phase 4 must test whether 389 DS sends any final response in races where an
   Abandon arrives after operation completion. The safe contract does not rely
   on one.

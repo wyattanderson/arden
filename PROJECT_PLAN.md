@@ -5,7 +5,8 @@
 Build a small, modern Go foundation for binary LDAPv3 operations against 389
 Directory Server and FreeIPA. The first usable milestone ends with a tested RFC
 4511 wire layer, concurrent LDAPS connections, a multiplex-aware pool, and the
-extension points required for generated application protocols.
+extension points required for handwritten LDAP extensions and generated
+application/schema protocols.
 
 GSSAPI is necessary for the eventual deployment, but it is deliberately after
 the pure LDAP foundation. Early designs must preserve its integration seam
@@ -17,7 +18,8 @@ without allowing native authentication concerns to dominate the core.
 - Prefer data and small interfaces over frameworks and registries.
 - Preserve bytes at the wire boundary.
 - Make concurrency, cancellation, ownership, and failure semantics explicit.
-- Generate repetitive protocol code; handwrite semantic policy.
+- Hand-author the small, stable RFC 4511 wire layer; reserve code generation
+  for application/schema APIs where it removes meaningful repetition.
 - Use an immutable setup profile for facts discovered before a pool starts.
 - Treat each configured server as a distinct endpoint with a stable identity.
 - Optimize only after packet-level correctness and interoperability.
@@ -31,13 +33,12 @@ Names are provisional; responsibilities are not.
 | Package | Responsibility |
 | --- | --- |
 | `ber` | Bounded LDAP BER identifiers, lengths, readers, and append encoders |
-| `wire` | Generated RFC 4511 types, application tags, enums, and constants |
+| `rfc4511` | Hand-authored RFC 4511 values, filters, results, tags, constants, codecs, and standard operation helpers |
 | root package | LDAPS dialing, message envelopes, operations, routing, lifecycle |
 | `pool` | Endpoint-aware multiplexed connections, leases, and shutdown |
 | `auth` | Authentication and connection-initialization contracts |
 | `otelldap` | Optional OpenTelemetry adapter |
 | `auth/gssapi` | Late optional native GSSAPI mechanism |
-| `internal/cmd/asn1gen` | Pinned ASN.1/table extraction and Go generation |
 
 Avoid splitting packages until a dependency boundary or build constraint makes
 the split useful.
@@ -117,7 +118,7 @@ mutation to a replica.
 | --- | --- | --- |
 | 1 | Evidence base and frozen contracts | [01](docs/phases/01-research-and-contracts.md) |
 | 2 | Safe LDAP BER runtime | [02](docs/phases/02-ber-runtime.md) |
-| 3 | Reproducible RFC 4511 generation | [03](docs/phases/03-rfc4511-generation.md) |
+| 3 | Hand-authored RFC 4511 wire layer | [03](docs/phases/03-rfc4511-wire.md) |
 | 4 | Concurrent LDAPS connection runtime | [04](docs/phases/04-connection-runtime.md) |
 | 5 | Authentication and setup seam | [05](docs/phases/05-authentication-and-bootstrap.md) |
 | 6 | Endpoint-aware pool and observability | [06](docs/phases/06-pooling-routing-observability.md) |
@@ -134,8 +135,8 @@ The base RFC 4511 milestone is complete after Phase 7 when:
 - Direct TLS connections are verified by default and cancellable while dialing
   and handshaking.
 - The BER runtime is bounded, fuzzed, and handles arbitrary read boundaries.
-- Generated RFC 4511 objects round-trip supported messages and preserve defined
-  extension points.
+- Hand-authored RFC 4511 objects round-trip supported messages and preserve
+  defined extension points.
 - Multiple operations can share a connection without response confusion.
 - Standard single-response, streaming-response, no-response, and intermediate-
   response patterns are covered.
@@ -151,10 +152,10 @@ The base RFC 4511 milestone is complete after Phase 7 when:
 
 ## Dependency policy
 
-The BER, wire, connection, and pool runtime should use the standard library
+The BER, RFC 4511, connection, and pool runtime should use the standard library
 unless a dependency eliminates substantial, well-understood work. Optional
-adapters may have their own dependencies. Tools used only by generation or
-testing do not become runtime dependencies.
+adapters may have their own dependencies. Tools used only by application code
+generation or testing do not become runtime dependencies.
 
 Do not use `encoding/asn1` or a general BER object tree as the public runtime
 model. Do not introduce a service locator, dependency injection framework, or
@@ -171,7 +172,8 @@ External projects are expected research material:
 
 - go-ldap for Go interoperability cases, controls, and message-routing tests.
 - OpenLDAP/libldap and python-ldap for mature client behavior and edge cases.
-- asn1c for ASN.1 parse, normalization, generation, and constraint-test ideas.
+- Independent ASN.1/BER tools for checking focused fixtures when useful; Arden
+  does not build or ship an RFC codec generator.
 - 389 DS source and `dirsrvtests` for server behavior and regression cases.
 - FreeIPA source and tests for topology, replication, and authentication use.
 

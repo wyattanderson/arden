@@ -5,10 +5,11 @@ is RFC 4511 over direct TLS, interoperating with 389 Directory Server and
 FreeIPA.
 
 The project is intentionally narrower than a general LDAP SDK. The core will
-provide BER codecs, LDAP message transport, concurrent operation routing,
-contexts, tracing hooks, and multiplex-aware pooling. Search, modification, DN
-and filter text APIs, schema-aware values, and application-specific operations
-belong in generated or handwritten packages above the core.
+provide BER codecs, a hand-authored RFC 4511 wire package, LDAP message
+transport, concurrent operation routing, contexts, tracing hooks, and
+multiplex-aware pooling. Schema-aware values, DN and filter text APIs, and
+application-specific operations belong in generated or handwritten packages
+above that foundation.
 
 The design goal is ordinary, idiomatic Go: small interfaces, explicit resource
 ownership, useful errors, no reflection-heavy object model, and no hidden
@@ -43,9 +44,9 @@ but it is not a release requirement.
 ## Architectural outline
 
 ```text
-typed/generated application package
+typed or schema-generated application package
               |
-       RFC 4511 wire types
+ hand-authored RFC 4511 wire types
               |
  request + response pattern + controls
               |
@@ -64,8 +65,10 @@ the terminal response has arrived.
 - Wire values are byte-oriented. Text conversion and syntax interpretation are
   higher-layer responsibilities.
 - LDAP gets a small purpose-built BER runtime, not a general ASN.1 framework.
-- RFC codecs and constants are generated from pinned specification inputs.
-- Generated and handwritten values use the same public codec contracts.
+- RFC 4511 codecs, constants, and response patterns are hand-authored and
+  reviewed against the pinned specification and errata.
+- RFC values and external extensions use the same public codec and operation
+  contracts; the RFC package has no privileged runtime path.
 - Response classification is declarative and tag-based: continue, complete, or
   invalid. Payload-dependent classification is excluded until a real extension
   proves it necessary.
@@ -100,7 +103,7 @@ alone. Investigate in this order:
 1. The RFC text, published errata, referenced RFCs, and IANA registries.
 2. 389 DS source and tests, then FreeIPA integration behavior.
 3. Mature client implementations such as OpenLDAP/libldap, go-ldap, and
-   python-ldap, plus ASN.1 tools such as asn1c where generation is involved.
+   python-ldap, plus independent BER tools for checking disputed encodings.
 4. A minimal packet-level experiment against the supported server.
 
 Record the evidence and the resulting decision in the relevant phase document,
@@ -116,6 +119,5 @@ vectors or code.
 - [go-ldap](https://github.com/go-ldap/ldap)
 - [python-ldap](https://github.com/python-ldap/python-ldap) and
   [OpenLDAP](https://git.openldap.org/openldap/openldap)
-- [asn1c](https://github.com/vlm/asn1c)
 - [389 Directory Server](https://github.com/389ds/389-ds-base)
 - [FreeIPA](https://github.com/freeipa/freeipa)

@@ -33,7 +33,7 @@ choose credentials.
 - GSS tokens are never logged or traced.
 - Authentication result metadata is sufficient to partition pools without
   exposing credentials.
-- Application and generated protocol packages cannot tell whether GSSAPI,
+- Application and RFC protocol packages cannot tell whether GSSAPI,
   ordinary Bind, or another future mechanism authenticated the connection.
 
 Explicitly reject negotiation of integrity or confidentiality SASL data layers
@@ -78,4 +78,3 @@ them into the authentication interface.
 FreeIPA can authenticate the client through native Kerberos; the same
 application operations work unchanged under ordinary Bind and GSSAPI; builds
 that do not import the optional package remain cgo-free.
-

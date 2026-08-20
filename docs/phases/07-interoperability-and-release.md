@@ -24,8 +24,7 @@ Review, with revision links:
   message handling.
 - python-ldap and OpenLDAP tests for reconnect, result delivery, TLS, and
   protocol edge cases.
-- asn1c tests and examples for constraints, malformed BER, and generation
-  staging.
+- Independent BER fixtures for constraints and malformed encodings.
 - 389 DS `dirsrvtests` and server source for Bind, Abandon, controls, referrals,
   limits, disconnects, and pipelining.
 - FreeIPA tests for replica-specific operations and server selection.
@@ -39,7 +38,7 @@ Exercise at least:
 
 - TLS verification and certificate rotation behavior.
 - Anonymous/minimal ordinary authentication needed by tests.
-- Unary operations through generated wire objects.
+- Unary operations through hand-authored RFC wire objects.
 - Search-shaped streaming responses, referrals, and intermediates.
 - Controls with absent, empty, unknown, and critical values.
 - Large binary attribute values and configured size limits.
@@ -54,13 +53,14 @@ delay the base release for it.
 
 ## Review requirements
 
-- Run unit, race, fuzz regression, integration, and generation checks.
+- Run unit, race, fuzz regression, and integration checks.
 - Audit goroutine, buffer, and connection ownership.
 - Audit errors and observability output for credential/data leakage.
 - Confirm every default resource limit is documented.
 - Confirm connection ambiguity never triggers an implicit retry.
 - Confirm the public API contains no generic string-based directory operation.
-- Confirm examples use generated or typed binary layers above core.
+- Confirm examples use the hand-authored RFC layer or typed binary application
+  layers above core.
 - Remove speculative interfaces that have no caller or test.
 
 ## Deliverables

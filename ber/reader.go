@@ -55,8 +55,8 @@ func (r *Reader) Remaining() int { return len(r.data) - r.pos }
 // Empty reports whether all bytes in this reader's bounded region were read.
 func (r *Reader) Empty() bool { return r.Remaining() == 0 }
 
-// RequireEmpty rejects unread bytes. Generated decoders should call it when a
-// type requires complete consumption; extensible SEQUENCE codecs can instead
+// RequireEmpty rejects unread bytes. Typed decoders should call it when a type
+// requires complete consumption; extensible SEQUENCE codecs can instead
 // preserve or explicitly skip trailing elements.
 func (r *Reader) RequireEmpty() error {
 	if !r.Empty() {
