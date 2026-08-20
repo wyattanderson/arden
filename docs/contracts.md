@@ -47,9 +47,9 @@ The Phase 1 compile-checked definitions live in `ber/identifier.go`,
   there is no global codec or classifier registry.
 - `Response` owns the complete LDAP message bytes. The consumer may retain or
   mutate them; they never alias the socket reader. It also exposes the complete
-  `protocolOp` encoding and raw control elements as views into those owned
-  bytes. `UnmarshalProtocol` invokes any public `ber.Unmarshaler` after routing
-  in the consumer goroutine.
+  `protocolOp` encoding, raw control elements, and allowed unknown trailing
+  LDAPMessage extensions as views into those owned bytes. `UnmarshalProtocol`
+  invokes any public `ber.Unmarshaler` after routing in the consumer goroutine.
 - `EndpointID` is stable caller vocabulary independent of address.
   `pool.Any()` and `pool.Endpoint(id)` distinguish load-balanced and exact
   routing; exact routing never degrades silently. A Phase 6 lease will bind one

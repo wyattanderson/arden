@@ -165,14 +165,16 @@ func (op Operation) Validate() error {
 }
 
 // Response owns Bytes. Protocol and the raw Control elements are views into
-// Bytes; none of them alias the socket reader. The caller may retain or modify
-// the response after Next returns.
+// Bytes, as are any allowed unknown envelope Extensions; none of them alias
+// the socket reader. The caller may retain or modify the response after Next
+// returns.
 type Response struct {
 	MessageID  MessageID
 	ProtocolID ber.Identifier
 	Bytes      []byte
 	Protocol   []byte
 	Controls   []ber.Element
+	Extensions []ber.Element
 }
 
 // UnmarshalProtocol decodes the complete protocolOp value using a caller-

@@ -147,6 +147,35 @@ func TestReaderLimits(t *testing.T) {
 	})
 }
 
+func TestSkipElementValidatesNestedLimits(t *testing.T) {
+	t.Run("peek does not advance", func(t *testing.T) {
+		r, err := ber.NewReader([]byte{0x04, 0x00}, limits())
+		if err != nil {
+			t.Fatal(err)
+		}
+		id, err := r.PeekIdentifier()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if id != ber.OctetStringIdentifier || r.Offset() != 0 {
+			t.Fatalf("PeekIdentifier() = %s at offset %d", id, r.Offset())
+		}
+	})
+
+	t.Run("unknown extension cannot bypass depth", func(t *testing.T) {
+		data := []byte{0x30, 0x02, 0x30, 0x00}
+		l := limits()
+		l.MaxDepth = 1
+		r, err := ber.NewReader(data, l)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := r.SkipElement(); err == nil {
+			t.Fatal("SkipElement accepted nested value beyond depth limit")
+		}
+	})
+}
+
 func TestFramerEverySplit(t *testing.T) {
 	frame := []byte{0x30, 0x81, 0x80}
 	frame = append(frame, bytes.Repeat([]byte{0}, 128)...)

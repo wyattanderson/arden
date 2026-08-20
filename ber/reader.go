@@ -65,6 +65,18 @@ func (r *Reader) RequireEmpty() error {
 	return nil
 }
 
+// PeekIdentifier returns the identifier of the next element without advancing
+// the reader. It is useful for ASN.1 OPTIONAL fields and extensible trailing
+// components, where a decoder must decide whether it recognizes the next
+// element before consuming it.
+func (r *Reader) PeekIdentifier() (Identifier, error) {
+	id, _, err := decodeIdentifier(r.data[r.pos:], r.limits.MaxTagNumber)
+	if err != nil {
+		return Identifier{}, decodeError(r.Offset(), err)
+	}
+	return id, nil
+}
+
 // ReadElement reads one complete BER element and advances only after its
 // identifier, length, and bounded value have all been validated.
 func (r *Reader) ReadElement() (Element, error) {
@@ -95,6 +107,47 @@ func (r *Reader) ReadElement() (Element, error) {
 	}
 	r.pos = end
 	return e, nil
+}
+
+// SkipElement reads one complete element and validates all nested BER
+// elements without interpreting their schema. It is intended for an allowed
+// unknown extension field that a typed decoder needs to preserve. The returned
+// element remains a view of the reader's caller-owned input.
+func (r *Reader) SkipElement() (Element, error) {
+	e, err := r.ReadElement()
+	if err != nil {
+		return Element{}, err
+	}
+	if err := r.validateContents(e); err != nil {
+		return Element{}, err
+	}
+	return e, nil
+}
+
+func (r *Reader) validateContents(e Element) error {
+	if !e.Identifier.Constructed {
+		return nil
+	}
+	if r.depth == r.limits.MaxDepth {
+		return decodeError(e.Offset, &LimitError{Limit: "depth", Value: uint64(r.depth + 1), Max: uint64(r.limits.MaxDepth)})
+	}
+	child := Reader{
+		data:   e.Value,
+		base:   e.Offset + len(e.Raw) - len(e.Value),
+		depth:  r.depth + 1,
+		limits: r.limits,
+		state:  r.state,
+	}
+	for !child.Empty() {
+		nested, err := child.ReadElement()
+		if err != nil {
+			return err
+		}
+		if err := child.validateContents(nested); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Primitive reads the next primitive element with id. The returned value is a
@@ -175,6 +228,12 @@ func (r *Reader) Boolean() (bool, error) {
 // Integer reads a signed BER INTEGER that fits in int64 and the configured
 // integer-size limit.
 func (r *Reader) Integer() (int64, error) { return r.integer(IntegerIdentifier) }
+
+// IntegerWithIdentifier reads a signed BER INTEGER that has an implicit
+// primitive identifier, such as an LDAP application-tagged MessageID.
+func (r *Reader) IntegerWithIdentifier(id Identifier) (int64, error) {
+	return r.integer(id)
+}
 
 // Enumerated reads a signed BER ENUMERATED value.
 func (r *Reader) Enumerated() (int64, error) { return r.integer(EnumeratedIdentifier) }

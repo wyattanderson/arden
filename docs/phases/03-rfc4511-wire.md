@@ -195,13 +195,16 @@ type Response struct {
     Bytes      []byte
     Protocol   []byte
     Controls   []ber.Element
+    Extensions []ber.Element
 }
 ```
 
 `Protocol` is the complete BER encoding of `protocolOp`. Each control element
-is a complete BER Control value. Both alias `Bytes`, which is owned by the
-response and never aliases the socket reader. The consumer may retain the
-response; typed unmarshaling copies retained value bytes.
+is a complete BER Control value. `Extensions` contains complete, validated
+unknown trailing LDAPMessage fields in source order. All three are views into
+`Bytes`, which is owned by the response and never aliases the socket reader.
+The consumer may retain the response; typed unmarshaling copies retained value
+bytes.
 
 The public convenience path is:
 
@@ -513,6 +516,20 @@ beside the regression.
 - Remaining RFC 4511 operations, filters, constants, and standard patterns.
 - Custom external operation/filter fixture proving API parity.
 - Package documentation for adding a control, filter, or extended operation.
+
+## Completion notes
+
+Phase 3 is implemented with hand-authored codecs. The root package parses and
+owns generic response envelopes, while `rfc4511` supplies ordinary public BER
+values for every RFC 4511 application operation. Search filter dispatch is
+local to typed decoding; the root reader only routes by `Response.ProtocolID`
+and the immutable `ResponsePattern` declared on the submitted operation.
+
+External controls, filter alternatives, and protocol operations use the same
+`ber.Marshaler`, `ber.Unmarshaler`, `Filter`, and `arden.ProtocolOperation`
+contracts as RFC values. There is no registration path. Unknown extensible
+enum values, CHOICE alternatives, and trailing fields are retained as typed
+raw values where their schemas permit preservation.
 
 ## Exit criteria
 

@@ -58,6 +58,12 @@ func AppendInteger(dst []byte, value int64) ([]byte, error) {
 	return appendInt(dst, IntegerIdentifier, value)
 }
 
+// AppendIntegerWithIdentifier appends a minimally encoded signed INTEGER using
+// an implicitly tagged primitive identifier.
+func AppendIntegerWithIdentifier(dst []byte, id Identifier, value int64) ([]byte, error) {
+	return appendInt(dst, id, value)
+}
+
 // AppendEnumerated appends a minimally encoded signed ENUMERATED value.
 func AppendEnumerated(dst []byte, value int64) ([]byte, error) {
 	return appendInt(dst, EnumeratedIdentifier, value)
