@@ -2,9 +2,10 @@ package rfc4511_test
 
 import (
 	"bytes"
-	"reflect"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/wyattanderson/arden"
 	"github.com/wyattanderson/arden/ber"
 	"github.com/wyattanderson/arden/rfc4511"
@@ -66,125 +67,84 @@ func TestRFC4511CodecRoundTrips(t *testing.T) {
 
 func TestFilterWireSpecialCasesAndExternalAlternative(t *testing.T) {
 	present, err := (rfc4511.Present{Attribute: rfc4511.AttributeDescription("cn")}).AppendBER(nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if want := []byte{0x87, 0x02, 'c', 'n'}; !bytes.Equal(present, want) {
-		t.Fatalf("Present = %x, want %x", present, want)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, []byte{0x87, 0x02, 'c', 'n'}, present)
 
 	equality, err := (rfc4511.EqualityMatch{Assertion: rfc4511.AttributeValueAssertion{Type: rfc4511.AttributeDescription("cn")}}).AppendBER(nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if want := []byte{0xa3, 0x06, 0x04, 0x02, 'c', 'n', 0x04, 0x00}; !bytes.Equal(equality, want) {
-		t.Fatalf("EqualityMatch = %x, want %x", equality, want)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, []byte{0xa3, 0x06, 0x04, 0x02, 'c', 'n', 0x04, 0x00}, equality)
 
 	// RFC 4511 section 4.5.1.7: NOT carries the complete child Filter under
 	// context-specific constructed tag [2]. This vector covers erratum 5292's
 	// disputed tagging shape without introducing a compatibility exception.
 	not, err := (rfc4511.Not{Filter: rfc4511.Present{Attribute: rfc4511.AttributeDescription("cn")}}).AppendBER(nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if want := []byte{0xa2, 0x04, 0x87, 0x02, 'c', 'n'}; !bytes.Equal(not, want) {
-		t.Fatalf("Not = %x, want %x", not, want)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, []byte{0xa2, 0x04, 0x87, 0x02, 'c', 'n'}, not)
 
 	request := &rfc4511.SearchRequest{Filter: externalFilter{}}
 	encoded, err := request.AppendBER(nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r, err := ber.NewReader(encoded, ber.DefaultLimits())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	var decoded rfc4511.SearchRequest
-	if err := decoded.UnmarshalBER(r); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, decoded.UnmarshalBER(r))
 	unknown, ok := decoded.Filter.(rfc4511.UnknownFilter)
-	if !ok || unknown.FilterIdentifier() != externalFilterIdentifier {
-		t.Fatalf("decoded external filter = %#v", decoded.Filter)
-	}
-	if !bytes.Equal(unknown.Raw(), []byte{0xbf, 0x2a, 0x00}) {
-		t.Fatalf("unknown external filter raw = %x", unknown.Raw())
-	}
+	require.True(t, ok)
+	assert.Equal(t, externalFilterIdentifier, unknown.FilterIdentifier())
+	assert.Equal(t, []byte{0xbf, 0x2a, 0x00}, unknown.Raw())
 }
 
 func TestSearchPatternsAndOperationPolicies(t *testing.T) {
 	search, err := rfc4511.NewSearchOperation(&rfc4511.SearchRequest{Filter: rfc4511.Present{Attribute: rfc4511.AttributeDescription("cn")}}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if search.Cancellation != arden.CancelAbandon {
-		t.Fatalf("Search cancellation = %v", search.Cancellation)
-	}
-	for id, want := range map[ber.Identifier]arden.Classification{
-		rfc4511.SearchResultEntryIdentifier():     arden.ClassificationContinue,
-		rfc4511.SearchResultReferenceIdentifier(): arden.ClassificationContinue,
-		rfc4511.SearchResultDoneIdentifier():      arden.ClassificationComplete,
-		rfc4511.AddResponseIdentifier():           arden.ClassificationInvalid,
+	require.NoError(t, err)
+	assert.Equal(t, arden.CancelAbandon, search.Cancellation)
+	for _, test := range []struct {
+		name string
+		id   ber.Identifier
+		want arden.Classification
+	}{
+		{"entry", rfc4511.SearchResultEntryIdentifier(), arden.ClassificationContinue},
+		{"reference", rfc4511.SearchResultReferenceIdentifier(), arden.ClassificationContinue},
+		{"done", rfc4511.SearchResultDoneIdentifier(), arden.ClassificationComplete},
+		{"unrelated", rfc4511.AddResponseIdentifier(), arden.ClassificationInvalid},
 	} {
-		if got := search.Responses.Classify(id); got != want {
-			t.Fatalf("Search pattern %s = %v, want %v", id, got, want)
-		}
+		t.Run(test.name, func(t *testing.T) {
+			assert.Equal(t, test.want, search.Responses.Classify(test.id))
+		})
 	}
 
 	extended, err := rfc4511.NewExtendedOperation(&rfc4511.ExtendedRequest{Name: rfc4511.LDAPOID("1.2.3")}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if extended.Responses.Classify(rfc4511.IntermediateResponseIdentifier()) != arden.ClassificationContinue ||
-		extended.Responses.Classify(rfc4511.ExtendedResponseIdentifier()) != arden.ClassificationComplete {
-		t.Fatal("extended response pattern is not streaming then terminal")
-	}
+	require.NoError(t, err)
+	assert.Equal(t, arden.ClassificationContinue, extended.Responses.Classify(rfc4511.IntermediateResponseIdentifier()))
+	assert.Equal(t, arden.ClassificationComplete, extended.Responses.Classify(rfc4511.ExtendedResponseIdentifier()))
 }
 
 func TestRFCReceiverAtomicityAndOwnership(t *testing.T) {
 	prior := rfc4511.SearchRequest{BaseObject: rfc4511.LDAPDN("dc=keep"), Filter: rfc4511.Present{Attribute: rfc4511.AttributeDescription("cn")}}
 	r, err := ber.NewReader([]byte{0x63, 0x00}, ber.DefaultLimits())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := prior.UnmarshalBER(r); err == nil {
-		t.Fatal("malformed search was accepted")
-	}
-	if string(prior.BaseObject) != "dc=keep" {
-		t.Fatalf("failed unmarshal changed receiver: %#v", prior)
-	}
+	require.NoError(t, err)
+	assert.Error(t, prior.UnmarshalBER(r))
+	assert.Equal(t, "dc=keep", string(prior.BaseObject))
 
 	encoded, err := (&rfc4511.ExtendedResponse{Result: rfc4511.LDAPResult{ResultCode: rfc4511.ResultSuccess}, ResponseValue: []byte{0, 0xff}, HasResponseValue: true}).AppendBER(nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r, err = ber.NewReader(encoded, ber.DefaultLimits())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	var decoded rfc4511.ExtendedResponse
-	if err := decoded.UnmarshalBER(r); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, decoded.UnmarshalBER(r))
 	for i := range encoded {
 		encoded[i] = 0
 	}
-	if !bytes.Equal(decoded.ResponseValue, []byte{0, 0xff}) {
-		t.Fatalf("decoded response value aliases source: %x", decoded.ResponseValue)
-	}
+	assert.Equal(t, []byte{0, 0xff}, decoded.ResponseValue)
 }
 
 func TestLDAPOIDValidation(t *testing.T) {
 	for _, oid := range []rfc4511.LDAPOID{[]byte(""), []byte("1"), []byte("1."), []byte(".1"), []byte("1..2"), []byte("01.2"), []byte("1.a")} {
-		if _, err := oid.AppendBER([]byte{0xaa}); err == nil {
-			t.Fatalf("LDAPOID %q was accepted", oid)
-		}
+		_, err := oid.AppendBER([]byte{0xaa})
+		assert.Error(t, err, "LDAPOID %q was accepted", oid)
 	}
-	if _, err := rfc4511.LDAPOID([]byte("1.3.6.1.4.1.1466.20037")).AppendBER(nil); err != nil {
-		t.Fatalf("valid LDAPOID rejected: %v", err)
-	}
+	_, err := rfc4511.LDAPOID([]byte("1.3.6.1.4.1.1466.20037")).AppendBER(nil)
+	assert.NoError(t, err)
 }
 
 func TestRFC4511StructuralRejectionsPreserveDestinations(t *testing.T) {
@@ -199,67 +159,37 @@ func TestRFC4511StructuralRejectionsPreserveDestinations(t *testing.T) {
 	} {
 		dst := []byte{0xde, 0xad}
 		got, err := value.AppendBER(dst)
-		if err == nil {
-			t.Fatalf("%T unexpectedly encoded", value)
-		}
-		if !bytes.Equal(got, dst) {
-			t.Fatalf("%T changed destination on error: %x", value, got)
-		}
+		assert.Error(t, err, "%T unexpectedly encoded", value)
+		assert.Equal(t, dst, got, "%T changed destination on error", value)
 	}
 
 	r, err := ber.NewReader([]byte{0xa2, 0x08, 0x87, 0x02, 'c', 'n', 0x87, 0x02, 's', 'n'}, ber.DefaultLimits())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	var not rfc4511.Not
-	if err := not.UnmarshalBER(r); err == nil {
-		t.Fatal("NOT filter accepted two child filters")
-	}
+	assert.Error(t, not.UnmarshalBER(r))
 
 	r, err = ber.NewReader([]byte{0xa4, 0x0c, 0x04, 0x02, 'c', 'n', 0x30, 0x06, 0x80, 0x01, 'a', 0x80, 0x01, 'b'}, ber.DefaultLimits())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	var substring rfc4511.SubstringFilter
-	if err := substring.UnmarshalBER(r); err == nil {
-		t.Fatal("substring filter accepted out-of-order duplicate initial parts")
-	}
+	assert.Error(t, substring.UnmarshalBER(r))
 
 	control, err := (rfc4511.Control{Type: rfc4511.LDAPOID("1.2.3")}).AppendBER(nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if want := []byte{0x30, 0x07, 0x04, 0x05, '1', '.', '2', '.', '3'}; !bytes.Equal(control, want) {
-		t.Fatalf("control encoding = %x, want %x", control, want)
-	}
-	if bytes.Contains(control, []byte{0x01, 0x01, 0x00}) {
-		t.Fatal("default false control criticality was encoded")
-	}
+	require.NoError(t, err)
+	assert.Equal(t, []byte{0x30, 0x07, 0x04, 0x05, '1', '.', '2', '.', '3'}, control)
+	assert.False(t, bytes.Contains(control, []byte{0x01, 0x01, 0x00}))
 }
 
 func roundTrip(t *testing.T, input ber.Marshaler, output ber.Unmarshaler) {
 	t.Helper()
 	encoded, err := input.AppendBER([]byte{0xa5})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	r, err := ber.NewReader(encoded[1:], ber.DefaultLimits())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := output.UnmarshalBER(r); err != nil {
-		t.Fatal(err)
-	}
-	if err := r.RequireEmpty(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, output.UnmarshalBER(r))
+	require.NoError(t, r.RequireEmpty())
 	roundTripped, err := output.(ber.Marshaler).AppendBER(nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(roundTripped, encoded[1:]) {
-		t.Fatalf("round trip = %x, want %x\ndecoded = %#v", roundTripped, encoded[1:], output)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, encoded[1:], roundTripped)
 }
 
 var externalFilterIdentifier = ber.Identifier{Class: ber.ClassContextSpecific, Constructed: true, Number: 42}
@@ -277,7 +207,5 @@ func TestPublicContracts(t *testing.T) {
 	var _ ber.Marshaler = rfc4511.Control{}
 	var _ ber.Unmarshaler = (*rfc4511.Control)(nil)
 
-	if !reflect.DeepEqual(rfc4511.NoticeOfDisconnectionOID(), rfc4511.LDAPOID("1.3.6.1.4.1.1466.20036")) {
-		t.Fatal("notice OID changed")
-	}
+	assert.Equal(t, rfc4511.LDAPOID("1.3.6.1.4.1.1466.20036"), rfc4511.NoticeOfDisconnectionOID())
 }

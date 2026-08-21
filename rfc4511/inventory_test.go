@@ -3,6 +3,7 @@ package rfc4511_test
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/wyattanderson/arden"
 	"github.com/wyattanderson/arden/ber"
 	"github.com/wyattanderson/arden/rfc4511"
@@ -39,27 +40,28 @@ func TestRFC4511ApplicationIdentifierInventory(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if got := test.identifier; got.Class != ber.ClassApplication || got.Number != test.number || got.Constructed != test.constructed {
-				t.Fatalf("identifier = %s, want application/%v/%d", got, test.constructed, test.number)
-			}
+			assert.Equal(t, ber.ClassApplication, test.identifier.Class)
+			assert.Equal(t, test.number, test.identifier.Number)
+			assert.Equal(t, test.constructed, test.identifier.Constructed)
 		})
 	}
 }
 
 func TestResultCodeAndPatternInventory(t *testing.T) {
 	for _, test := range []struct {
+		name string
 		code rfc4511.ResultCode
 		want int64
 	}{
-		{rfc4511.ResultSuccess, 0},
-		{rfc4511.ResultReferral, 10},
-		{rfc4511.ResultSASLBindInProgress, 14},
-		{rfc4511.ResultEntryAlreadyExists, 68},
-		{rfc4511.ResultOther, 80},
+		{"success", rfc4511.ResultSuccess, 0},
+		{"referral", rfc4511.ResultReferral, 10},
+		{"SASL bind in progress", rfc4511.ResultSASLBindInProgress, 14},
+		{"entry already exists", rfc4511.ResultEntryAlreadyExists, 68},
+		{"other", rfc4511.ResultOther, 80},
 	} {
-		if int64(test.code) != test.want {
-			t.Fatalf("result code %d, want %d", test.code, test.want)
-		}
+		t.Run(test.name, func(t *testing.T) {
+			assert.Equal(t, test.want, int64(test.code))
+		})
 	}
 
 	tests := []struct {
@@ -78,11 +80,10 @@ func TestResultCodeAndPatternInventory(t *testing.T) {
 		{"extended intermediate", rfc4511.ExtendedResponsePattern(), rfc4511.IntermediateResponseIdentifier(), arden.ClassificationContinue},
 	}
 	for _, test := range tests {
-		if got := test.pattern.Classify(test.id); got != test.want {
-			t.Fatalf("%s pattern = %v, want %v", test.name, got, test.want)
-		}
+		t.Run(test.name, func(t *testing.T) {
+			assert.Equal(t, test.want, test.pattern.Classify(test.id))
+		})
 	}
-	if !rfc4511.UnbindResponsePattern().NoResponse() || !rfc4511.AbandonResponsePattern().NoResponse() {
-		t.Fatal("no-response patterns are not declared")
-	}
+	assert.True(t, rfc4511.UnbindResponsePattern().NoResponse())
+	assert.True(t, rfc4511.AbandonResponsePattern().NoResponse())
 }

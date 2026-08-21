@@ -1,10 +1,10 @@
 package rfc4511_test
 
 import (
-	"bytes"
-	"reflect"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/wyattanderson/arden"
 	"github.com/wyattanderson/arden/ber"
 	"github.com/wyattanderson/arden/rfc4511"
@@ -29,9 +29,7 @@ func TestAddRequestWireRoundTrip(t *testing.T) {
 	}
 
 	encoded, err := request.AppendBER([]byte{0xaa})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	want := []byte{
 		0x68, 0x51,
 		0x04, 0x19, 'c', 'n', '=', 'J', 'a', 'n', 'e', ',', 'd', 'c', '=', 'e', 'x', 'a', 'm', 'p', 'l', 'e', ',', 'd', 'c', '=', 'c', 'o', 'm',
@@ -39,34 +37,20 @@ func TestAddRequestWireRoundTrip(t *testing.T) {
 		0x30, 0x1c, 0x04, 0x0b, 'o', 'b', 'j', 'e', 'c', 't', 'C', 'l', 'a', 's', 's', 0x31, 0x0d, 0x04, 0x03, 't', 'o', 'p', 0x04, 0x06, 'p', 'e', 'r', 's', 'o', 'n',
 		0x30, 0x14, 0x04, 0x09, 'j', 'p', 'e', 'g', 'P', 'h', 'o', 't', 'o', 0x31, 0x07, 0x04, 0x03, 0x00, 0xff, 0x80, 0x04, 0x00,
 	}
-	if !bytes.Equal(encoded, append([]byte{0xaa}, want...)) {
-		t.Fatalf("AddRequest encoding = %x, want %x", encoded, append([]byte{0xaa}, want...))
-	}
+	assert.Equal(t, append([]byte{0xaa}, want...), encoded)
 
 	r, err := ber.NewReader(want, ber.DefaultLimits())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	var decoded rfc4511.AddRequest
-	if err := decoded.UnmarshalBER(r); err != nil {
-		t.Fatal(err)
-	}
-	if err := r.RequireEmpty(); err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(decoded, *request) {
-		t.Fatalf("decoded AddRequest = %#v, want %#v", decoded, *request)
-	}
+	require.NoError(t, decoded.UnmarshalBER(r))
+	require.NoError(t, r.RequireEmpty())
+	assert.Equal(t, *request, decoded)
 
 	for i := range encoded {
 		encoded[i] = 0
 	}
-	if got := string(decoded.Entry); got != "cn=Jane,dc=example,dc=com" {
-		t.Fatalf("decoded Entry aliases input: %q", got)
-	}
-	if got := decoded.Attributes[1].Values[0]; !bytes.Equal(got, []byte{0x00, 0xff, 0x80}) {
-		t.Fatalf("decoded binary value aliases input: %x", got)
-	}
+	assert.Equal(t, "cn=Jane,dc=example,dc=com", string(decoded.Entry))
+	assert.Equal(t, rfc4511.AttributeValue{0x00, 0xff, 0x80}, decoded.Attributes[1].Values[0])
 }
 
 func TestAddRequestRejectsInvalidAttributeAtomically(t *testing.T) {
@@ -75,75 +59,43 @@ func TestAddRequestRejectsInvalidAttributeAtomically(t *testing.T) {
 		Attributes: []rfc4511.Attribute{{Type: rfc4511.AttributeDescription("cn")}},
 	}
 	got, err := request.AppendBER(dst)
-	if err == nil {
-		t.Fatal("AppendBER succeeded without Attribute values")
-	}
-	if !bytes.Equal(got, dst) {
-		t.Fatalf("AppendBER changed destination on error: %x", got)
-	}
+	assert.Error(t, err)
+	assert.Equal(t, dst, got)
 
 	prior := rfc4511.AddRequest{Entry: rfc4511.LDAPDN("cn=keep")}
 	malformed := []byte{0x68, 0x09, 0x04, 0x00, 0x30, 0x05, 0x30, 0x03, 0x04, 0x01, 'c'}
 	r, err := ber.NewReader(malformed, ber.DefaultLimits())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := prior.UnmarshalBER(r); err == nil {
-		t.Fatal("UnmarshalBER accepted Attribute with no SET OF values")
-	}
-	if got := string(prior.Entry); got != "cn=keep" {
-		t.Fatalf("failed unmarshal changed receiver: %#v", prior)
-	}
+	require.NoError(t, err)
+	assert.Error(t, prior.UnmarshalBER(r))
+	assert.Equal(t, "cn=keep", string(prior.Entry))
 }
 
 func TestAddResponsePreservesUnknownResultCode(t *testing.T) {
 	encoded := []byte{0x69, 0x0c, 0x0a, 0x01, 0x46, 0x04, 0x00, 0x04, 0x05, 't', 'a', 'k', 'e', 'n'}
 	r, err := ber.NewReader(encoded, ber.DefaultLimits())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	var response rfc4511.AddResponse
-	if err := response.UnmarshalBER(r); err != nil {
-		t.Fatal(err)
-	}
-	if response.Result.ResultCode != rfc4511.ResultCode(70) {
-		t.Fatalf("ResultCode = %d, want unknown 70", response.Result.ResultCode)
-	}
-	if got := string(response.Result.DiagnosticMessage); got != "taken" {
-		t.Fatalf("DiagnosticMessage = %q", got)
-	}
+	require.NoError(t, response.UnmarshalBER(r))
+	assert.Equal(t, rfc4511.ResultCode(70), response.Result.ResultCode)
+	assert.Equal(t, "taken", string(response.Result.DiagnosticMessage))
 	roundTrip, err := response.AppendBER(nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(roundTrip, encoded) {
-		t.Fatalf("AddResponse round trip = %x, want %x", roundTrip, encoded)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, encoded, roundTrip)
 }
 
 func TestAddResponseReferralValidationAndReceiverAtomicity(t *testing.T) {
 	dst := []byte{0xde, 0xad}
 	response := rfc4511.AddResponse{Result: rfc4511.LDAPResult{ResultCode: rfc4511.ResultReferral}}
 	got, err := response.AppendBER(dst)
-	if err == nil {
-		t.Fatal("AppendBER accepted referral without URI")
-	}
-	if !bytes.Equal(got, dst) {
-		t.Fatalf("AppendBER changed destination on error: %x", got)
-	}
+	assert.Error(t, err)
+	assert.Equal(t, dst, got)
 
 	prior := rfc4511.AddResponse{Result: rfc4511.LDAPResult{ResultCode: rfc4511.ResultSuccess}}
 	malformed := []byte{0x69, 0x07, 0x0a, 0x01, 0x0a, 0x04, 0x00, 0x04, 0x00}
 	r, err := ber.NewReader(malformed, ber.DefaultLimits())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := prior.UnmarshalBER(r); err == nil {
-		t.Fatal("UnmarshalBER accepted referral result without referral")
-	}
-	if prior.Result.ResultCode != rfc4511.ResultSuccess {
-		t.Fatalf("failed unmarshal changed receiver: %#v", prior)
-	}
+	require.NoError(t, err)
+	assert.Error(t, prior.UnmarshalBER(r))
+	assert.Equal(t, rfc4511.ResultSuccess, prior.Result.ResultCode)
 }
 
 func TestAddRequestPreservesTrailingExtension(t *testing.T) {
@@ -155,44 +107,26 @@ func TestAddRequestPreservesTrailingExtension(t *testing.T) {
 		0x83, 0x01, 0x7f,
 	}
 	r, err := ber.NewReader(encoded, ber.DefaultLimits())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	var request rfc4511.AddRequest
-	if err := request.UnmarshalBER(r); err != nil {
-		t.Fatal(err)
-	}
-	if len(request.Extensions) != 1 || request.Extensions[0].Identifier() != (ber.Identifier{Class: ber.ClassContextSpecific, Number: 3}) {
-		t.Fatalf("Extensions = %#v", request.Extensions)
-	}
-	if got := request.Extensions[0].Bytes(); !bytes.Equal(got, []byte{0x83, 0x01, 0x7f}) {
-		t.Fatalf("extension = %x", got)
-	}
+	require.NoError(t, request.UnmarshalBER(r))
+	require.Len(t, request.Extensions, 1)
+	assert.Equal(t, ber.Identifier{Class: ber.ClassContextSpecific, Number: 3}, request.Extensions[0].Identifier())
+	assert.Equal(t, []byte{0x83, 0x01, 0x7f}, request.Extensions[0].Bytes())
 	roundTrip, err := request.AppendBER(nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(roundTrip, encoded) {
-		t.Fatalf("AddRequest extension round trip = %x, want %x", roundTrip, encoded)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, encoded, roundTrip)
 }
 
 func TestNewAddOperationUsesStandardPatternAndClonesControlSlice(t *testing.T) {
 	controls := []ber.Marshaler{rawControl{}}
 	op, err := rfc4511.NewAddOperation(&rfc4511.AddRequest{}, controls)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	controls[0] = nil
-	if err := op.Validate(); err != nil {
-		t.Fatalf("cloned controls changed after construction: %v", err)
-	}
-	if op.Cancellation != arden.CancelDrain || op.Metadata.Label != "ldap.add" {
-		t.Fatalf("operation policy = %#v", op)
-	}
-	if got := op.Responses.Classify(rfc4511.AddResponseIdentifier()); got != arden.ClassificationComplete {
-		t.Fatalf("Add response classification = %v", got)
-	}
+	assert.NoError(t, op.Validate())
+	assert.Equal(t, arden.CancelDrain, op.Cancellation)
+	assert.Equal(t, "ldap.add", op.Metadata.Label)
+	assert.Equal(t, arden.ClassificationComplete, op.Responses.Classify(rfc4511.AddResponseIdentifier()))
 }
 
 type rawControl struct{}
@@ -205,7 +139,5 @@ func TestRFCAndExtensionContractsArePublic(t *testing.T) {
 	var _ ber.Marshaler = rfc4511.Attribute{}
 
 	_, err := rfc4511.NewAddOperation(nil, nil)
-	if err == nil || err.Error() != "rfc4511: nil AddRequest" {
-		t.Fatalf("nil request error = %v", err)
-	}
+	assert.EqualError(t, err, "rfc4511: nil AddRequest")
 }
