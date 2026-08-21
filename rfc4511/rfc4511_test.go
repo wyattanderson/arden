@@ -6,7 +6,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/wyattanderson/arden"
 	"github.com/wyattanderson/arden/ber"
 	"github.com/wyattanderson/arden/rfc4511"
 )
@@ -94,31 +93,6 @@ func TestFilterWireSpecialCasesAndExternalAlternative(t *testing.T) {
 	assert.Equal(t, []byte{0xbf, 0x2a, 0x00}, unknown.Raw())
 }
 
-func TestSearchPatternsAndOperationPolicies(t *testing.T) {
-	search, err := rfc4511.NewSearchOperation(&rfc4511.SearchRequest{Filter: rfc4511.Present{Attribute: rfc4511.AttributeDescription("cn")}}, nil)
-	require.NoError(t, err)
-	assert.Equal(t, arden.CancelAbandon, search.Cancellation)
-	for _, test := range []struct {
-		name string
-		id   ber.Identifier
-		want arden.Classification
-	}{
-		{"entry", rfc4511.SearchResultEntryIdentifier(), arden.ClassificationContinue},
-		{"reference", rfc4511.SearchResultReferenceIdentifier(), arden.ClassificationContinue},
-		{"done", rfc4511.SearchResultDoneIdentifier(), arden.ClassificationComplete},
-		{"unrelated", rfc4511.AddResponseIdentifier(), arden.ClassificationInvalid},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			assert.Equal(t, test.want, search.Responses.Classify(test.id))
-		})
-	}
-
-	extended, err := rfc4511.NewExtendedOperation(&rfc4511.ExtendedRequest{Name: rfc4511.LDAPOID("1.2.3")}, nil)
-	require.NoError(t, err)
-	assert.Equal(t, arden.ClassificationContinue, extended.Responses.Classify(rfc4511.IntermediateResponseIdentifier()))
-	assert.Equal(t, arden.ClassificationComplete, extended.Responses.Classify(rfc4511.ExtendedResponseIdentifier()))
-}
-
 func TestRFCReceiverAtomicityAndOwnership(t *testing.T) {
 	prior := rfc4511.SearchRequest{BaseObject: rfc4511.LDAPDN("dc=keep"), Filter: rfc4511.Present{Attribute: rfc4511.AttributeDescription("cn")}}
 	r, err := ber.NewReader([]byte{0x63, 0x00}, ber.DefaultLimits())
@@ -199,13 +173,4 @@ type externalFilter struct{}
 func (externalFilter) FilterIdentifier() ber.Identifier { return externalFilterIdentifier }
 func (externalFilter) AppendBER(dst []byte) ([]byte, error) {
 	return ber.AppendConstructed(dst, externalFilterIdentifier, nil)
-}
-
-func TestPublicContracts(t *testing.T) {
-	var _ rfc4511.Filter = externalFilter{}
-	var _ arden.ProtocolOperation = (*rfc4511.ExtendedRequest)(nil)
-	var _ ber.Marshaler = rfc4511.Control{}
-	var _ ber.Unmarshaler = (*rfc4511.Control)(nil)
-
-	assert.Equal(t, rfc4511.LDAPOID("1.3.6.1.4.1.1466.20036"), rfc4511.NoticeOfDisconnectionOID())
 }

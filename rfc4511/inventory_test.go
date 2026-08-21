@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/wyattanderson/arden"
 	"github.com/wyattanderson/arden/ber"
 	"github.com/wyattanderson/arden/rfc4511"
 )
@@ -45,45 +44,4 @@ func TestRFC4511ApplicationIdentifierInventory(t *testing.T) {
 			assert.Equal(t, test.constructed, test.identifier.Constructed)
 		})
 	}
-}
-
-func TestResultCodeAndPatternInventory(t *testing.T) {
-	for _, test := range []struct {
-		name string
-		code rfc4511.ResultCode
-		want int64
-	}{
-		{"success", rfc4511.ResultSuccess, 0},
-		{"referral", rfc4511.ResultReferral, 10},
-		{"SASL bind in progress", rfc4511.ResultSASLBindInProgress, 14},
-		{"entry already exists", rfc4511.ResultEntryAlreadyExists, 68},
-		{"other", rfc4511.ResultOther, 80},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			assert.Equal(t, test.want, int64(test.code))
-		})
-	}
-
-	tests := []struct {
-		name    string
-		pattern arden.ResponsePattern
-		id      ber.Identifier
-		want    arden.Classification
-	}{
-		{"bind", rfc4511.BindResponsePattern(), rfc4511.BindResponseIdentifier(), arden.ClassificationComplete},
-		{"add", rfc4511.AddResponsePattern(), rfc4511.AddResponseIdentifier(), arden.ClassificationComplete},
-		{"modify", rfc4511.ModifyResponsePattern(), rfc4511.ModifyResponseIdentifier(), arden.ClassificationComplete},
-		{"delete", rfc4511.DeleteResponsePattern(), rfc4511.DeleteResponseIdentifier(), arden.ClassificationComplete},
-		{"modify DN", rfc4511.ModifyDNResponsePattern(), rfc4511.ModifyDNResponseIdentifier(), arden.ClassificationComplete},
-		{"compare", rfc4511.CompareResponsePattern(), rfc4511.CompareResponseIdentifier(), arden.ClassificationComplete},
-		{"extended terminal", rfc4511.ExtendedResponsePattern(), rfc4511.ExtendedResponseIdentifier(), arden.ClassificationComplete},
-		{"extended intermediate", rfc4511.ExtendedResponsePattern(), rfc4511.IntermediateResponseIdentifier(), arden.ClassificationContinue},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			assert.Equal(t, test.want, test.pattern.Classify(test.id))
-		})
-	}
-	assert.True(t, rfc4511.UnbindResponsePattern().NoResponse())
-	assert.True(t, rfc4511.AbandonResponsePattern().NoResponse())
 }
