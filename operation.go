@@ -208,3 +208,11 @@ type ResponseStream interface {
 	Next(context.Context) (Response, error)
 	Close() error
 }
+
+// ResponseLifecycle is implemented by Arden response streams so resource
+// managers can observe protocol completion without consuming responses. Done
+// closes after a terminal response, cancellation drain, or connection failure.
+type ResponseLifecycle interface {
+	ResponseStream
+	Done() <-chan struct{}
+}

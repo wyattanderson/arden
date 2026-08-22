@@ -57,7 +57,7 @@ adapter may create OpenTelemetry spans and metrics.
 
 Safe default fields include:
 
-- Endpoint ID, not necessarily raw address.
+- Endpoint ID and raw network address.
 - Connection ID scoped to the process.
 - Operation label and application tag.
 - Message ID when explicitly enabled for debugging.
@@ -97,6 +97,35 @@ behavior under pipelined load before treating a benchmark result as portable.
 - Pool statistics snapshot.
 - Core trace hooks and optional OpenTelemetry adapter.
 - Documented, measured initial defaults.
+
+## Implemented defaults and measurement
+
+Phase 6 uses conservative, bounded defaults of two connections per endpoint,
+eight in-flight operations per connection, and 128 admission waiters. Idle
+connections above the endpoint's last live connection retire after five
+minutes, all connections drain after a 30-minute maximum lifetime, shutdown is
+bounded to five seconds, and replacement dialing uses exponential jittered
+backoff from 100 milliseconds through 30 seconds. Every value is public in
+`pool.Options`; zero selects a default and never means unbounded.
+
+`BenchmarkPoolMultiplexedOperations` measures the same pool and connection runtime
+over loopback with both unary and four-response streaming operations. A short
+100-operation run on an Apple M2 Max measured the following values; these are
+implementation checks, not portable directory-server capacity claims:
+
+| Max in-flight | Unary ns/op | Streaming ns/op |
+| ---: | ---: | ---: |
+| 1 | 43,292 | 47,416 |
+| 4 | 19,775 | 36,763 |
+| 8 | 18,544 | 37,595 |
+| 16 | 18,441 | 35,016 |
+
+Eight is the initial default because it captures the unary throughput knee
+without treating the small additional change at 16 as portable evidence.
+Run `go test ./pool -run '^$' -bench BenchmarkPoolMultiplexedOperations -benchmem`
+to repeat the local measurement. Phase 7's 389 DS harness remains the required
+environment for deployment-specific tuning and validation under real server
+limits.
 
 ## Exit criteria
 

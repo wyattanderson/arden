@@ -3,6 +3,7 @@ package arden
 import (
 	"context"
 	"errors"
+	"fmt"
 )
 
 // EndpointID is a caller-supplied stable identity, distinct from a network
@@ -27,6 +28,18 @@ const (
 	TransportDirectTLS TransportMode = iota
 	TransportPlaintext
 )
+
+// String returns the stable logging name for a transport mode.
+func (m TransportMode) String() string {
+	switch m {
+	case TransportDirectTLS:
+		return "direct_tls"
+	case TransportPlaintext:
+		return "plaintext"
+	default:
+		return fmt.Sprintf("transport(%d)", uint8(m))
+	}
+}
 
 // Endpoint contains immutable setup facts needed before dialing.
 type Endpoint struct {

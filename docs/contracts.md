@@ -59,7 +59,7 @@ The Phase 1 compile-checked definitions live in `ber/identifier.go`,
   raw socket. `Authenticator.Close` runs on every outcome. Generic
   `Initializer[P]` returns a typed higher-layer profile and a small core policy,
   both frozen for the pool lifetime.
-- `Tracer` receives endpoint/connection identity, operation label/tag, timing,
+- `Tracer` receives endpoint ID and raw address, connection identity, operation label/tag, timing,
   counts, and error class. Hook code runs outside the socket reader. Payloads,
   DNs, filters, attributes, controls, diagnostics, credentials, and tokens are
   never default fields.

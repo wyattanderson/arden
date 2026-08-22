@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"slices"
 	"sync"
@@ -145,6 +146,15 @@ type Dialer struct {
 	TLSConfig      *tls.Config
 	Options        ConnectionOptions
 	Authentication Authentication
+	// Logger receives debug-level lifecycle records containing only the safe
+	// observability fields documented by Arden. A nil Logger disables logging.
+	Logger *slog.Logger
+	// Tracer receives operation lifecycle hooks. Hook panics are recovered and
+	// hook calls made by response routing run outside the socket reader.
+	Tracer Tracer
+	// TraceMessageIDs opts into message IDs in logs and trace starts. Message
+	// IDs are omitted by default because they are intended only for debugging.
+	TraceMessageIDs bool
 }
 
 // Dial establishes the endpoint's fixed transport and starts its shared LDAP
@@ -175,6 +185,12 @@ func (d *Dialer) dial(ctx context.Context, endpoint Endpoint, initializer connec
 		}
 	}
 
+	dialStarted := time.Now()
+	safeDebug(ctx, d.Logger, "ldap connection dial started",
+		slog.String("endpoint_id", string(endpoint.ID)),
+		slog.String("endpoint_address", endpoint.Address),
+		slog.String("transport", endpoint.Transport.String()),
+	)
 	state := stateDialing
 	netDialer := d.NetDialer
 	if netDialer == nil {
@@ -182,11 +198,19 @@ func (d *Dialer) dial(ctx context.Context, endpoint Endpoint, initializer connec
 	}
 	raw, err := netDialer.DialContext(ctx, "tcp", endpoint.Address)
 	if err != nil {
+		safeDebug(ctx, d.Logger, "ldap connection dial failed",
+			slog.String("endpoint_id", string(endpoint.ID)),
+			slog.String("endpoint_address", endpoint.Address),
+			slog.Duration("dial_duration", time.Since(dialStarted)),
+			slog.String("error_class", errorClass(&TransportError{Stage: StageDial, Err: err})),
+		)
 		return nil, nil, &TransportError{Stage: StageDial, Outcome: OutcomeNotApplicable, Err: err}
 	}
+	dialDuration := time.Since(dialStarted)
 
 	transport := raw
 	if endpoint.Transport == TransportDirectTLS {
+		tlsStarted := time.Now()
 		config := new(tls.Config)
 		if d.TLSConfig != nil {
 			config = d.TLSConfig.Clone()
@@ -195,9 +219,21 @@ func (d *Dialer) dial(ctx context.Context, endpoint Endpoint, initializer connec
 		tlsConn := tls.Client(raw, config)
 		if err := tlsConn.HandshakeContext(ctx); err != nil {
 			_ = raw.Close()
+			safeDebug(ctx, d.Logger, "ldap connection TLS failed",
+				slog.String("endpoint_id", string(endpoint.ID)),
+				slog.String("endpoint_address", endpoint.Address),
+				slog.Duration("dial_duration", dialDuration),
+				slog.Duration("tls_duration", time.Since(tlsStarted)),
+				slog.String("error_class", errorClass(&TransportError{Stage: StageTLS, Err: err})),
+			)
 			return nil, nil, &TransportError{Stage: StageTLS, Outcome: OutcomeNotApplicable, Err: err}
 		}
 		transport = tlsConn
+		safeDebug(ctx, d.Logger, "ldap connection TLS completed",
+			slog.String("endpoint_id", string(endpoint.ID)),
+			slog.String("endpoint_address", endpoint.Address),
+			slog.Duration("tls_duration", time.Since(tlsStarted)),
+		)
 	}
 	state, err = advanceConnectionState(state, stateTransportSetup)
 	if err != nil {
@@ -205,16 +241,32 @@ func (d *Dialer) dial(ctx context.Context, endpoint Endpoint, initializer connec
 		return nil, nil, err
 	}
 
-	conn, err := newConnWithState(transport, endpoint, options, MaxMessageID, state)
+	conn, err := newObservedConnWithState(transport, endpoint, options, MaxMessageID, state, d.Logger, d.Tracer, d.TraceMessageIDs)
 	if err != nil {
 		_ = transport.Close()
 		return nil, nil, err
 	}
+	initializationStarted := time.Now()
 	_, profile, err := d.initialize(ctx, conn, initializer)
 	if err != nil {
 		conn.retire(err)
+		safeDebug(ctx, d.Logger, "ldap connection initialization failed",
+			slog.String("endpoint_id", string(endpoint.ID)),
+			slog.String("endpoint_address", endpoint.Address),
+			slog.Uint64("connection_id", conn.id),
+			slog.Duration("dial_duration", dialDuration),
+			slog.Duration("initialization_duration", time.Since(initializationStarted)),
+			slog.String("error_class", errorClass(err)),
+		)
 		return nil, nil, err
 	}
+	safeDebug(ctx, d.Logger, "ldap connection ready",
+		slog.String("endpoint_id", string(endpoint.ID)),
+		slog.String("endpoint_address", endpoint.Address),
+		slog.Uint64("connection_id", conn.id),
+		slog.Duration("dial_duration", dialDuration),
+		slog.Duration("initialization_duration", time.Since(initializationStarted)),
+	)
 	return conn, profile, nil
 }
 
@@ -226,11 +278,15 @@ func (d *Dialer) DialContext(ctx context.Context, endpoint Endpoint) (*Conn, err
 // Conn is one concurrent LDAP session. It has one socket reader, serializes
 // complete request writes, and routes responses without typed decoding.
 type Conn struct {
-	transport net.Conn
-	endpoint  Endpoint
-	options   ConnectionOptions
-	framer    *ber.Framer
-	maxID     MessageID
+	transport       net.Conn
+	endpoint        Endpoint
+	options         ConnectionOptions
+	framer          *ber.Framer
+	maxID           MessageID
+	id              uint64
+	logger          *slog.Logger
+	tracer          Tracer
+	traceMessageIDs bool
 
 	writeToken chan struct{}
 
@@ -257,11 +313,17 @@ type Conn struct {
 type Connection = Conn
 
 type pendingOperation struct {
-	conn    *Conn
-	id      MessageID
-	pattern ResponsePattern
-	mode    CancellationMode
-	ctx     context.Context
+	conn          *Conn
+	id            MessageID
+	pattern       ResponsePattern
+	mode          CancellationMode
+	ctx           context.Context
+	observer      *operationObserver
+	requestBytes  uint64
+	responseBytes uint64
+	responses     uint64
+	firstResponse bool
+	writeObserved chan struct{}
 
 	queue        []Response
 	queuedBytes  int
@@ -281,6 +343,12 @@ func newConn(transport net.Conn, endpoint Endpoint, options ConnectionOptions, m
 }
 
 func newConnWithState(transport net.Conn, endpoint Endpoint, options ConnectionOptions, maxID MessageID, state connectionState) (*Conn, error) {
+	return newObservedConnWithState(transport, endpoint, options, maxID, state, nil, nil, false)
+}
+
+var nextConnectionID atomic.Uint64
+
+func newObservedConnWithState(transport net.Conn, endpoint Endpoint, options ConnectionOptions, maxID MessageID, state connectionState, logger *slog.Logger, tracer Tracer, traceMessageIDs bool) (*Conn, error) {
 	if transport == nil {
 		return nil, errors.New("arden: nil connection transport")
 	}
@@ -300,6 +368,10 @@ func newConnWithState(transport net.Conn, endpoint Endpoint, options ConnectionO
 		options:          options,
 		framer:           framer,
 		maxID:            maxID,
+		id:               nextConnectionID.Add(1),
+		logger:           logger,
+		tracer:           tracer,
+		traceMessageIDs:  traceMessageIDs,
 		state:            state,
 		identity:         Identity{StableID: "unauthenticated"},
 		policy:           ConnectionPolicy{Cancellation: CancellationConservative},
@@ -318,6 +390,10 @@ func newConnWithState(transport net.Conn, endpoint Endpoint, options ConnectionO
 
 // Endpoint returns the immutable endpoint used to create the session.
 func (c *Conn) Endpoint() Endpoint { return c.endpoint }
+
+// ID returns a process-scoped connection identifier suitable for logs and
+// traces. It is not stable across process restarts.
+func (c *Conn) ID() uint64 { return c.id }
 
 // Identity returns the stable, nonsecret authentication identity selected
 // during setup.
@@ -352,6 +428,7 @@ func (c *Conn) Do(ctx context.Context, op Operation) (ResponseStream, error) {
 }
 
 func (c *Conn) do(ctx context.Context, op Operation, scope operationScope) (ResponseStream, error) {
+	queuedAt := time.Now()
 	if ctx == nil {
 		return nil, errors.New("arden: nil operation context")
 	}
@@ -375,27 +452,47 @@ func (c *Conn) do(ctx context.Context, op Operation, scope operationScope) (Resp
 		c.releaseReserved(id)
 		return nil, &TransportError{Stage: StageWrite, Outcome: OutcomeDefinitelyUnsent, Err: err}
 	}
+	traceMessageID := MessageID(0)
+	if c.traceMessageIDs {
+		traceMessageID = id
+	}
+	traceCtx, observer := startOperationObserver(ctx, c.tracer, c.logger, TraceStart{
+		Endpoint:        c.endpoint.ID,
+		EndpointAddress: c.endpoint.Address,
+		Connection:      c.id,
+		Label:           op.Metadata.Label,
+		ApplicationTag:  op.Protocol.ProtocolIdentifier(),
+		RequestID:       op.Protocol.ProtocolIdentifier(),
+		MessageID:       traceMessageID,
+	}, queuedAt)
+	observer.event(TraceEvent{Kind: TraceQueued, At: time.Now()})
 	p := &pendingOperation{
 		conn:          c,
 		id:            id,
 		pattern:       op.Responses,
 		mode:          op.Cancellation,
-		ctx:           ctx,
+		ctx:           traceCtx,
+		observer:      observer,
+		requestBytes:  uint64(len(message)),
+		writeObserved: make(chan struct{}),
 		ready:         make(chan struct{}, 1),
 		lifecycleDone: make(chan struct{}),
 	}
 	if err := c.installPending(p, scope); err != nil {
 		c.releaseReserved(id)
+		observer.end(TraceEnd{At: time.Now(), RequestBytes: uint64(len(message)), ErrorClass: errorClass(err)})
 		return nil, err
 	}
 
-	written, err := c.writeRequest(ctx, p, message)
+	written, err := c.writeRequest(traceCtx, p, message)
 	if err != nil {
 		if written == 0 && !errors.Is(err, ErrAmbiguousOutcome) {
-			c.removeDefinitelyUnsent(p)
+			c.removeDefinitelyUnsent(p, err)
 		}
 		return nil, err
 	}
+	observer.event(TraceEvent{Kind: TraceWritten, At: time.Now(), Bytes: uint64(written)})
+	close(p.writeObserved)
 
 	stream := &responseStream{pending: p}
 	if op.Responses.NoResponse() {
@@ -567,12 +664,12 @@ func (c *Conn) signalIDChangedLocked() {
 	c.idChanged = make(chan struct{})
 }
 
-func (c *Conn) removeDefinitelyUnsent(p *pendingOperation) {
+func (c *Conn) removeDefinitelyUnsent(p *pendingOperation, err error) {
 	c.mu.Lock()
 	if c.pending[p.id] == p {
 		delete(c.pending, p.id)
 		p.terminal = true
-		p.finishLifecycle()
+		p.finishLifecycle(err)
 		c.signalIDChangedLocked()
 		p.signalReady()
 	}
@@ -584,7 +681,7 @@ func (c *Conn) completeNoResponse(p *pendingOperation) {
 	if c.pending[p.id] == p {
 		delete(c.pending, p.id)
 		p.terminal = true
-		p.finishLifecycle()
+		p.finishLifecycle(nil)
 		c.signalIDChangedLocked()
 		p.signalReady()
 	}
@@ -598,14 +695,26 @@ func (p *pendingOperation) signalReady() {
 	}
 }
 
-func (p *pendingOperation) finishLifecycle() {
-	p.lifecycleOnce.Do(func() { close(p.lifecycleDone) })
+func (p *pendingOperation) finishLifecycle(err error) {
+	p.lifecycleOnce.Do(func() {
+		close(p.lifecycleDone)
+		p.observer.end(TraceEnd{
+			At:            time.Now(),
+			RequestBytes:  p.requestBytes,
+			ResponseBytes: p.responseBytes,
+			Responses:     p.responses,
+			ErrorClass:    errorClass(err),
+		})
+	})
 }
 
 type responseStream struct {
 	pending *pendingOperation
 	once    sync.Once
 }
+
+// Done closes when the protocol operation no longer occupies a message ID.
+func (s *responseStream) Done() <-chan struct{} { return s.pending.lifecycleDone }
 
 func (s *responseStream) Next(ctx context.Context) (Response, error) {
 	if ctx == nil {
@@ -687,6 +796,7 @@ func (c *Conn) cancelOperation(p *pendingOperation, reason error) {
 		p.queue = nil
 		p.queuedBytes = 0
 		p.canceled = true
+		p.observer.event(TraceEvent{Kind: TraceCanceled, At: time.Now(), Bytes: p.responseBytes, Responses: p.responses})
 		p.signalReady()
 	}
 	if c.pending[p.id] == p && !p.abandoning {
@@ -843,7 +953,7 @@ func (c *Conn) sendAbandon(target *pendingOperation) {
 	}
 	delete(c.pending, target.id)
 	c.tombstones[target.id] = target.pattern
-	target.finishLifecycle()
+	target.finishLifecycle(target.deliveryErr)
 	target.signalReady()
 	c.mu.Unlock()
 
@@ -943,16 +1053,37 @@ func (c *Conn) route(response Response) error {
 		}
 		return nil
 	}
+	select {
+	case <-p.writeObserved:
+	case <-c.done:
+		c.mu.Unlock()
+		return nil
+	default:
+		written := p.writeObserved
+		done := c.done
+		c.mu.Unlock()
+		select {
+		case <-written:
+			return c.route(response)
+		case <-done:
+			return nil
+		}
+	}
 
 	classification := p.pattern.Classify(response.ProtocolID)
 	if classification == ClassificationInvalid {
 		c.mu.Unlock()
 		return &ProtocolError{Kind: ProtocolUnexpectedIdentifier, MessageID: response.MessageID, Got: response.ProtocolID}
 	}
+	p.responseBytes += uint64(len(response.Bytes))
+	p.responses++
+	if !p.firstResponse {
+		p.firstResponse = true
+		p.observer.event(TraceEvent{Kind: TraceFirstResponse, At: time.Now(), Bytes: p.responseBytes, Responses: p.responses})
+	}
 	if classification == ClassificationComplete {
 		delete(c.pending, p.id)
 		p.terminal = true
-		p.finishLifecycle()
 		c.signalIDChangedLocked()
 	}
 	if !p.canceled {
@@ -983,6 +1114,9 @@ func (c *Conn) route(response Response) error {
 		}
 	}
 	p.signalReady()
+	if classification == ClassificationComplete {
+		p.finishLifecycle(p.deliveryErr)
+	}
 	c.mu.Unlock()
 
 	switch action {
@@ -1230,8 +1364,9 @@ func (c *Conn) retire(err error) {
 		if p.deliveryErr == nil {
 			p.deliveryErr = operationRetirementError(p, err)
 		}
+		p.observer.event(TraceEvent{Kind: TraceConnectionRetired, At: time.Now(), Bytes: p.responseBytes, Responses: p.responses})
 		p.terminal = true
-		p.finishLifecycle()
+		p.finishLifecycle(p.deliveryErr)
 		p.signalReady()
 	}
 	clear(c.tombstones)
@@ -1241,6 +1376,12 @@ func (c *Conn) retire(err error) {
 	default:
 	}
 	c.mu.Unlock()
+	safeDebug(context.Background(), c.logger, "ldap connection retired",
+		slog.String("endpoint_id", string(c.endpoint.ID)),
+		slog.String("endpoint_address", c.endpoint.Address),
+		slog.Uint64("connection_id", c.id),
+		slog.String("error_class", errorClass(err)),
+	)
 }
 
 func operationRetirementError(p *pendingOperation, err error) error {

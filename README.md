@@ -17,7 +17,7 @@ network retries.
 
 ## Status
 
-Phases 1 through 5 are implemented. The evidence index, RFC 4511 protocol
+Phases 1 through 6 are implemented. The evidence index, RFC 4511 protocol
 inventory, transport-independent contracts, error taxonomy, and
 compile-checked API shapes are frozen. The `ber` package provides bounded
 definite-length BER parsing and encoding, strict LDAP primitive handling, and
@@ -31,6 +31,11 @@ The `auth` package provides anonymous and TLS-only Simple Bind mechanisms.
 `Dialer` completes authentication before returning, while `Bootstrap` also
 runs a typed higher-layer initializer and freezes its identity and core policy
 handoff before the connection becomes visible.
+The `pool` package adds least-loaded multiplexing, exact endpoint routing,
+exclusive connection leases, bounded admission, jittered replacement,
+lifetime draining, graceful shutdown, and statistics. `Dialer.Logger` emits
+safe debug-level `log/slog` records, core lifecycle hooks are available through
+`Dialer.Tracer`, and `otelldap` is the optional OpenTelemetry adapter.
 
 See [PROJECT_PLAN.md](PROJECT_PLAN.md) and the individual plans in
 [docs/phases](docs/phases). Phase 1 outputs are summarized in

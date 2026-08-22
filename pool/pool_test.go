@@ -1,0 +1,586 @@
+package pool_test
+
+import (
+	"context"
+	"errors"
+	"io"
+	"net"
+	"strconv"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"github.com/wyattanderson/arden"
+	"github.com/wyattanderson/arden/ber"
+	ardenpool "github.com/wyattanderson/arden/pool"
+)
+
+var (
+	requestID  = ber.Identifier{Class: ber.ClassApplication, Constructed: true, Number: 6}
+	continueID = ber.Identifier{Class: ber.ClassApplication, Constructed: true, Number: 4}
+	responseID = ber.Identifier{Class: ber.ClassApplication, Constructed: true, Number: 7}
+	unbindID   = ber.Identifier{Class: ber.ClassApplication, Number: 2}
+)
+
+type testProtocol struct{}
+
+func (testProtocol) ProtocolIdentifier() ber.Identifier { return requestID }
+func (testProtocol) AppendBER(dst []byte) ([]byte, error) {
+	return ber.AppendConstructed(dst, requestID, nil)
+}
+
+func testOperation(t testing.TB) arden.Operation {
+	t.Helper()
+	pattern, err := arden.NewResponsePattern(arden.ResponseSpec{Complete: []ber.Identifier{responseID}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return arden.Operation{
+		Protocol:     testProtocol{},
+		Responses:    pattern,
+		Cancellation: arden.CancelDrain,
+		Metadata:     arden.OperationMetadata{Label: "test.modify"},
+	}
+}
+
+func streamingOperation(t testing.TB) arden.Operation {
+	t.Helper()
+	pattern, err := arden.NewResponsePattern(arden.ResponseSpec{
+		Continue: []ber.Identifier{continueID}, Complete: []ber.Identifier{responseID},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return arden.Operation{
+		Protocol:     testProtocol{},
+		Responses:    pattern,
+		Cancellation: arden.CancelDrain,
+		Metadata:     arden.OperationMetadata{Label: "test.streaming"},
+	}
+}
+
+type initializer struct{ profile string }
+
+func (i initializer) Initialize(context.Context, arden.InitializationSession) (string, arden.ConnectionPolicy, error) {
+	return i.profile, arden.ConnectionPolicy{Cancellation: arden.CancellationConservative}, nil
+}
+
+type changingInitializer struct{ profile *atomic.Value }
+
+func (i changingInitializer) Initialize(context.Context, arden.InitializationSession) (string, arden.ConnectionPolicy, error) {
+	return i.profile.Load().(string), arden.ConnectionPolicy{Cancellation: arden.CancellationConservative}, nil
+}
+
+type requestAction uint8
+
+const (
+	respond requestAction = iota + 1
+	breakConnection
+)
+
+type serverRequest struct {
+	connection int
+	action     chan requestAction
+}
+
+type testServer struct {
+	listener  net.Listener
+	requests  chan serverRequest
+	accepted  atomic.Int64
+	automatic bool
+	responses int
+
+	mu    sync.Mutex
+	conns map[net.Conn]struct{}
+}
+
+func newTestServer(t *testing.T) *testServer {
+	t.Helper()
+	return newPoolTestServer(t, false)
+}
+
+func newPoolTestServer(t testing.TB, automatic bool) *testServer {
+	t.Helper()
+	listener, err := new(net.ListenConfig).Listen(context.Background(), "tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := &testServer{listener: listener, requests: make(chan serverRequest, 32), conns: make(map[net.Conn]struct{}), automatic: automatic, responses: 1}
+	go server.accept()
+	t.Cleanup(func() { server.close() })
+	return server
+}
+
+func (s *testServer) endpoint(id arden.EndpointID) arden.Endpoint {
+	return arden.Endpoint{ID: id, Address: s.listener.Addr().String(), Transport: arden.TransportPlaintext}
+}
+
+func (s *testServer) accept() {
+	for {
+		connection, err := s.listener.Accept()
+		if err != nil {
+			return
+		}
+		ordinal := int(s.accepted.Add(1) - 1)
+		s.mu.Lock()
+		s.conns[connection] = struct{}{}
+		s.mu.Unlock()
+		go s.serve(connection, ordinal)
+	}
+}
+
+func (s *testServer) serve(connection net.Conn, ordinal int) {
+	defer func() {
+		s.mu.Lock()
+		delete(s.conns, connection)
+		s.mu.Unlock()
+		_ = connection.Close()
+	}()
+	framer, err := ber.NewFramer(connection, ber.DefaultLimits())
+	if err != nil {
+		return
+	}
+	var writeMu sync.Mutex
+	for {
+		message, err := framer.Next()
+		if err != nil {
+			return
+		}
+		request, err := arden.ParseResponse(message, ber.DefaultLimits())
+		if err != nil {
+			return
+		}
+		if request.ProtocolID == unbindID {
+			return
+		}
+		event := serverRequest{connection: ordinal, action: make(chan requestAction, 1)}
+		if s.automatic {
+			event.action <- respond
+		} else {
+			s.requests <- event
+		}
+		go func(messageID arden.MessageID) {
+			if <-event.action == breakConnection {
+				_ = connection.Close()
+				return
+			}
+			writeMu.Lock()
+			for i := 0; i < s.responses; i++ {
+				identifier := continueID
+				if i == s.responses-1 {
+					identifier = responseID
+				}
+				protocol, _ := ber.AppendConstructed(nil, identifier, nil)
+				contents, _ := ber.AppendInteger(nil, int64(messageID))
+				contents = append(contents, protocol...)
+				response, _ := ber.AppendSequence(nil, contents)
+				_, _ = connection.Write(response)
+			}
+			writeMu.Unlock()
+		}(request.MessageID)
+	}
+}
+
+func (s *testServer) close() {
+	_ = s.listener.Close()
+	s.mu.Lock()
+	for connection := range s.conns {
+		_ = connection.Close()
+	}
+	s.mu.Unlock()
+}
+
+func poolOptions() ardenpool.Options {
+	options := ardenpool.DefaultOptions()
+	options.MaxConnectionsPerEndpoint = 2
+	options.MaxInFlightPerConnection = 2
+	options.MaxWaiters = 4
+	options.IdleLifetime = time.Minute
+	options.MaximumLifetime = time.Hour
+	options.ShutdownTimeout = time.Second
+	options.BackoffInitial = 5 * time.Millisecond
+	options.BackoffMaximum = 20 * time.Millisecond
+	return options
+}
+
+func openPool(t *testing.T, options ardenpool.Options, servers ...*testServer) *ardenpool.Pool[string] {
+	t.Helper()
+	configs := make([]ardenpool.EndpointConfig[string], 0, len(servers))
+	for i, server := range servers {
+		configs = append(configs, ardenpool.EndpointConfig[string]{
+			Endpoint:    server.endpoint(arden.EndpointID(string(rune('a' + i)))),
+			Dialer:      new(arden.Dialer),
+			Initializer: initializer{profile: "profile"},
+		})
+	}
+	pool, err := ardenpool.New(context.Background(), configs, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = pool.Close() })
+	return pool
+}
+
+func nextRequest(t *testing.T, server *testServer) serverRequest {
+	t.Helper()
+	select {
+	case request := <-server.requests:
+		return request
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for LDAP request")
+		return serverRequest{}
+	}
+}
+
+func completeStream(t *testing.T, request serverRequest, stream arden.ResponseStream) {
+	t.Helper()
+	request.action <- respond
+	if response, err := stream.Next(context.Background()); err != nil || response.ProtocolID != responseID {
+		t.Fatalf("response = %#v, %v", response.Header(), err)
+	}
+	if _, err := stream.Next(context.Background()); !errors.Is(err, io.EOF) {
+		t.Fatalf("terminal stream error = %v", err)
+	}
+}
+
+func TestPoolSelectsLeastLoadedConnection(t *testing.T) {
+	server := newTestServer(t)
+	pool := openPool(t, poolOptions(), server)
+	operation := testOperation(t)
+
+	streams := make([]arden.ResponseStream, 0, 4)
+	requests := make([]serverRequest, 0, 4)
+	for range 4 {
+		stream, err := pool.Do(context.Background(), ardenpool.Any(), operation)
+		if err != nil {
+			t.Fatal(err)
+		}
+		streams = append(streams, stream)
+		requests = append(requests, nextRequest(t, server))
+	}
+	if got := []int{requests[0].connection, requests[1].connection, requests[2].connection, requests[3].connection}; got[0] != 0 || got[1] != 0 || got[2] != 1 || got[3] != 1 {
+		t.Fatalf("connection selection = %v, want [0 0 1 1]", got)
+	}
+	for i := range streams {
+		completeStream(t, requests[i], streams[i])
+	}
+	eventually(t, func() bool { return pool.Stats().InFlight == 0 })
+}
+
+func TestPoolAllowsEndpointsWithoutHigherLayerInitializer(t *testing.T) {
+	server := newTestServer(t)
+	pool, err := ardenpool.New(context.Background(), []ardenpool.EndpointConfig[struct{}]{
+		{Endpoint: server.endpoint("plain"), Dialer: new(arden.Dialer)},
+	}, poolOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = pool.Close() })
+	stream, err := pool.Do(context.Background(), ardenpool.Any(), testOperation(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	completeStream(t, nextRequest(t, server), stream)
+}
+
+func TestExactEndpointNeverReroutesAndReplacementKeepsIdentity(t *testing.T) {
+	first := newTestServer(t)
+	second := newTestServer(t)
+	options := poolOptions()
+	options.MaxConnectionsPerEndpoint = 1
+	pool := openPool(t, options, first, second)
+	selection, err := ardenpool.Endpoint("a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	stream, err := pool.Do(context.Background(), selection, testOperation(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := nextRequest(t, first)
+	request.action <- breakConnection
+	_, err = stream.Next(context.Background())
+	if !errors.Is(err, arden.ErrEndpointUnavailable) || !errors.Is(err, arden.ErrAmbiguousOutcome) {
+		t.Fatalf("pinned failure = %v", err)
+	}
+	select {
+	case request := <-second.requests:
+		t.Fatalf("pinned request rerouted to connection %d", request.connection)
+	case <-time.After(30 * time.Millisecond):
+	}
+	eventually(t, func() bool { return first.accepted.Load() >= 2 })
+
+	replacement, err := pool.Do(context.Background(), selection, testOperation(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	replacementRequest := nextRequest(t, first)
+	if replacementRequest.connection != 1 {
+		t.Fatalf("replacement connection = %d, want 1", replacementRequest.connection)
+	}
+	completeStream(t, replacementRequest, replacement)
+}
+
+func TestAnyDistributesAcrossEligibleEndpoints(t *testing.T) {
+	first := newTestServer(t)
+	second := newTestServer(t)
+	options := poolOptions()
+	options.MaxConnectionsPerEndpoint = 1
+	options.MaxInFlightPerConnection = 1
+	pool := openPool(t, options, first, second)
+	firstStream, err := pool.Do(context.Background(), ardenpool.Any(), testOperation(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstRequest := nextRequest(t, first)
+	secondStream, err := pool.Do(context.Background(), ardenpool.Any(), testOperation(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondRequest := nextRequest(t, second)
+	completeStream(t, firstRequest, firstStream)
+	completeStream(t, secondRequest, secondStream)
+}
+
+func TestPoolBoundsWaitersAndHonorsCancellation(t *testing.T) {
+	server := newTestServer(t)
+	options := poolOptions()
+	options.MaxConnectionsPerEndpoint = 1
+	options.MaxInFlightPerConnection = 1
+	options.MaxWaiters = 1
+	pool := openPool(t, options, server)
+	first, err := pool.Do(context.Background(), ardenpool.Any(), testOperation(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstRequest := nextRequest(t, server)
+
+	waitCtx, cancel := context.WithCancel(context.Background())
+	waitErr := make(chan error, 1)
+	go func() {
+		_, err := pool.Do(waitCtx, ardenpool.Any(), testOperation(t))
+		waitErr <- err
+	}()
+	eventually(t, func() bool { return pool.Stats().Waiters == 1 })
+	if _, err := pool.Do(context.Background(), ardenpool.Any(), testOperation(t)); !errors.Is(err, arden.ErrResourceLimit) {
+		t.Fatalf("overflow waiter error = %v", err)
+	}
+	cancel()
+	if err := <-waitErr; !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled waiter error = %v", err)
+	}
+	completeStream(t, firstRequest, first)
+}
+
+func TestLeaseIsExclusiveUntilActiveOperationsFinish(t *testing.T) {
+	server := newTestServer(t)
+	options := poolOptions()
+	options.MaxConnectionsPerEndpoint = 1
+	options.MaxInFlightPerConnection = 1
+	pool := openPool(t, options, server)
+	lease, err := pool.Lease(context.Background(), ardenpool.Any())
+	if err != nil {
+		t.Fatal(err)
+	}
+	stream, err := lease.Do(context.Background(), testOperation(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := nextRequest(t, server)
+	if err := lease.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	waitCtx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+	defer cancel()
+	if _, err := pool.Do(waitCtx, ardenpool.Any(), testOperation(t)); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("operation entered connection before lease work drained: %v", err)
+	}
+	completeStream(t, request, stream)
+	eventually(t, func() bool { return pool.Stats().InFlight == 0 })
+
+	next, err := pool.Do(context.Background(), ardenpool.Any(), testOperation(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	nextRequest := nextRequest(t, server)
+	if nextRequest.connection != request.connection {
+		t.Fatalf("released lease used connection %d, want %d", nextRequest.connection, request.connection)
+	}
+	completeStream(t, nextRequest, next)
+}
+
+func TestBrokenLeaseNeverMovesToAnotherConnectionOrEndpoint(t *testing.T) {
+	first := newTestServer(t)
+	second := newTestServer(t)
+	options := poolOptions()
+	options.MaxConnectionsPerEndpoint = 1
+	leasePool := openPool(t, options, first, second)
+	lease, err := leasePool.Lease(context.Background(), ardenpool.Any())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = lease.Close() })
+	if lease.Endpoint().ID != "a" {
+		t.Fatalf("lease endpoint = %q, want a", lease.Endpoint().ID)
+	}
+	stream, err := lease.Do(context.Background(), testOperation(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := nextRequest(t, first)
+	request.action <- breakConnection
+	if _, err := stream.Next(context.Background()); !errors.Is(err, arden.ErrEndpointUnavailable) || !errors.Is(err, arden.ErrAmbiguousOutcome) {
+		t.Fatalf("broken lease stream error = %v", err)
+	}
+	eventually(t, func() bool {
+		select {
+		case <-lease.Done():
+			return true
+		default:
+			return false
+		}
+	})
+	if _, err := lease.Do(context.Background(), testOperation(t)); !errors.Is(err, arden.ErrEndpointUnavailable) {
+		t.Fatalf("operation on broken lease = %v", err)
+	}
+	select {
+	case request := <-second.requests:
+		t.Fatalf("broken lease moved to endpoint b connection %d", request.connection)
+	case <-time.After(30 * time.Millisecond):
+	}
+}
+
+func TestPoolCloseGracefullyDrainsActiveOperation(t *testing.T) {
+	server := newTestServer(t)
+	pool := openPool(t, poolOptions(), server)
+	stream, err := pool.Do(context.Background(), ardenpool.Any(), testOperation(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := nextRequest(t, server)
+	closed := make(chan error, 1)
+	go func() { closed <- pool.Close() }()
+	select {
+	case err := <-closed:
+		t.Fatalf("pool closed before active operation completed: %v", err)
+	case <-time.After(30 * time.Millisecond):
+	}
+	completeStream(t, request, stream)
+	if err := <-closed; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Do(context.Background(), ardenpool.Any(), testOperation(t)); !errors.Is(err, arden.ErrClosed) {
+		t.Fatalf("operation after close = %v", err)
+	}
+}
+
+func TestReplacementRejectsChangedFrozenProfile(t *testing.T) {
+	server := newTestServer(t)
+	var profile atomic.Value
+	profile.Store("initial")
+	options := poolOptions()
+	options.MaxConnectionsPerEndpoint = 1
+	config := ardenpool.EndpointConfig[string]{
+		Endpoint: server.endpoint("profiled"), Dialer: new(arden.Dialer), Initializer: changingInitializer{profile: &profile},
+	}
+	pool, err := ardenpool.New(context.Background(), []ardenpool.EndpointConfig[string]{config}, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = pool.Close() })
+	profile.Store("changed")
+	selection, _ := ardenpool.Endpoint("profiled")
+	stream, err := pool.Do(context.Background(), selection, testOperation(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := nextRequest(t, server)
+	request.action <- breakConnection
+	if _, err := stream.Next(context.Background()); !errors.Is(err, arden.ErrEndpointUnavailable) {
+		t.Fatalf("broken profiled operation = %v", err)
+	}
+	eventually(t, func() bool {
+		stats := pool.Stats()
+		return len(stats.Endpoints) == 1 && stats.Endpoints[0].Connections == 0 && stats.Endpoints[0].Failures > 0
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+	defer cancel()
+	if _, err := pool.Do(ctx, selection, testOperation(t)); err == nil || (!errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, arden.ErrEndpointUnavailable)) {
+		t.Fatalf("profile-mismatched replacement entered circulation: %v", err)
+	}
+}
+
+func TestMaximumLifetimeDrainsAndReplacesConnection(t *testing.T) {
+	server := newTestServer(t)
+	options := poolOptions()
+	options.MaxConnectionsPerEndpoint = 1
+	options.MaximumLifetime = 10 * time.Millisecond
+	pool := openPool(t, options, server)
+	initial := pool.ConnectionStats()
+	if len(initial) != 1 {
+		t.Fatalf("initial connections = %#v", initial)
+	}
+	eventually(t, func() bool {
+		connections := pool.ConnectionStats()
+		return server.accepted.Load() >= 2 && len(connections) == 1 && connections[0].Connection != initial[0].Connection
+	})
+}
+
+func eventually(t *testing.T, condition func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(time.Second)
+	for !condition() {
+		if time.Now().After(deadline) {
+			t.Fatal("condition was not satisfied")
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+func BenchmarkPoolMultiplexedOperations(b *testing.B) {
+	benchmarkPoolWorkload(b, "unary", 1, testOperation)
+	benchmarkPoolWorkload(b, "streaming", 4, streamingOperation)
+}
+
+func benchmarkPoolWorkload(b *testing.B, name string, responses int, operation func(testing.TB) arden.Operation) {
+	b.Run(name, func(b *testing.B) {
+		for _, inFlight := range []int{1, 4, 8, 16} {
+			b.Run("in_flight_"+strconv.Itoa(inFlight), func(b *testing.B) {
+				server := newPoolTestServer(b, true)
+				server.responses = responses
+				options := poolOptions()
+				options.MaxInFlightPerConnection = inFlight
+				options.MaxWaiters = 1024
+				pool, err := ardenpool.New(context.Background(), []ardenpool.EndpointConfig[string]{
+					{Endpoint: server.endpoint("benchmark"), Dialer: new(arden.Dialer), Initializer: initializer{profile: "profile"}},
+				}, options)
+				if err != nil {
+					b.Fatal(err)
+				}
+				b.Cleanup(func() { _ = pool.Close() })
+				op := operation(b)
+				b.ResetTimer()
+				b.RunParallel(func(pb *testing.PB) {
+					for pb.Next() {
+						stream, err := pool.Do(context.Background(), ardenpool.Any(), op)
+						if err != nil {
+							b.Error(err)
+							return
+						}
+						for {
+							if _, err := stream.Next(context.Background()); err != nil {
+								if errors.Is(err, io.EOF) {
+									break
+								}
+								b.Error(err)
+								return
+							}
+						}
+					}
+				})
+			})
+		}
+	})
+}

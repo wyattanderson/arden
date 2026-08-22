@@ -8,6 +8,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"io"
+	"log/slog"
 	"os"
 	"testing"
 	"time"
@@ -43,9 +44,15 @@ func Test389DSSimpleBindBootstrapAndRootDSESearch(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
+	var l = new(slog.LevelVar)
+	l.Set(slog.LevelDebug)
+	h := slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: l})
+	slog.SetDefault(slog.New(h))
+
 	conn, err := (&arden.Dialer{
 		TLSConfig:      &tls.Config{RootCAs: roots},
 		Authentication: simpleBind,
+		Logger:         slog.Default(),
 	}).Dial(ctx, arden.Endpoint{
 		ID:         "389ds-integration",
 		Address:    address,
