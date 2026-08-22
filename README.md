@@ -81,7 +81,7 @@ the connection is published.
 With Docker running, execute:
 
 ```sh
-go test -tags=integration -run '^Test389DS' -count=1 .
+go test -tags=integration -run '^Test389DS' -count=1 ./integration
 ```
 
 The test starts and cleans up an ephemeral 389 Directory Server container with
