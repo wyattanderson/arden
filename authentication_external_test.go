@@ -32,11 +32,11 @@ func (authenticationTestInitializer) Initialize(context.Context, arden.Initializ
 }
 
 func TestAnonymousBootstrapOverExplicitPlaintext(t *testing.T) {
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	listener, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 
 	serverErr := make(chan error, 1)
 	go func() {
@@ -45,7 +45,7 @@ func TestAnonymousBootstrapOverExplicitPlaintext(t *testing.T) {
 			serverErr <- err
 			return
 		}
-		defer peer.Close()
+		defer func() { _ = peer.Close() }()
 		framer, err := ber.NewFramer(peer, ber.DefaultLimits())
 		if err != nil {
 			serverErr <- err
@@ -105,7 +105,7 @@ func TestSimpleBindCompletesDuringDirectTLSDial(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 
 	serverErr := make(chan error, 1)
 	go func() {
@@ -114,7 +114,7 @@ func TestSimpleBindCompletesDuringDirectTLSDial(t *testing.T) {
 			serverErr <- err
 			return
 		}
-		defer peer.Close()
+		defer func() { _ = peer.Close() }()
 		framer, err := ber.NewFramer(peer, ber.DefaultLimits())
 		if err != nil {
 			serverErr <- err
@@ -190,7 +190,7 @@ func TestFailedSimpleBindNeverPublishesConnectionAndRedactsValues(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 
 	closed := make(chan error, 1)
 	go func() {
@@ -199,7 +199,7 @@ func TestFailedSimpleBindNeverPublishesConnectionAndRedactsValues(t *testing.T) 
 			closed <- err
 			return
 		}
-		defer peer.Close()
+		defer func() { _ = peer.Close() }()
 		framer, err := ber.NewFramer(peer, ber.DefaultLimits())
 		if err != nil {
 			closed <- err

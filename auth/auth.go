@@ -35,6 +35,7 @@ func (e *BindError) Error() string {
 // ready to use and is permitted on an explicitly selected plaintext endpoint.
 type Anonymous struct{}
 
+// Begin prepares a single anonymous Bind operation for endpoint.
 func (Anonymous) Begin(ctx context.Context, _ arden.Endpoint) (arden.Authenticator, error) {
 	if ctx == nil {
 		return nil, errors.New("arden/auth: nil authentication context")

@@ -62,7 +62,7 @@ func (d *Dialer) initialize(ctx context.Context, conn *Conn, initializer connect
 	setupCtx, cancel := context.WithTimeout(ctx, conn.options.InitializationTimeout)
 	defer cancel()
 
-	session := newInitializationSession(conn, setupCtx, conn.options.MaxInitializationOperations)
+	session := newInitializationSession(setupCtx, conn, conn.options.MaxInitializationOperations)
 	defer session.deactivate()
 
 	if err := conn.transition(stateAuthenticating); err != nil {
@@ -235,7 +235,7 @@ type initializationSession struct {
 	streams    map[*initializationStream]struct{}
 }
 
-func newInitializationSession(conn *Conn, ctx context.Context, maxOps int) *initializationSession {
+func newInitializationSession(ctx context.Context, conn *Conn, maxOps int) *initializationSession {
 	return &initializationSession{
 		conn:     conn,
 		setupCtx: ctx,

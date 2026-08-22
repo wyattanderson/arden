@@ -55,6 +55,7 @@ func (a *SimpleBind) ValidateEndpoint(endpoint arden.Endpoint) error {
 	return nil
 }
 
+// Begin prepares a single Simple Bind operation for endpoint.
 func (a *SimpleBind) Begin(ctx context.Context, endpoint arden.Endpoint) (arden.Authenticator, error) {
 	if ctx == nil {
 		return nil, errors.New("arden/auth: nil authentication context")

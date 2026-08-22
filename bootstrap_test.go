@@ -39,14 +39,6 @@ func (a *authenticatorStub) Close() error {
 	return a.close()
 }
 
-type initializerStub[P any] struct {
-	initialize func(context.Context, InitializationSession) (P, ConnectionPolicy, error)
-}
-
-func (i initializerStub[P]) Initialize(ctx context.Context, session InitializationSession) (P, ConnectionPolicy, error) {
-	return i.initialize(ctx, session)
-}
-
 func newSetupPipeConnection(t *testing.T, options ConnectionOptions) (*Conn, net.Conn) {
 	t.Helper()
 	normalized, err := options.normalized()

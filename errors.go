@@ -219,6 +219,8 @@ func (e *ProfileMismatchError) Unwrap() error {
 	}
 	return e.Err
 }
+
+// Is reports whether target is the profile-mismatch sentinel error.
 func (e *ProfileMismatchError) Is(target error) bool {
 	return target == ErrProfileMismatch
 }
