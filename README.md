@@ -81,15 +81,15 @@ the connection is published.
 With Docker running, execute:
 
 ```sh
-./integration/389ds/test.sh
+go test -tags=integration -run '^Test389DS' -count=1 .
 ```
 
-The harness starts an ephemeral 389 Directory Server container on a random
-localhost LDAPS port, exports its test CA certificate, and runs an opt-in test
-through Arden's public setup API. The test performs a verified, TLS-only Simple
-Bind as Directory Manager during `Dial`, then issues an authentication-agnostic
-root DSE search, decodes SearchResultEntry and SearchResultDone, and closes the
-connection with Unbind.
+The test starts and cleans up an ephemeral 389 Directory Server container with
+Testcontainers on a random localhost LDAPS port, obtains its generated test CA
+certificate, and runs through Arden's public setup API. It performs a verified,
+TLS-only Simple Bind as Directory Manager during `Dial`, then issues an
+authentication-agnostic root DSE search, decodes SearchResultEntry and
+SearchResultDone, and closes the connection with Unbind.
 
 Set `ARDEN_389DS_IMAGE` to test another image reference. The normal
 `go test ./...` suite does not start Docker or include this integration test.

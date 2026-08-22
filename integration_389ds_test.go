@@ -9,12 +9,16 @@ import (
 	"crypto/x509"
 	"io"
 	"log/slog"
+	"net"
 	"os"
 	"testing"
 	"time"
 
+	"github.com/moby/moby/api/types/container"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go/wait"
 
 	"github.com/wyattanderson/arden"
 	"github.com/wyattanderson/arden/auth"
@@ -22,22 +26,63 @@ import (
 	"github.com/wyattanderson/arden/rfc4511"
 )
 
+const (
+	default389DSImage = "quay.io/389ds/dirsrv@sha256:f2851654c5df545cd893d84bea8d08c28dc25f0930493fbfed1d8a6eacf657f7"
+	ldapsPort         = "3636/tcp"
+	tlsServerName     = "arden-389ds.test"
+	directoryManager  = "cn=Directory Manager"
+	directoryPassword = "Secret123"
+)
+
 func Test389DSSimpleBindBootstrapAndRootDSESearch(t *testing.T) {
-	address := os.Getenv("ARDEN_389DS_ADDR")
-	serverName := os.Getenv("ARDEN_389DS_SERVER_NAME")
-	caCertificatePath := os.Getenv("ARDEN_389DS_CA_CERT")
-	password := os.Getenv("ARDEN_389DS_DM_PASSWORD")
-	if address == "" || serverName == "" || caCertificatePath == "" || password == "" {
-		t.Skip("389ds integration environment is not configured; run integration/389ds/test.sh")
+	image := os.Getenv("ARDEN_389DS_IMAGE")
+	if image == "" {
+		image = default389DSImage
 	}
-	caCertificate, err := os.ReadFile(caCertificatePath)
+
+	container, err := testcontainers.Run(
+		context.Background(),
+		image,
+		testcontainers.WithConfigModifier(func(config *container.Config) {
+			config.Hostname = tlsServerName
+		}),
+		testcontainers.WithEnv(map[string]string{
+			"DS_DM_PASSWORD": directoryPassword,
+			"LDAPTLS_CACERT": "/data/config/ca.crt",
+		}),
+		testcontainers.WithExposedPorts(ldapsPort),
+		testcontainers.WithWaitStrategy(wait.ForAll(
+			wait.ForListeningPort(ldapsPort),
+			wait.ForExec([]string{
+				"ldapwhoami",
+				"-x",
+				"-H", "ldaps://" + tlsServerName + ":3636",
+				"-D", directoryManager,
+				"-w", directoryPassword,
+			}),
+		).WithDeadline(90*time.Second)),
+	)
+	testcontainers.CleanupContainer(t, container)
+	require.NoError(t, err)
+
+	caCertificateReader, err := container.CopyFileFromContainer(context.Background(), "/data/config/ca.crt")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = caCertificateReader.Close() })
+	caCertificate, err := io.ReadAll(caCertificateReader)
 	require.NoError(t, err)
 	roots := x509.NewCertPool()
 	require.True(t, roots.AppendCertsFromPEM(caCertificate), "389ds test CA certificate is not valid PEM")
+
+	host, err := container.Host(context.Background())
+	require.NoError(t, err)
+	mappedPort, err := container.MappedPort(context.Background(), ldapsPort)
+	require.NoError(t, err)
+	address := net.JoinHostPort(host, mappedPort.Port())
+
 	simpleBind, err := auth.NewSimpleBind(
 		"389ds-directory-manager",
-		[]byte("cn=Directory Manager"),
-		[]byte(password),
+		[]byte(directoryManager),
+		[]byte(directoryPassword),
 	)
 	require.NoError(t, err)
 
@@ -56,7 +101,7 @@ func Test389DSSimpleBindBootstrapAndRootDSESearch(t *testing.T) {
 	}).Dial(ctx, arden.Endpoint{
 		ID:         "389ds-integration",
 		Address:    address,
-		ServerName: serverName,
+		ServerName: tlsServerName,
 	})
 	require.NoError(t, err)
 	require.Equal(t, "389ds-directory-manager", conn.Identity().StableID)
