@@ -33,6 +33,25 @@ See [PROJECT_PLAN.md](PROJECT_PLAN.md) and the individual plans in
 [docs/contracts.md](docs/contracts.md), [docs/protocol-inventory.md](docs/protocol-inventory.md),
 and [docs/research-index.md](docs/research-index.md).
 
+## 389 Directory Server integration smoke test
+
+With Docker running, execute:
+
+```sh
+./integration/389ds/test.sh
+```
+
+The harness starts an ephemeral 389 Directory Server container on a random
+localhost port and runs an opt-in test through Arden's existing public API. The
+test performs an LDAPv3 Simple Bind followed by a root DSE search, decodes the
+server's BindResponse, SearchResultEntry, and SearchResultDone values, and then
+closes the connection with Unbind. This first wire-compatibility smoke test uses
+the explicitly selected plaintext transport; it does not exercise the planned
+Phase 5 authentication policy or direct-TLS certificate verification.
+
+Set `ARDEN_389DS_IMAGE` to test another image reference. The normal
+`go test ./...` suite does not start Docker or include this integration test.
+
 ## Compatibility target
 
 - Go's supported toolchain at implementation time.

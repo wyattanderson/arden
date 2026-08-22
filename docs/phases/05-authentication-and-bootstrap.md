@@ -42,7 +42,7 @@ Implement anonymous and Simple Bind as the initial cgo-free mechanisms. Simple
 Bind accepts caller-owned byte credentials, uses them only during connection
 initialization, and does not retain them in the endpoint profile. Simple Bind
 requires direct TLS and must fail before sending credentials when the
-endpoint explicitly uses plaintext. Do not build GSSAPI here. Never log
+endpoint explicitly uses plaintext. Do not build GSSAPI here, but anticipate its future use. Never log
 credentials, Bind values, or SASL tokens.
 
 ## Higher-layer initializer
