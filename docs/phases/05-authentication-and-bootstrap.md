@@ -10,8 +10,11 @@ capability discovery happen before a connection becomes generally usable.
 Use explicit internal states:
 
 ```text
-dialing -> TLS -> authenticating -> initializing -> ready -> draining -> closed
+dialing -> transport setup -> authenticating -> initializing -> ready -> draining -> closed
 ```
+
+Transport setup is either a direct TLS handshake or an explicitly selected
+plaintext connection. StartTLS is not a state or transition.
 
 Bind and other association-changing operations are exclusive to initialization.
 Application operations cannot observe or use a partially initialized
@@ -37,8 +40,10 @@ individual operations.
 
 Implement anonymous and Simple Bind as the initial cgo-free mechanisms. Simple
 Bind accepts caller-owned byte credentials, uses them only during connection
-initialization, and does not retain them in the endpoint profile. Do not build
-GSSAPI here. Never log credentials, Bind values, or SASL tokens.
+initialization, and does not retain them in the endpoint profile. Simple Bind
+requires direct TLS and must fail before sending credentials when the
+endpoint explicitly uses plaintext. Do not build GSSAPI here. Never log
+credentials, Bind values, or SASL tokens.
 
 ## Higher-layer initializer
 
@@ -62,7 +67,8 @@ application rebuilds or explicitly refreshes the pool.
   session.
 - A failed initializer closes the connection.
 - Initialization has a bounded context and operation budget.
-- A profile cannot weaken TLS verification after the handshake.
+- A profile cannot change the selected transport mode or weaken TLS
+  verification after the handshake.
 - Replacement connections either reuse an explicitly frozen profile or run a
   lightweight validation chosen by the pool builder.
 - Capability mismatches produce a clear setup error rather than silently
@@ -72,6 +78,8 @@ application rebuilds or explicitly refreshes the pool.
 
 - No authentication, a minimal ordinary Bind, failed Bind, and multi-step mock
   SASL conversations.
+- Anonymous setup over explicitly selected plaintext, and rejection of Simple
+  Bind before it writes credentials on plaintext.
 - Context cancellation between every authentication round trip.
 - Authentication failure never reaches the ready pool.
 - Initializer success, failure, timeout, and capability mismatch.
@@ -94,6 +102,6 @@ test over adding a broad authentication abstraction.
 
 ## Exit criteria
 
-Connections become visible only after TLS, authentication, and initialization
-succeed; ordinary Bind remains possible; native mechanisms can be added later
-without changing request or application APIs.
+Connections become visible only after transport setup, authentication, and
+initialization succeed; ordinary Bind remains possible over direct TLS; native
+mechanisms can be added later without changing request or application APIs.

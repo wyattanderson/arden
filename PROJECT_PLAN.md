@@ -4,9 +4,9 @@
 
 Build a small, modern Go foundation for binary LDAPv3 operations against 389
 Directory Server and FreeIPA. The first usable milestone ends with a tested RFC
-4511 wire layer, concurrent LDAPS connections, a multiplex-aware pool, and the
-extension points required for handwritten LDAP extensions and generated
-application/schema protocols.
+4511 wire layer, concurrent LDAP connections with direct TLS preferred, a
+multiplex-aware pool, and the extension points required for handwritten LDAP
+extensions and generated application/schema protocols.
 
 GSSAPI is necessary for the eventual deployment, but it is deliberately after
 the pure LDAP foundation. Early designs must preserve its integration seam
@@ -34,7 +34,7 @@ Names are provisional; responsibilities are not.
 | --- | --- |
 | `ber` | Bounded LDAP BER identifiers, lengths, readers, and append encoders |
 | `rfc4511` | Hand-authored RFC 4511 values, filters, results, tags, constants, codecs, and standard operation helpers |
-| root package | LDAPS dialing, message envelopes, operations, routing, lifecycle |
+| root package | LDAP dialing with direct TLS by default, message envelopes, operations, routing, lifecycle |
 | `pool` | Endpoint-aware multiplexed connections, leases, and shutdown |
 | `auth` | Authentication and connection-initialization contracts |
 | `otelldap` | Optional OpenTelemetry adapter |
@@ -119,7 +119,7 @@ mutation to a replica.
 | 1 | Evidence base and frozen contracts | [01](docs/phases/01-research-and-contracts.md) |
 | 2 | Safe LDAP BER runtime | [02](docs/phases/02-ber-runtime.md) |
 | 3 | Hand-authored RFC 4511 wire layer | [03](docs/phases/03-rfc4511-wire.md) |
-| 4 | Concurrent LDAPS connection runtime | [04](docs/phases/04-connection-runtime.md) |
+| 4 | Concurrent LDAP connection runtime | [04](docs/phases/04-connection-runtime.md) |
 | 5 | Authentication and setup seam | [05](docs/phases/05-authentication-and-bootstrap.md) |
 | 6 | Endpoint-aware pool and observability | [06](docs/phases/06-pooling-routing-observability.md) |
 | 7 | 389 DS/FreeIPA hardening and base release | [07](docs/phases/07-interoperability-and-release.md) |
@@ -132,8 +132,9 @@ are checkpoints, not promises that every package must be created in advance.
 
 The base RFC 4511 milestone is complete after Phase 7 when:
 
-- Direct TLS connections are verified by default and cancellable while dialing
-  and handshaking.
+- Direct TLS is the verified default and is cancellable while dialing and
+  handshaking. Plaintext requires explicit configuration; StartTLS and
+  automatic downgrade are absent.
 - The BER runtime is bounded, fuzzed, and handles arbitrary read boundaries.
 - Hand-authored RFC 4511 objects round-trip supported messages and preserve
   defined extension points.
@@ -163,8 +164,8 @@ global codec registry.
 
 The base authentication package may provide anonymous and Simple Bind support
 for testing and non-Kerberos deployments. Simple Bind credentials are supplied
-by the caller as bytes, used only during initialization, and never retained in
-endpoint profiles, errors, or observability data.
+by the caller as bytes, used only during initialization over direct TLS, and
+never retained in endpoint profiles, errors, or observability data.
 
 ## Reference implementation policy
 

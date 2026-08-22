@@ -2,16 +2,24 @@
 
 ## Goal
 
-Build a concurrent LDAPS session that exchanges binary operations, routes every
+Build a concurrent LDAP session that exchanges binary operations, routes every
 response correctly, and fails predictably under cancellation and network loss.
 
 ## Transport requirements
 
-- Direct TLS from the first byte.
-- Context-aware TCP dial and TLS handshake.
+- Verified direct TLS from the first byte is the default and recommended mode.
+- Plaintext LDAP is supported only through explicit construction-time
+  selection.
+- Transport choice is not inferred from the address or an empty TLS server
+  name. A server name remains required for direct TLS and is unused for an
+  explicitly plaintext endpoint.
+- Context-aware TCP dial and, when enabled, TLS handshake.
 - Verified server identity by default; clone caller-provided TLS configuration
   before modification.
-- No plaintext, StartTLS, URL scheme parsing, or downgrade.
+- No StartTLS, URL scheme parsing, automatic downgrade, or plaintext fallback
+  after a TLS failure.
+- After transport setup, plaintext and TLS connections use the same framing,
+  routing, cancellation, and lifecycle implementation.
 - One reader for the connection and serialized writes.
 - Clean close plus abrupt-failure handling.
 
@@ -52,7 +60,7 @@ only classification logic in that path.
 
 ## Context and cancellation
 
-- Dial, TLS, and pre-ready setup use their contexts directly.
+- Dial, optional TLS, and pre-ready setup use their contexts directly.
 - An operation context governs its entire lifetime.
 - Never apply one operation's deadline to the shared socket.
 - Initial cancellation support may drain to a terminal response. If it sends
@@ -70,7 +78,7 @@ error must distinguish a definitely-unsent request from an ambiguous outcome.
 Provide distinct errors for:
 
 - Context cancellation and deadline expiry.
-- Dial, TLS, read, write, and peer closure.
+- Dial, TLS when enabled, read, write, and peer closure.
 - BER framing and typed protocol violations.
 - Unexpected message ID or application tag.
 - Queue/resource-limit exhaustion.
@@ -91,6 +99,8 @@ result interpretation belongs to the RFC or application layer.
 - Slow or abandoned consumers and bounded-buffer behavior.
 - Unsolicited notifications and malformed/unknown message IDs.
 - TLS verification, hostname mismatch, handshake timeout, and close races.
+- Explicit plaintext selection, plus proof that TLS failure never falls back to
+  plaintext and StartTLS is never attempted.
 - Leak checks for goroutines and pending operations.
 
 Compare failure and race cases with go-ldap and OpenLDAP tests, then validate
@@ -99,7 +109,9 @@ peers so most tests do not require a server.
 
 ## Deliverables
 
-- LDAPS dialer and connection lifecycle.
+- LDAP dialer with verified direct TLS as its default, explicit plaintext
+  selection, and a shared connection lifecycle after transport setup.
+- Endpoint transport configuration and validation matching those rules.
 - Public request, response pattern, operation, and message APIs.
 - Internal reader/router and serialized writer.
 - Drain cancellation plus an Abandon-and-tombstone baseline.

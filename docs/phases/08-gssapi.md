@@ -14,7 +14,8 @@ This phase starts only after the base RFC 4511 release is stable.
 - Credential-cache and gssproxy-friendly acquisition through native defaults.
 - LDAP service principal naming and mutual authentication.
 - RFC 4752 SASL token exchange through the existing authentication session.
-- Authentication-only negotiation over LDAPS: select no SASL security layer.
+- Authentication-only negotiation over direct TLS (LDAPS): select no SASL
+  security layer. Explicitly configured plaintext endpoints are rejected.
 
 Do not manage keytab contents, run `kinit`, renew tickets, or implement a
 Kerberos protocol stack. Explicit credential handles may be supported when the

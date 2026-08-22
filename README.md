@@ -1,8 +1,8 @@
 # arden
 
 Arden is an experimental, binary-first LDAPv3 client for Go. Its initial target
-is RFC 4511 over direct TLS, interoperating with 389 Directory Server and
-FreeIPA.
+is RFC 4511 with direct TLS preferred, interoperating with 389 Directory Server
+and FreeIPA.
 
 The project is intentionally narrower than a general LDAP SDK. The core will
 provide BER codecs, a hand-authored RFC 4511 wire package, LDAP message
@@ -35,7 +35,9 @@ and [docs/research-index.md](docs/research-index.md).
 
 - Go's supported toolchain at implementation time.
 - LDAPv3 as defined by RFC 4511 and its errata.
-- Direct TLS from the first byte; no plaintext LDAP or StartTLS.
+- Verified direct TLS from the first byte is the default and recommended
+  transport. Plaintext LDAP requires explicit opt-in; StartTLS and automatic
+  downgrade are not supported.
 - 389 Directory Server and FreeIPA.
 - A cgo-free core.
 - Pluggable authentication. Ordinary Bind mechanisms remain possible; native
@@ -55,7 +57,7 @@ typed or schema-generated application package
               |
   connection / routing / pool runtime
               |
-         TLS connection
+ network connection (direct TLS by default)
 ```
 
 The core exchanges BER objects, not generic string-based directory operations.
@@ -83,6 +85,8 @@ the terminal response has arrived.
 - There is no transparent retry after request bytes may have reached a server.
 - Authentication is completed before a connection becomes available to
   application code and is otherwise transparent to protocol packages.
+- Credential-bearing authentication that relies on transport confidentiality,
+  including Simple Bind, is not permitted on a plaintext connection.
 - GSSAPI will negotiate authentication only over LDAPS. TLS provides the data
   security layer.
 - Observability is supported through small hooks; OpenTelemetry is an optional
@@ -92,7 +96,7 @@ the terminal response has arrived.
 
 - Generic `Search`, `Add`, `Modify`, `Delete`, or filter-string APIs in core.
 - LDIF, LDAP URLs, schema administration, or a universal DN library.
-- Plain LDAP, StartTLS, or automatic TLS downgrade.
+- StartTLS, transport inference from LDAP URLs, or automatic TLS downgrade.
 - A complete ASN.1 compiler.
 - Automatic credential acquisition, `kinit`, keytab management, or live rebind.
 - Transparent failover of operations with ambiguous outcomes.

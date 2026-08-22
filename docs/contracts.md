@@ -92,7 +92,7 @@ existing lease can fail, but neither can reroute.
 
 | Failure | Public shape | `errors.Is` guarantees |
 | --- | --- | --- |
-| Dial/TLS/read/write/peer close | `*TransportError` | `ErrTransport`; underlying context/network error; exactly one of `ErrDefinitelyUnsent` or `ErrAmbiguousOutcome` for a request outcome |
+| Dial/TLS (when enabled)/read/write/peer close | `*TransportError` | `ErrTransport`; underlying context/network error; exactly one of `ErrDefinitelyUnsent` or `ErrAmbiguousOutcome` for a request outcome |
 | BER frame/envelope/routing contract | `*ProtocolError` | `ErrProtocol`; connection is retired |
 | Configured bound exceeded | `*LimitError` | `ErrResourceLimit` |
 | Exact endpoint has no eligible connection | `*RouteError` | `ErrEndpointUnavailable`; no reroute |
@@ -112,7 +112,7 @@ runtime phase ships:
 - BER maximum frame bytes, nesting depth, elements per value, integer bytes,
   and high-tag number;
 - per-operation queued response messages and bytes;
-- dial/TLS/setup time and initialization operation budget;
+- dial/transport-setup time and initialization operation budget;
 - maximum connections per endpoint, in-flight operations per connection, pool
   waiters, and graceful shutdown duration.
 
@@ -124,10 +124,15 @@ required to receive an explicit validated limit set.
 
 ## Security assumptions
 
-- Direct TLS is active from the first byte and verifies hostname and chain by
-  default. There is no plaintext listener, StartTLS path, or downgrade.
-- TLS configurations are cloned before use. Dial, handshake, authentication,
-  and initialization are context-bounded.
+- Verified direct TLS from the first byte is the default and recommended
+  transport. Plaintext LDAP is available only through explicit
+  construction-time configuration. There is no StartTLS path, URL-scheme
+  inference, downgrade, or fallback to plaintext after TLS failure.
+- TLS configurations are cloned before use. Dial, optional handshake,
+  authentication, and initialization are context-bounded.
+- Authentication mechanisms declare or enforce their confidentiality needs.
+  Simple Bind and the planned authentication-only GSSAPI mode require direct
+  TLS; plaintext is not a way to bypass those checks.
 - Simple Bind credentials and SASL tokens are caller-supplied bytes, used only
   by an authenticator, and absent from profiles, errors, and traces.
 - Owned response bytes can contain sensitive directory data. Ownership prevents

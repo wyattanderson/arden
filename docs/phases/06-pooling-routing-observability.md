@@ -10,7 +10,8 @@ server routing, connection leases, bounded load, and useful instrumentation.
 Every configured server has:
 
 - A stable caller-supplied endpoint ID.
-- Network address and TLS server name.
+- Network address and explicit transport mode, with a server name when direct
+  TLS is selected.
 - Authentication identity/configuration.
 - Frozen setup profile and core policy.
 - Its own connection set and health state.
@@ -60,7 +61,8 @@ Safe default fields include:
 - Connection ID scoped to the process.
 - Operation label and application tag.
 - Message ID when explicitly enabled for debugging.
-- Queue, dial, TLS, initialization, first-response, and completion durations.
+- Queue, dial, TLS when applicable, initialization, first-response, and
+  completion durations.
 - Request/response byte counts and response count.
 - Cancellation, connection retirement, and error class.
 - Pool size, in-flight work, and waiters.
@@ -77,6 +79,8 @@ metadata; they do not affect response classification.
 - Lease acquisition, release, broken lease, and shutdown behavior.
 - Pool exhaustion and context cancellation while waiting.
 - Replacement backoff without synchronized reconnect storms.
+- Transport mode remains fixed across replacement connections; TLS failures do
+  not trigger plaintext fallback.
 - Graceful draining with unary and streaming operations.
 - Hook ordering, redaction, and behavior when a hook is slow or panics.
 - Benchmarks to select the initial in-flight and queue defaults.
@@ -99,4 +103,3 @@ behavior under pipelined load before treating a benchmark result as portable.
 Callers can deliberately target one directory server, unrelated operations
 share connections safely, overload is bounded, shutdown does not leak work, and
 instrumentation is useful without making telemetry part of protocol semantics.
-

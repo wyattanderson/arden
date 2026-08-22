@@ -7,7 +7,7 @@ Turn the RFC 4511 foundation into a dependable personal-library release against
 
 ## Test environments
 
-- A lightweight scripted TLS peer for deterministic protocol failures.
+- A lightweight scripted TCP/TLS peer for deterministic protocol failures.
 - A supported 389 DS container or local instance for routine integration.
 - A FreeIPA environment for topology and real compatibility tests.
 - Optional OpenLDAP tools as an independent client/codec oracle.
@@ -36,8 +36,10 @@ suite. Record provenance and licensing for every adapted fixture.
 
 Exercise at least:
 
-- TLS verification and certificate rotation behavior.
-- Anonymous/minimal ordinary authentication needed by tests.
+- Direct-TLS defaults, verification, and certificate rotation behavior.
+- Explicit plaintext operation, with no StartTLS or fallback from failed TLS.
+- Anonymous operation on plaintext and minimal ordinary authentication on
+  direct TLS as needed by tests.
 - Unary operations through hand-authored RFC wire objects.
 - Search-shaped streaming responses, referrals, and intermediates.
 - Controls with absent, empty, unknown, and critical values.
