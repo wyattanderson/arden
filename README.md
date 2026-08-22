@@ -17,7 +17,7 @@ network retries.
 
 ## Status
 
-Phases 1 through 4 are implemented. The evidence index, RFC 4511 protocol
+Phases 1 through 5 are implemented. The evidence index, RFC 4511 protocol
 inventory, transport-independent contracts, error taxonomy, and
 compile-checked API shapes are frozen. The `ber` package provides bounded
 definite-length BER parsing and encoding, strict LDAP primitive handling, and
@@ -27,11 +27,49 @@ response patterns, and owned LDAP response-envelope parsing. The root package
 provides direct-TLS-by-default dialing, explicit plaintext selection,
 concurrent request routing, bounded response delivery, drain and Abandon
 cancellation, unsolicited notifications, and typed lifecycle failures.
+The `auth` package provides anonymous and TLS-only Simple Bind mechanisms.
+`Dialer` completes authentication before returning, while `Bootstrap` also
+runs a typed higher-layer initializer and freezes its identity and core policy
+handoff before the connection becomes visible.
 
 See [PROJECT_PLAN.md](PROJECT_PLAN.md) and the individual plans in
 [docs/phases](docs/phases). Phase 1 outputs are summarized in
 [docs/contracts.md](docs/contracts.md), [docs/protocol-inventory.md](docs/protocol-inventory.md),
 and [docs/research-index.md](docs/research-index.md).
+
+## Authentication and bootstrap
+
+Authentication is construction-time configuration. Application operations do
+not carry credentials or select a mechanism:
+
+```go
+simple, err := auth.NewSimpleBind(
+	"service-account-a",            // stable, nonsecret pool identity
+	[]byte("uid=service,dc=example"),
+	passwordBytes,
+)
+if err != nil {
+	return err
+}
+
+conn, err := (&arden.Dialer{Authentication: simple}).Dial(ctx, arden.Endpoint{
+	ID:         "ipa-west",
+	Address:    "ipa-west.example:636",
+	ServerName: "ipa-west.example",
+})
+if err != nil {
+	return err
+}
+defer conn.Close()
+
+responses, err := conn.Do(ctx, applicationOperation)
+```
+
+Use `auth.Anonymous{}` for an ordinary anonymous Bind, or leave
+`Dialer.Authentication` nil to perform no Bind. Higher layers that need root
+DSE or other setup discovery use `arden.Bootstrap[P]`; its initializer runs
+exclusively after authentication and returns the typed endpoint profile before
+the connection is published.
 
 ## 389 Directory Server integration smoke test
 
@@ -42,12 +80,11 @@ With Docker running, execute:
 ```
 
 The harness starts an ephemeral 389 Directory Server container on a random
-localhost port and runs an opt-in test through Arden's existing public API. The
-test performs an LDAPv3 Simple Bind followed by a root DSE search, decodes the
-server's BindResponse, SearchResultEntry, and SearchResultDone values, and then
-closes the connection with Unbind. This first wire-compatibility smoke test uses
-the explicitly selected plaintext transport; it does not exercise the planned
-Phase 5 authentication policy or direct-TLS certificate verification.
+localhost LDAPS port, exports its test CA certificate, and runs an opt-in test
+through Arden's public setup API. The test performs a verified, TLS-only Simple
+Bind as Directory Manager during `Dial`, then issues an authentication-agnostic
+root DSE search, decodes SearchResultEntry and SearchResultDone, and closes the
+connection with Unbind.
 
 Set `ARDEN_389DS_IMAGE` to test another image reference. The normal
 `go test ./...` suite does not start Docker or include this integration test.

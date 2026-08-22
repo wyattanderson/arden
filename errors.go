@@ -16,6 +16,10 @@ var (
 	ErrDefinitelyUnsent      = errors.New("arden: request was definitely not sent")
 	ErrEndpointUnavailable   = errors.New("arden: endpoint unavailable")
 	ErrSetup                 = errors.New("arden: connection setup failed")
+	ErrProfileMismatch       = errors.New("arden: endpoint profile mismatch")
+	ErrConnectionNotReady    = errors.New("arden: connection is not ready")
+	ErrInitializationClosed  = errors.New("arden: initialization session is closed")
+	ErrAssociationChange     = errors.New("arden: association-changing operation is restricted to initialization")
 	ErrNoticeOfDisconnection = errors.New("arden: notice of disconnection")
 )
 
@@ -150,6 +154,19 @@ const (
 	SetupProfileMismatch
 )
 
+func (s SetupStage) String() string {
+	switch s {
+	case SetupAuthentication:
+		return "authentication"
+	case SetupInitialization:
+		return "initialization"
+	case SetupProfileMismatch:
+		return "profile-validation"
+	default:
+		return fmt.Sprintf("setup-stage(%d)", uint8(s))
+	}
+}
+
 // SetupError contains no credentials, tokens, or endpoint profile values.
 type SetupError struct {
 	Endpoint EndpointID
@@ -161,11 +178,36 @@ func (e *SetupError) Error() string {
 	if e == nil {
 		return "arden: <nil setup error>"
 	}
-	return fmt.Sprintf("arden: endpoint %q setup stage %d failed: %v", e.Endpoint, e.Stage, e.Err)
+	// The underlying mechanism or initializer is not trusted to redact
+	// credentials, SASL tokens, directory values, or discovered profile data.
+	// Keep errors.Is/errors.As access through Unwrap, but make ordinary logging
+	// of the setup error safe by excluding the underlying text.
+	return fmt.Sprintf("arden: endpoint %q %s failed", e.Endpoint, e.Stage)
 }
 
 func (e *SetupError) Unwrap() error        { return e.Err }
 func (e *SetupError) Is(target error) bool { return target == ErrSetup }
+
+// ProfileMismatchError lets a validating initializer report that a frozen
+// endpoint profile no longer matches without exposing either profile in logs.
+// Dial setup maps it to SetupProfileMismatch.
+type ProfileMismatchError struct {
+	Err error
+}
+
+func (e *ProfileMismatchError) Error() string {
+	return ErrProfileMismatch.Error()
+}
+
+func (e *ProfileMismatchError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Err
+}
+func (e *ProfileMismatchError) Is(target error) bool {
+	return target == ErrProfileMismatch
+}
 
 // NoticeError represents the RFC 4511 Notice of Disconnection. Diagnostic is
 // owned but intentionally excluded from Error so server-provided data is not

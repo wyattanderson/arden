@@ -100,6 +100,35 @@ test over adding a broad authentication abstraction.
 - Endpoint profile/policy handoff.
 - Examples showing that application operations are authentication-agnostic.
 
+## Completion notes
+
+Phase 5 is implemented by the root setup runtime and the cgo-free `auth`
+package. `Dialer.Authentication` creates and releases one authenticator per
+connection. The zero value performs no Bind; `auth.Anonymous` sends the minimal
+LDAPv3 anonymous Bind; and `auth.NewSimpleBind` preserves caller byte values,
+requires a nonsecret stable identity, and rejects plaintext during preflight
+before a socket is opened. Per-connection Simple Bind copies are cleared when
+the authenticator closes. Setup and Bind errors omit credentials, tokens,
+server diagnostics, and profile values from their strings.
+
+Dialing and connections now move through explicit internal dialing,
+transport-setup, authenticating, initializing, ready, draining, and closed
+states. Public operations are gated on ready, and Bind cannot change the
+association after publication. The
+exclusive initialization session shares the connection's framing and message
+IDs, applies one setup deadline, caps operation count, and becomes inert before
+ready. A failed authenticator, initializer, invalid policy, active setup
+operation, timeout, or typed profile mismatch retires the connection.
+
+`Bootstrap[P]` / `DialInitialized[P]` run a higher-layer `Initializer[P]` and
+return a typed `SetupResult[P]` containing the ready connection, stable
+identity, profile, and frozen core policy. A pool builder can reuse that profile
+for replacements or close over it in a lightweight validating initializer;
+`ProfileMismatchError` maps mismatches to `SetupProfileMismatch` without
+printing either profile. The 389 DS integration test now performs a verified
+direct-TLS Simple Bind during Dial and demonstrates that its root DSE operation
+is independent of the chosen mechanism.
+
 ## Exit criteria
 
 Connections become visible only after transport setup, authentication, and
