@@ -30,7 +30,9 @@ func NewFramer(r io.Reader, limits Limits) (*Framer, error) {
 // unchanged so callers can distinguish transport failure from malformed BER.
 func (f *Framer) Next() ([]byte, error) {
 	var header []byte
-	first, err := f.readByte(0)
+	// Preserve EOF before a prospective frame as a transport condition. Once a
+	// frame has begun, EOF is a malformed/truncated BER value instead.
+	first, err := f.r.ReadByte()
 	if err != nil {
 		return nil, err
 	}

@@ -17,14 +17,16 @@ network retries.
 
 ## Status
 
-Phases 1 through 3 are implemented. The evidence index, RFC 4511 protocol
+Phases 1 through 4 are implemented. The evidence index, RFC 4511 protocol
 inventory, transport-independent contracts, error taxonomy, and
 compile-checked API shapes are frozen. The `ber` package provides bounded
 definite-length BER parsing and encoding, strict LDAP primitive handling, and
 incremental owned frame acquisition. The RFC 4511 package provides common
 values, controls, filters, results, every standard operation, immutable
-response patterns, and owned LDAP response-envelope parsing. Concurrent
-networking begins in Phase 4.
+response patterns, and owned LDAP response-envelope parsing. The root package
+provides direct-TLS-by-default dialing, explicit plaintext selection,
+concurrent request routing, bounded response delivery, drain and Abandon
+cancellation, unsolicited notifications, and typed lifecycle failures.
 
 See [PROJECT_PLAN.md](PROJECT_PLAN.md) and the individual plans in
 [docs/phases](docs/phases). Phase 1 outputs are summarized in

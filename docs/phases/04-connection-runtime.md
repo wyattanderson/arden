@@ -118,6 +118,29 @@ peers so most tests do not require a server.
 - Typed transport/protocol errors.
 - Race-tested unit and integration suites.
 
+## Completion notes
+
+Phase 4 is implemented by the root `Conn` runtime and `Dialer`. Endpoints fix
+their transport at construction time: the zero/default mode is verified direct
+TLS, while plaintext requires `TransportPlaintext`. TLS configurations are
+cloned and receive the endpoint's required server name; dialing and handshakes
+use the caller's context and have no StartTLS, downgrade, or fallback path.
+
+Requests reserve an ID, validate their declared and encoded application tag,
+install a pending record, and then enter a serialized complete-write path. A
+single reader frames owned LDAP messages and routes them using only the message
+ID and immutable response pattern. Each stream has message and byte bounds;
+canceled and overflowing consumers stop delivery while the router drains, and
+Abandon cancellation atomically replaces the live target with a connection-
+lifetime tombstone before Abandon bytes are written.
+
+Scripted peers cover interleaved streams, concurrent and short writes, every
+write-failure offset, reduced-range ID exhaustion and wrap, cancellation races,
+bounded slow consumers, unsolicited responses, Notice of Disconnection,
+malformed routing, graceful Unbind, direct-TLS verification and hostname
+mismatch, handshake cancellation, explicit plaintext, and absence of TLS
+fallback. The suite passes with the race detector.
+
 ## Exit criteria
 
 The race detector and fuzz corpus pass; one stalled or canceled operation

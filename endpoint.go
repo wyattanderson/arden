@@ -16,11 +16,22 @@ func (id EndpointID) Validate() error {
 	return nil
 }
 
+// TransportMode fixes the transport used for an endpoint at construction
+// time. The zero value is verified direct TLS so an omitted mode can never
+// silently select plaintext.
+type TransportMode uint8
+
+const (
+	TransportDirectTLS TransportMode = iota
+	TransportPlaintext
+)
+
 // Endpoint contains immutable setup facts needed before dialing.
 type Endpoint struct {
 	ID         EndpointID
 	Address    string
 	ServerName string
+	Transport  TransportMode
 }
 
 func (e Endpoint) Validate() error {
@@ -30,7 +41,10 @@ func (e Endpoint) Validate() error {
 	if e.Address == "" {
 		return errors.New("arden: endpoint address is empty")
 	}
-	if e.ServerName == "" {
+	if e.Transport != TransportDirectTLS && e.Transport != TransportPlaintext {
+		return errors.New("arden: endpoint transport mode is invalid")
+	}
+	if e.Transport == TransportDirectTLS && e.ServerName == "" {
 		return errors.New("arden: endpoint TLS server name is empty")
 	}
 	return nil

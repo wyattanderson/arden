@@ -209,6 +209,12 @@ func TestFramerTruncation(t *testing.T) {
 			t.Fatal(err)
 		}
 		_, err = framer.Next()
+		if n == 0 {
+			if !errors.Is(err, io.EOF) {
+				t.Fatalf("empty stream: %v", err)
+			}
+			continue
+		}
 		if !errors.Is(err, ber.ErrTruncated) {
 			t.Fatalf("truncation at %d: %v", n, err)
 		}
