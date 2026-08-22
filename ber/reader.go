@@ -306,7 +306,7 @@ func DecodeElement(data []byte, limits Limits) (Element, error) {
 	return e, nil
 }
 
-func decodeIdentifier(data []byte, max uint32) (Identifier, int, error) {
+func decodeIdentifier(data []byte, maxTagNumber uint32) (Identifier, int, error) {
 	if len(data) == 0 {
 		return Identifier{}, 0, ErrTruncated
 	}
@@ -331,8 +331,8 @@ func decodeIdentifier(data []byte, max uint32) (Identifier, int, error) {
 			return Identifier{}, 0, ErrInvalidIdentifier
 		}
 		number = number<<7 | uint64(b&0x7f)
-		if number > uint64(max) {
-			return Identifier{}, 0, &LimitError{Limit: "tag number", Value: number, Max: uint64(max)}
+		if number > uint64(maxTagNumber) {
+			return Identifier{}, 0, &LimitError{Limit: "tag number", Value: number, Max: uint64(maxTagNumber)}
 		}
 		if b&0x80 == 0 {
 			if number < 31 {

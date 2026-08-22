@@ -23,8 +23,13 @@ var (
 	serverSASLCredentialsIdentifier = contextPrimitive(7)
 )
 
-func BindRequestIdentifier() ber.Identifier   { return bindRequestIdentifier }
-func BindResponseIdentifier() ber.Identifier  { return bindResponseIdentifier }
+// BindRequestIdentifier returns the application identifier for BindRequest.
+func BindRequestIdentifier() ber.Identifier { return bindRequestIdentifier }
+
+// BindResponseIdentifier returns the application identifier for BindResponse.
+func BindResponseIdentifier() ber.Identifier { return bindResponseIdentifier }
+
+// UnbindRequestIdentifier returns the application identifier for UnbindRequest.
 func UnbindRequestIdentifier() ber.Identifier { return unbindRequestIdentifier }
 
 // AuthenticationChoice is an unsealed BindRequest authentication CHOICE.
@@ -37,12 +42,17 @@ type AuthenticationChoice interface {
 // byte type so applications can avoid converting credentials through strings.
 type SimpleAuthentication []byte
 
+// AuthenticationIdentifier returns the context-specific simple authentication identifier.
 func (v SimpleAuthentication) AuthenticationIdentifier() ber.Identifier {
 	return simpleAuthenticationIdentifier
 }
+
+//revive:disable-next-line:exported
 func (v SimpleAuthentication) AppendBER(dst []byte) ([]byte, error) {
 	return ber.AppendPrimitive(dst, simpleAuthenticationIdentifier, v)
 }
+
+//revive:disable-next-line:exported
 func (v *SimpleAuthentication) UnmarshalBER(r *ber.Reader) error {
 	if v == nil {
 		return nilReceiver("SimpleAuthentication")
@@ -64,9 +74,12 @@ type SASLAuthentication struct {
 	Extensions     []UnknownField
 }
 
+// AuthenticationIdentifier returns the context-specific SASL authentication identifier.
 func (SASLAuthentication) AuthenticationIdentifier() ber.Identifier {
 	return saslAuthenticationIdentifier
 }
+
+//revive:disable-next-line:exported
 func (v SASLAuthentication) AppendBER(dst []byte) ([]byte, error) {
 	start := len(dst)
 	if err := requireNonEmpty("SASL mechanism", v.Mechanism); err != nil {
@@ -92,6 +105,8 @@ func (v SASLAuthentication) AppendBER(dst []byte) ([]byte, error) {
 	}
 	return encoded, nil
 }
+
+//revive:disable-next-line:exported
 func (v *SASLAuthentication) UnmarshalBER(r *ber.Reader) error {
 	if v == nil {
 		return nilReceiver("SASLAuthentication")
@@ -145,13 +160,18 @@ type UnknownAuthentication struct {
 	raw        []byte
 }
 
+// AuthenticationIdentifier returns the preserved authentication choice identifier.
 func (v UnknownAuthentication) AuthenticationIdentifier() ber.Identifier { return v.identifier }
+
+//revive:disable-next-line:exported
 func (v UnknownAuthentication) AppendBER(dst []byte) ([]byte, error) {
 	if len(v.raw) == 0 {
 		return dst, errors.New("rfc4511: unknown authentication was not decoded")
 	}
 	return append(dst, v.raw...), nil
 }
+
+// Raw returns an independent copy of the complete preserved BER encoding.
 func (v UnknownAuthentication) Raw() []byte { return bytes.Clone(v.raw) }
 
 // BindRequest is the RFC 4511 BindRequest protocol operation.
@@ -162,7 +182,10 @@ type BindRequest struct {
 	Extensions     []UnknownField
 }
 
+//revive:disable-next-line:exported
 func (*BindRequest) ProtocolIdentifier() ber.Identifier { return bindRequestIdentifier }
+
+//revive:disable-next-line:exported
 func (v *BindRequest) AppendBER(dst []byte) ([]byte, error) {
 	start := len(dst)
 	if v == nil {
@@ -193,6 +216,8 @@ func (v *BindRequest) AppendBER(dst []byte) ([]byte, error) {
 	}
 	return encoded, nil
 }
+
+//revive:disable-next-line:exported
 func (v *BindRequest) UnmarshalBER(r *ber.Reader) error {
 	if v == nil {
 		return nilReceiver("BindRequest")
@@ -232,6 +257,7 @@ type BindResponse struct {
 	Extensions               []UnknownField
 }
 
+//revive:disable-next-line:exported
 func (v BindResponse) AppendBER(dst []byte) ([]byte, error) {
 	start := len(dst)
 	if len(v.Result.Extensions) != 0 {
@@ -257,6 +283,8 @@ func (v BindResponse) AppendBER(dst []byte) ([]byte, error) {
 	}
 	return encoded, nil
 }
+
+//revive:disable-next-line:exported
 func (v *BindResponse) UnmarshalBER(r *ber.Reader) error {
 	if v == nil {
 		return nilReceiver("BindResponse")
@@ -303,10 +331,15 @@ func (v *BindResponse) UnmarshalBER(r *ber.Reader) error {
 // UnbindRequest is the no-response RFC 4511 UnbindRequest operation.
 type UnbindRequest struct{}
 
+//revive:disable-next-line:exported
 func (*UnbindRequest) ProtocolIdentifier() ber.Identifier { return unbindRequestIdentifier }
+
+//revive:disable-next-line:exported
 func (*UnbindRequest) AppendBER(dst []byte) ([]byte, error) {
 	return ber.AppendPrimitive(dst, unbindRequestIdentifier, nil)
 }
+
+//revive:disable-next-line:exported
 func (v *UnbindRequest) UnmarshalBER(r *ber.Reader) error {
 	if v == nil {
 		return nilReceiver("UnbindRequest")
@@ -322,9 +355,13 @@ func (v *UnbindRequest) UnmarshalBER(r *ber.Reader) error {
 	return nil
 }
 
-func BindResponsePattern() arden.ResponsePattern   { return bindResponsePattern }
+// BindResponsePattern returns the terminal response pattern for BindRequest.
+func BindResponsePattern() arden.ResponsePattern { return bindResponsePattern }
+
+// UnbindResponsePattern returns the no-response pattern for UnbindRequest.
 func UnbindResponsePattern() arden.ResponsePattern { return unbindResponsePattern }
 
+// NewBindOperation creates a complete Bind request declaration.
 func NewBindOperation(request *BindRequest, controls []ber.Marshaler) (arden.Operation, error) {
 	if request == nil {
 		return arden.Operation{}, errors.New("rfc4511: nil BindRequest")
@@ -342,6 +379,7 @@ func NewBindOperation(request *BindRequest, controls []ber.Marshaler) (arden.Ope
 	return op, nil
 }
 
+// NewUnbindOperation creates a complete Unbind request declaration.
 func NewUnbindOperation(request *UnbindRequest, controls []ber.Marshaler) (arden.Operation, error) {
 	if request == nil {
 		return arden.Operation{}, errors.New("rfc4511: nil UnbindRequest")

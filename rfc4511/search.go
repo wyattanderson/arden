@@ -40,6 +40,7 @@ func SearchResultReferenceIdentifier() ber.Identifier { return searchReferenceId
 // SearchScope is the extensible SearchRequest scope ENUMERATED.
 type SearchScope int64
 
+// Search scopes defined by RFC 4511.
 const (
 	ScopeBaseObject   SearchScope = 0
 	ScopeSingleLevel  SearchScope = 1
@@ -50,6 +51,7 @@ const (
 // SearchScope, this RFC 4511 enumeration is not extensible.
 type DerefAliases int64
 
+// Alias dereferencing policies defined by RFC 4511.
 const (
 	DerefNever       DerefAliases = 0
 	DerefSearching   DerefAliases = 1
@@ -74,8 +76,10 @@ type SearchRequest struct {
 	Extensions       []UnknownField
 }
 
+//revive:disable-next-line:exported
 func (*SearchRequest) ProtocolIdentifier() ber.Identifier { return searchRequestIdentifier }
 
+//revive:disable-next-line:exported
 func (v *SearchRequest) AppendBER(dst []byte) ([]byte, error) {
 	start := len(dst)
 	if v == nil {
@@ -132,6 +136,7 @@ func (v *SearchRequest) AppendBER(dst []byte) ([]byte, error) {
 	return encoded, nil
 }
 
+//revive:disable-next-line:exported
 func (v *SearchRequest) UnmarshalBER(r *ber.Reader) error {
 	if v == nil {
 		return nilReceiver("SearchRequest")
@@ -218,6 +223,7 @@ type SearchResultEntry struct {
 	Extensions []UnknownField
 }
 
+//revive:disable-next-line:exported
 func (v SearchResultEntry) AppendBER(dst []byte) ([]byte, error) {
 	start := len(dst)
 	contents, err := ber.AppendOctetString(nil, v.ObjectName)
@@ -244,6 +250,7 @@ func (v SearchResultEntry) AppendBER(dst []byte) ([]byte, error) {
 	return encoded, nil
 }
 
+//revive:disable-next-line:exported
 func (v *SearchResultEntry) UnmarshalBER(r *ber.Reader) error {
 	if v == nil {
 		return nilReceiver("SearchResultEntry")
@@ -283,6 +290,7 @@ type SearchResultReference struct {
 	Extensions []UnknownField
 }
 
+//revive:disable-next-line:exported
 func (v SearchResultReference) AppendBER(dst []byte) ([]byte, error) {
 	start := len(dst)
 	if len(v.URIs) == 0 {
@@ -306,6 +314,7 @@ func (v SearchResultReference) AppendBER(dst []byte) ([]byte, error) {
 	return encoded, nil
 }
 
+//revive:disable-next-line:exported
 func (v *SearchResultReference) UnmarshalBER(r *ber.Reader) error {
 	if v == nil {
 		return nilReceiver("SearchResultReference")
@@ -343,9 +352,12 @@ func (v *SearchResultReference) UnmarshalBER(r *ber.Reader) error {
 // SearchResultDone is the terminal LDAPResult for a SearchRequest.
 type SearchResultDone struct{ Result LDAPResult }
 
+//revive:disable-next-line:exported
 func (v SearchResultDone) AppendBER(dst []byte) ([]byte, error) {
 	return appendResultResponse(dst, searchDoneIdentifier, v.Result)
 }
+
+//revive:disable-next-line:exported
 func (v *SearchResultDone) UnmarshalBER(r *ber.Reader) error {
 	if v == nil {
 		return nilReceiver("SearchResultDone")

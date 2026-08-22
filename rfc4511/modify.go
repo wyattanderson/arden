@@ -16,12 +16,16 @@ var (
 	modifyResponsePattern    = mustResponsePattern(arden.ResponseSpec{Complete: []ber.Identifier{modifyResponseIdentifier}})
 )
 
-func ModifyRequestIdentifier() ber.Identifier  { return modifyRequestIdentifier }
+// ModifyRequestIdentifier returns the application identifier for ModifyRequest.
+func ModifyRequestIdentifier() ber.Identifier { return modifyRequestIdentifier }
+
+// ModifyResponseIdentifier returns the application identifier for ModifyResponse.
 func ModifyResponseIdentifier() ber.Identifier { return modifyResponseIdentifier }
 
 // ModifyOperation is the extensible Change operation ENUMERATED.
 type ModifyOperation int64
 
+// Modify operations accepted in a Change record.
 const (
 	ModifyAdd     ModifyOperation = 0
 	ModifyDelete  ModifyOperation = 1
@@ -35,6 +39,7 @@ type Change struct {
 	Extensions   []UnknownField
 }
 
+//revive:disable-next-line:exported
 func (v Change) AppendBER(dst []byte) ([]byte, error) {
 	start := len(dst)
 	contents, err := ber.AppendEnumerated(nil, int64(v.Operation))
@@ -53,6 +58,8 @@ func (v Change) AppendBER(dst []byte) ([]byte, error) {
 	}
 	return encoded, nil
 }
+
+//revive:disable-next-line:exported
 func (v *Change) UnmarshalBER(r *ber.Reader) error {
 	if v == nil {
 		return nilReceiver("Change")
@@ -84,7 +91,10 @@ type ModifyRequest struct {
 	Extensions []UnknownField
 }
 
+//revive:disable-next-line:exported
 func (*ModifyRequest) ProtocolIdentifier() ber.Identifier { return modifyRequestIdentifier }
+
+//revive:disable-next-line:exported
 func (v *ModifyRequest) AppendBER(dst []byte) ([]byte, error) {
 	start := len(dst)
 	if v == nil {
@@ -113,6 +123,8 @@ func (v *ModifyRequest) AppendBER(dst []byte) ([]byte, error) {
 	}
 	return encoded, nil
 }
+
+//revive:disable-next-line:exported
 func (v *ModifyRequest) UnmarshalBER(r *ber.Reader) error {
 	if v == nil {
 		return nilReceiver("ModifyRequest")
@@ -148,9 +160,12 @@ func (v *ModifyRequest) UnmarshalBER(r *ber.Reader) error {
 // ModifyResponse is the terminal LDAPResult for ModifyRequest.
 type ModifyResponse struct{ Result LDAPResult }
 
+//revive:disable-next-line:exported
 func (v ModifyResponse) AppendBER(dst []byte) ([]byte, error) {
 	return appendResultResponse(dst, modifyResponseIdentifier, v.Result)
 }
+
+//revive:disable-next-line:exported
 func (v *ModifyResponse) UnmarshalBER(r *ber.Reader) error {
 	if v == nil {
 		return nilReceiver("ModifyResponse")
@@ -163,7 +178,10 @@ func (v *ModifyResponse) UnmarshalBER(r *ber.Reader) error {
 	return nil
 }
 
+// ModifyResponsePattern returns the terminal response pattern for ModifyRequest.
 func ModifyResponsePattern() arden.ResponsePattern { return modifyResponsePattern }
+
+// NewModifyOperation creates a complete Modify request declaration.
 func NewModifyOperation(request *ModifyRequest, controls []ber.Marshaler) (arden.Operation, error) {
 	if request == nil {
 		return arden.Operation{}, errors.New("rfc4511: nil ModifyRequest")

@@ -15,7 +15,10 @@ var (
 	compareResponsePattern    = mustResponsePattern(arden.ResponseSpec{Complete: []ber.Identifier{compareResponseIdentifier}})
 )
 
-func CompareRequestIdentifier() ber.Identifier  { return compareRequestIdentifier }
+// CompareRequestIdentifier returns the application identifier for CompareRequest.
+func CompareRequestIdentifier() ber.Identifier { return compareRequestIdentifier }
+
+// CompareResponseIdentifier returns the application identifier for CompareResponse.
 func CompareResponseIdentifier() ber.Identifier { return compareResponseIdentifier }
 
 // CompareRequest is the RFC 4511 CompareRequest protocol operation.
@@ -25,7 +28,10 @@ type CompareRequest struct {
 	Extensions []UnknownField
 }
 
+//revive:disable-next-line:exported
 func (*CompareRequest) ProtocolIdentifier() ber.Identifier { return compareRequestIdentifier }
+
+//revive:disable-next-line:exported
 func (v *CompareRequest) AppendBER(dst []byte) ([]byte, error) {
 	start := len(dst)
 	if v == nil {
@@ -47,6 +53,8 @@ func (v *CompareRequest) AppendBER(dst []byte) ([]byte, error) {
 	}
 	return encoded, nil
 }
+
+//revive:disable-next-line:exported
 func (v *CompareRequest) UnmarshalBER(r *ber.Reader) error {
 	if v == nil {
 		return nilReceiver("CompareRequest")
@@ -75,9 +83,12 @@ func (v *CompareRequest) UnmarshalBER(r *ber.Reader) error {
 // ResultCode may be ResultCompareTrue or ResultCompareFalse as well as errors.
 type CompareResponse struct{ Result LDAPResult }
 
+//revive:disable-next-line:exported
 func (v CompareResponse) AppendBER(dst []byte) ([]byte, error) {
 	return appendResultResponse(dst, compareResponseIdentifier, v.Result)
 }
+
+//revive:disable-next-line:exported
 func (v *CompareResponse) UnmarshalBER(r *ber.Reader) error {
 	if v == nil {
 		return nilReceiver("CompareResponse")
@@ -90,7 +101,10 @@ func (v *CompareResponse) UnmarshalBER(r *ber.Reader) error {
 	return nil
 }
 
+// CompareResponsePattern returns the terminal response pattern for CompareRequest.
 func CompareResponsePattern() arden.ResponsePattern { return compareResponsePattern }
+
+// NewCompareOperation creates a complete Compare request declaration.
 func NewCompareOperation(request *CompareRequest, controls []ber.Marshaler) (arden.Operation, error) {
 	if request == nil {
 		return arden.Operation{}, errors.New("rfc4511: nil CompareRequest")

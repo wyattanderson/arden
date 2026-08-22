@@ -45,8 +45,10 @@ type UnknownFilter struct {
 	raw        []byte
 }
 
+// FilterIdentifier returns the preserved filter choice identifier.
 func (f UnknownFilter) FilterIdentifier() ber.Identifier { return f.identifier }
 
+//revive:disable-next-line:exported
 func (f UnknownFilter) AppendBER(dst []byte) ([]byte, error) {
 	if len(f.raw) == 0 {
 		return dst, errors.New("rfc4511: unknown filter was not decoded")
@@ -60,10 +62,15 @@ func (f UnknownFilter) Raw() []byte { return bytes.Clone(f.raw) }
 // And is an AND filter and requires at least one child filter.
 type And struct{ Filters []Filter }
 
+// FilterIdentifier returns the context-specific AND filter identifier.
 func (And) FilterIdentifier() ber.Identifier { return andFilterIdentifier }
+
+//revive:disable-next-line:exported
 func (f And) AppendBER(dst []byte) ([]byte, error) {
 	return appendFilterSet(dst, andFilterIdentifier, f.Filters, "AND")
 }
+
+//revive:disable-next-line:exported
 func (f *And) UnmarshalBER(r *ber.Reader) error {
 	if f == nil {
 		return nilReceiver("And")
@@ -79,10 +86,15 @@ func (f *And) UnmarshalBER(r *ber.Reader) error {
 // Or is an OR filter and requires at least one child filter.
 type Or struct{ Filters []Filter }
 
+// FilterIdentifier returns the context-specific OR filter identifier.
 func (Or) FilterIdentifier() ber.Identifier { return orFilterIdentifier }
+
+//revive:disable-next-line:exported
 func (f Or) AppendBER(dst []byte) ([]byte, error) {
 	return appendFilterSet(dst, orFilterIdentifier, f.Filters, "OR")
 }
+
+//revive:disable-next-line:exported
 func (f *Or) UnmarshalBER(r *ber.Reader) error {
 	if f == nil {
 		return nilReceiver("Or")
@@ -98,7 +110,10 @@ func (f *Or) UnmarshalBER(r *ber.Reader) error {
 // Not is a NOT filter with exactly one child filter.
 type Not struct{ Filter Filter }
 
+// FilterIdentifier returns the context-specific NOT filter identifier.
 func (Not) FilterIdentifier() ber.Identifier { return notFilterIdentifier }
+
+//revive:disable-next-line:exported
 func (f Not) AppendBER(dst []byte) ([]byte, error) {
 	start := len(dst)
 	if f.Filter == nil {
@@ -114,6 +129,8 @@ func (f Not) AppendBER(dst []byte) ([]byte, error) {
 	}
 	return encoded, nil
 }
+
+//revive:disable-next-line:exported
 func (f *Not) UnmarshalBER(r *ber.Reader) error {
 	if f == nil {
 		return nilReceiver("Not")
@@ -136,10 +153,15 @@ func (f *Not) UnmarshalBER(r *ber.Reader) error {
 // EqualityMatch compares an attribute value assertion for equality.
 type EqualityMatch struct{ Assertion AttributeValueAssertion }
 
+// FilterIdentifier returns the context-specific equality-match filter identifier.
 func (EqualityMatch) FilterIdentifier() ber.Identifier { return equalityMatchIdentifier }
+
+//revive:disable-next-line:exported
 func (f EqualityMatch) AppendBER(dst []byte) ([]byte, error) {
 	return appendAssertionFilter(dst, equalityMatchIdentifier, f.Assertion)
 }
+
+//revive:disable-next-line:exported
 func (f *EqualityMatch) UnmarshalBER(r *ber.Reader) error {
 	if f == nil {
 		return nilReceiver("EqualityMatch")
@@ -155,10 +177,15 @@ func (f *EqualityMatch) UnmarshalBER(r *ber.Reader) error {
 // GreaterOrEqual compares an attribute value assertion using >=.
 type GreaterOrEqual struct{ Assertion AttributeValueAssertion }
 
+// FilterIdentifier returns the context-specific greater-or-equal filter identifier.
 func (GreaterOrEqual) FilterIdentifier() ber.Identifier { return greaterOrEqualIdentifier }
+
+//revive:disable-next-line:exported
 func (f GreaterOrEqual) AppendBER(dst []byte) ([]byte, error) {
 	return appendAssertionFilter(dst, greaterOrEqualIdentifier, f.Assertion)
 }
+
+//revive:disable-next-line:exported
 func (f *GreaterOrEqual) UnmarshalBER(r *ber.Reader) error {
 	if f == nil {
 		return nilReceiver("GreaterOrEqual")
@@ -174,10 +201,15 @@ func (f *GreaterOrEqual) UnmarshalBER(r *ber.Reader) error {
 // LessOrEqual compares an attribute value assertion using <=.
 type LessOrEqual struct{ Assertion AttributeValueAssertion }
 
+// FilterIdentifier returns the context-specific less-or-equal filter identifier.
 func (LessOrEqual) FilterIdentifier() ber.Identifier { return lessOrEqualIdentifier }
+
+//revive:disable-next-line:exported
 func (f LessOrEqual) AppendBER(dst []byte) ([]byte, error) {
 	return appendAssertionFilter(dst, lessOrEqualIdentifier, f.Assertion)
 }
+
+//revive:disable-next-line:exported
 func (f *LessOrEqual) UnmarshalBER(r *ber.Reader) error {
 	if f == nil {
 		return nilReceiver("LessOrEqual")
@@ -193,10 +225,15 @@ func (f *LessOrEqual) UnmarshalBER(r *ber.Reader) error {
 // ApproximateMatch compares an attribute value assertion approximately.
 type ApproximateMatch struct{ Assertion AttributeValueAssertion }
 
+// FilterIdentifier returns the context-specific approximate-match filter identifier.
 func (ApproximateMatch) FilterIdentifier() ber.Identifier { return approximateMatchIdentifier }
+
+//revive:disable-next-line:exported
 func (f ApproximateMatch) AppendBER(dst []byte) ([]byte, error) {
 	return appendAssertionFilter(dst, approximateMatchIdentifier, f.Assertion)
 }
+
+//revive:disable-next-line:exported
 func (f *ApproximateMatch) UnmarshalBER(r *ber.Reader) error {
 	if f == nil {
 		return nilReceiver("ApproximateMatch")
@@ -212,13 +249,18 @@ func (f *ApproximateMatch) UnmarshalBER(r *ber.Reader) error {
 // Present matches entries containing Attribute.
 type Present struct{ Attribute AttributeDescription }
 
+// FilterIdentifier returns the context-specific presence filter identifier.
 func (Present) FilterIdentifier() ber.Identifier { return presentIdentifier }
+
+//revive:disable-next-line:exported
 func (f Present) AppendBER(dst []byte) ([]byte, error) {
 	if err := requireNonEmpty("present attribute description", f.Attribute); err != nil {
 		return dst, err
 	}
 	return ber.AppendPrimitive(dst, presentIdentifier, f.Attribute)
 }
+
+//revive:disable-next-line:exported
 func (f *Present) UnmarshalBER(r *ber.Reader) error {
 	if f == nil {
 		return nilReceiver("Present")
@@ -245,7 +287,10 @@ type SubstringFilter struct {
 	Extensions []UnknownField
 }
 
+// FilterIdentifier returns the context-specific substring filter identifier.
 func (SubstringFilter) FilterIdentifier() ber.Identifier { return substringsIdentifier }
+
+//revive:disable-next-line:exported
 func (f SubstringFilter) AppendBER(dst []byte) ([]byte, error) {
 	start := len(dst)
 	if err := requireNonEmpty("substring attribute description", f.Type); err != nil {
@@ -291,6 +336,8 @@ func (f SubstringFilter) AppendBER(dst []byte) ([]byte, error) {
 	}
 	return encoded, nil
 }
+
+//revive:disable-next-line:exported
 func (f *SubstringFilter) UnmarshalBER(r *ber.Reader) error {
 	if f == nil {
 		return nilReceiver("SubstringFilter")
@@ -372,7 +419,10 @@ type ExtensibleMatch struct {
 	Extensions   []UnknownField
 }
 
+// FilterIdentifier returns the context-specific extensible-match filter identifier.
 func (ExtensibleMatch) FilterIdentifier() ber.Identifier { return extensibleMatchIdentifier }
+
+//revive:disable-next-line:exported
 func (f ExtensibleMatch) AppendBER(dst []byte) ([]byte, error) {
 	start := len(dst)
 	if err := f.validate(); err != nil {
@@ -412,6 +462,8 @@ func (f ExtensibleMatch) AppendBER(dst []byte) ([]byte, error) {
 	}
 	return encoded, nil
 }
+
+//revive:disable-next-line:exported
 func (f *ExtensibleMatch) UnmarshalBER(r *ber.Reader) error {
 	if f == nil {
 		return nilReceiver("ExtensibleMatch")

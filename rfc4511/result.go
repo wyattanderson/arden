@@ -14,6 +14,7 @@ import (
 // RFC 4511 section 4.1.9 and Appendix A.
 type ResultCode int64
 
+// LDAP result codes defined by RFC 4511.
 const (
 	ResultSuccess                      ResultCode = 0
 	ResultOperationsError              ResultCode = 1
@@ -75,6 +76,7 @@ type LDAPResult struct {
 	Extensions        []UnknownField
 }
 
+//revive:disable-next-line:exported
 func (v LDAPResult) AppendBER(dst []byte) ([]byte, error) {
 	start := len(dst)
 	contents, err := v.appendContents(nil)
@@ -88,6 +90,7 @@ func (v LDAPResult) AppendBER(dst []byte) ([]byte, error) {
 	return encoded, nil
 }
 
+//revive:disable-next-line:exported
 func (v *LDAPResult) UnmarshalBER(r *ber.Reader) error {
 	if v == nil {
 		return errors.New("rfc4511: nil LDAPResult receiver")

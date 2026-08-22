@@ -2,7 +2,7 @@ package ber
 
 import (
 	"bufio"
-	"fmt"
+	"errors"
 	"io"
 )
 
@@ -17,7 +17,7 @@ type Framer struct {
 // NewFramer constructs a BER framer with explicit resource limits.
 func NewFramer(r io.Reader, limits Limits) (*Framer, error) {
 	if r == nil {
-		return nil, fmt.Errorf("ber: nil frame reader")
+		return nil, errors.New("ber: nil frame reader")
 	}
 	if err := limits.Validate(); err != nil {
 		return nil, err
@@ -67,7 +67,7 @@ func (f *Framer) Next() ([]byte, error) {
 		if n == 0 {
 			return nil, decodeError(len(header)-1, ErrIndefiniteLength)
 		}
-		for i := 0; i < n; i++ {
+		for range n {
 			b, err := f.readByte(len(header))
 			if err != nil {
 				return nil, err

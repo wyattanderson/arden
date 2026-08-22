@@ -30,10 +30,12 @@ type Attribute struct {
 	Extensions []UnknownField
 }
 
+//revive:disable-next-line:exported
 func (a PartialAttribute) AppendBER(dst []byte) ([]byte, error) {
 	return appendAttribute(dst, a.Type, a.Values, a.Extensions, false)
 }
 
+//revive:disable-next-line:exported
 func (a *PartialAttribute) UnmarshalBER(r *ber.Reader) error {
 	if a == nil {
 		return errors.New("rfc4511: nil PartialAttribute receiver")
@@ -46,10 +48,12 @@ func (a *PartialAttribute) UnmarshalBER(r *ber.Reader) error {
 	return nil
 }
 
+//revive:disable-next-line:exported
 func (a Attribute) AppendBER(dst []byte) ([]byte, error) {
 	return appendAttribute(dst, a.Type, a.Values, a.Extensions, true)
 }
 
+//revive:disable-next-line:exported
 func (a *Attribute) UnmarshalBER(r *ber.Reader) error {
 	if a == nil {
 		return errors.New("rfc4511: nil Attribute receiver")

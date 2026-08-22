@@ -13,6 +13,7 @@ import (
 // notifications; requests use values in [1, MaxMessageID].
 type MessageID int32
 
+// MaxMessageID is the largest message identifier permitted by RFC 4511.
 const MaxMessageID MessageID = 1<<31 - 1
 
 // ProtocolOperation is implemented by hand-authored RFC 4511 and extension
@@ -26,6 +27,7 @@ type ProtocolOperation interface {
 // Classification is the framing-only disposition of a response identifier.
 type Classification uint8
 
+// Response classifications produced by ResponsePattern.Classify.
 const (
 	ClassificationInvalid Classification = iota
 	ClassificationContinue
@@ -102,7 +104,10 @@ func (p ResponsePattern) Classify(id ber.Identifier) Classification {
 	return ClassificationInvalid
 }
 
-func (p ResponsePattern) Valid() bool      { return p.valid }
+// Valid reports whether the response pattern was successfully constructed.
+func (p ResponsePattern) Valid() bool { return p.valid }
+
+// NoResponse reports whether the valid pattern expects no response messages.
 func (p ResponsePattern) NoResponse() bool { return p.valid && p.noResponse }
 
 // CancellationMode tells the connection how it may stop an operation. It is

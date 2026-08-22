@@ -20,6 +20,7 @@ type Control struct {
 	Extensions  []UnknownField
 }
 
+//revive:disable-next-line:exported
 func (v Control) AppendBER(dst []byte) ([]byte, error) {
 	start := len(dst)
 	if err := requireNonEmpty("control type", v.Type); err != nil {
@@ -55,6 +56,7 @@ func (v Control) AppendBER(dst []byte) ([]byte, error) {
 	return encoded, nil
 }
 
+//revive:disable-next-line:exported
 func (v *Control) UnmarshalBER(r *ber.Reader) error {
 	if v == nil {
 		return nilReceiver("Control")

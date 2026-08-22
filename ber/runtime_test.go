@@ -177,7 +177,8 @@ func TestSkipElementValidatesNestedLimits(t *testing.T) {
 }
 
 func TestFramerEverySplit(t *testing.T) {
-	frame := []byte{0x30, 0x81, 0x80}
+	frame := make([]byte, 0, 131)
+	frame = append(frame, 0x30, 0x81, 0x80)
 	frame = append(frame, bytes.Repeat([]byte{0}, 128)...)
 	for split := 0; split <= len(frame); split++ {
 		t.Run("split", func(t *testing.T) {
@@ -203,7 +204,7 @@ func TestFramerEverySplit(t *testing.T) {
 
 func TestFramerTruncation(t *testing.T) {
 	frame := []byte{0x30, 0x03, 0x02, 0x01, 0x01}
-	for n := 0; n < len(frame); n++ {
+	for n := range len(frame) {
 		framer, err := ber.NewFramer(bytes.NewReader(frame[:n]), limits())
 		if err != nil {
 			t.Fatal(err)
@@ -223,7 +224,7 @@ func TestFramerTruncation(t *testing.T) {
 
 func TestReaderTruncation(t *testing.T) {
 	frame := []byte{0x30, 0x03, 0x02, 0x01, 0x01}
-	for n := 0; n < len(frame); n++ {
+	for n := range len(frame) {
 		t.Run("truncation", func(t *testing.T) {
 			r, err := ber.NewReader(frame[:n], limits())
 			if err != nil {
@@ -260,7 +261,7 @@ func FuzzDecodeElement(f *testing.F) {
 	for _, seed := range [][]byte{{0x05, 0x00}, {0x30, 0x03, 0x02, 0x01, 0x01}, {0x04, 0x80}} {
 		f.Add(seed)
 	}
-	f.Fuzz(func(t *testing.T, data []byte) {
+	f.Fuzz(func(_ *testing.T, data []byte) {
 		_, _ = ber.DecodeElement(data, limits())
 		r, err := ber.NewReader(data, limits())
 		if err == nil {
@@ -277,7 +278,7 @@ func FuzzPrimitiveDecoders(f *testing.F) {
 	for _, seed := range [][]byte{{0x01, 0x01, 0xff}, {0x02, 0x01, 0x01}, {0x04, 0x00}, {0x05, 0x00}, {0x30, 0x00}} {
 		f.Add(seed)
 	}
-	f.Fuzz(func(t *testing.T, data []byte) {
+	f.Fuzz(func(_ *testing.T, data []byte) {
 		for _, read := range []func(*ber.Reader){
 			func(r *ber.Reader) { _, _ = r.Boolean() },
 			func(r *ber.Reader) { _, _ = r.Integer() },
@@ -299,7 +300,7 @@ func FuzzFramer(f *testing.F) {
 	for _, seed := range [][]byte{{0x05, 0x00}, {0x30, 0x03, 0x02, 0x01, 0x01}, {0x04, 0x80}} {
 		f.Add(seed)
 	}
-	f.Fuzz(func(t *testing.T, data []byte) {
+	f.Fuzz(func(_ *testing.T, data []byte) {
 		framer, err := ber.NewFramer(bytes.NewReader(data), limits())
 		if err == nil {
 			_, _ = framer.Next()

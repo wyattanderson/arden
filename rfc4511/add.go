@@ -45,10 +45,14 @@ type AddRequest struct {
 }
 
 // ProtocolIdentifier identifies AddRequest as application/constructed/8.
+//
+//revive:disable-next-line:exported
 func (*AddRequest) ProtocolIdentifier() ber.Identifier { return addRequestIdentifier }
 
 // AppendBER appends exactly one AddRequest protocolOp, without an LDAPMessage
 // envelope, message ID, or controls.
+//
+//revive:disable-next-line:exported
 func (v *AddRequest) AppendBER(dst []byte) ([]byte, error) {
 	start := len(dst)
 	if v == nil {
@@ -82,6 +86,8 @@ func (v *AddRequest) AppendBER(dst []byte) ([]byte, error) {
 
 // UnmarshalBER decodes one AddRequest protocolOp. Retained value bytes are
 // copied, and v is unchanged if decoding fails.
+//
+//revive:disable-next-line:exported
 func (v *AddRequest) UnmarshalBER(r *ber.Reader) error {
 	if v == nil {
 		return errors.New("rfc4511: nil AddRequest receiver")
@@ -125,6 +131,7 @@ type AddResponse struct {
 	Result LDAPResult
 }
 
+//revive:disable-next-line:exported
 func (v AddResponse) AppendBER(dst []byte) ([]byte, error) {
 	start := len(dst)
 	contents, err := v.Result.appendContents(nil)
@@ -138,6 +145,7 @@ func (v AddResponse) AppendBER(dst []byte) ([]byte, error) {
 	return encoded, nil
 }
 
+//revive:disable-next-line:exported
 func (v *AddResponse) UnmarshalBER(r *ber.Reader) error {
 	if v == nil {
 		return errors.New("rfc4511: nil AddResponse receiver")

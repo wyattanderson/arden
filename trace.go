@@ -20,6 +20,7 @@ type Trace interface {
 	End(TraceEnd)
 }
 
+// TraceStart contains safe metadata captured when an operation begins.
 type TraceStart struct {
 	Endpoint   EndpointID
 	Connection uint64
@@ -27,8 +28,10 @@ type TraceStart struct {
 	RequestID  ber.Identifier
 }
 
+// TraceEventKind identifies an intermediate operation lifecycle event.
 type TraceEventKind uint8
 
+// Operation lifecycle events reported to a Trace.
 const (
 	TraceQueued TraceEventKind = iota + 1
 	TraceWritten
@@ -37,6 +40,7 @@ const (
 	TraceConnectionRetired
 )
 
+// TraceEvent contains safe metadata for an intermediate lifecycle event.
 type TraceEvent struct {
 	Kind      TraceEventKind
 	At        time.Time
@@ -44,6 +48,7 @@ type TraceEvent struct {
 	Responses uint64
 }
 
+// TraceEnd contains safe metadata captured when an operation finishes.
 type TraceEnd struct {
 	At            time.Time
 	RequestBytes  uint64

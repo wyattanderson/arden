@@ -1,0 +1,14 @@
+[settings]
+lockfile = true
+idiomatic_version_file_enable_tools = ["go"]
+
+[tasks.fmt]
+description = "Format Go source"
+run = "golangci-lint fmt"
+
+[tasks.lint]
+description = "Run Go linters"
+run = "golangci-lint run"
+
+[tools]
+golangci-lint = "latest"

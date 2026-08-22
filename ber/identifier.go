@@ -5,6 +5,7 @@ import "fmt"
 // Class is the two-bit BER identifier class.
 type Class uint8
 
+// BER identifier classes.
 const (
 	ClassUniversal Class = iota
 	ClassApplication

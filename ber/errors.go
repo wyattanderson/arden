@@ -5,6 +5,7 @@ import (
 	"fmt"
 )
 
+// Sentinel errors classify BER parsing and encoding failures.
 var (
 	ErrTruncated            = errors.New("ber: truncated value")
 	ErrInvalidIdentifier    = errors.New("ber: invalid identifier")

@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
 	"github.com/wyattanderson/arden"
 	"github.com/wyattanderson/arden/ber"
 	"github.com/wyattanderson/arden/rfc4511"
@@ -66,7 +67,7 @@ func TestOperationConstructors(t *testing.T) {
 			assert.Equal(t, test.cancellation, op.Cancellation)
 			assert.Equal(t, test.label, op.Metadata.Label)
 			assert.Equal(t, test.noResponse, op.Responses.NoResponse())
-			assert.NoError(t, op.Validate(), "constructor must clone the controls slice")
+			require.NoError(t, op.Validate(), "constructor must clone the controls slice")
 			if test.completeID != nil {
 				assert.Equal(t, arden.ClassificationComplete, op.Responses.Classify(*test.completeID))
 			}
@@ -98,7 +99,7 @@ func TestOperationConstructorsRejectNilRequests(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			assert.Error(t, test.construct())
+			require.Error(t, test.construct())
 		})
 	}
 }
@@ -119,7 +120,7 @@ func TestRequestMarshalersRejectNilReceiversAtomically(t *testing.T) {
 		t.Run(requestTypeName(request), func(t *testing.T) {
 			dst := []byte{0xde, 0xad}
 			got, err := request.AppendBER(dst)
-			assert.Error(t, err)
+			require.Error(t, err)
 			assert.Equal(t, dst, got)
 		})
 	}

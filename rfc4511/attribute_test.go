@@ -5,6 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
 	"github.com/wyattanderson/arden/ber"
 	"github.com/wyattanderson/arden/rfc4511"
 )
@@ -24,7 +25,7 @@ func TestAttributeAndPartialAttributeCardinality(t *testing.T) {
 	} {
 		dst := []byte{0xde, 0xad}
 		got, err := value.AppendBER(dst)
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Equal(t, dst, got)
 	}
 }

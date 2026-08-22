@@ -1,7 +1,7 @@
 package ber
 
 import (
-	"fmt"
+	"errors"
 	"math"
 )
 
@@ -31,15 +31,15 @@ func DefaultLimits() Limits {
 func (l Limits) Validate() error {
 	switch {
 	case l.MaxFrameBytes <= 0:
-		return fmt.Errorf("ber: MaxFrameBytes must be positive")
+		return errors.New("ber: MaxFrameBytes must be positive")
 	case l.MaxDepth <= 0:
-		return fmt.Errorf("ber: MaxDepth must be positive")
+		return errors.New("ber: MaxDepth must be positive")
 	case l.MaxElements <= 0:
-		return fmt.Errorf("ber: MaxElements must be positive")
+		return errors.New("ber: MaxElements must be positive")
 	case l.MaxIntegerBytes <= 0:
-		return fmt.Errorf("ber: MaxIntegerBytes must be positive")
+		return errors.New("ber: MaxIntegerBytes must be positive")
 	case l.MaxTagNumber == 0:
-		return fmt.Errorf("ber: MaxTagNumber must be positive")
+		return errors.New("ber: MaxTagNumber must be positive")
 	}
 	return nil
 }

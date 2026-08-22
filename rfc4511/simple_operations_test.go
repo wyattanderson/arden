@@ -5,6 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
 	"github.com/wyattanderson/arden"
 	"github.com/wyattanderson/arden/ber"
 	"github.com/wyattanderson/arden/rfc4511"
@@ -35,12 +36,12 @@ func TestPrimitiveOperationWireTags(t *testing.T) {
 func TestAbandonRequestTargetBoundariesAreAtomic(t *testing.T) {
 	for _, target := range []arden.MessageID{1, arden.MaxMessageID} {
 		_, err := (&rfc4511.AbandonRequest{Target: target}).AppendBER(nil)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	}
 	for _, target := range []arden.MessageID{0, -1} {
 		dst := []byte{0xde, 0xad}
 		got, err := (&rfc4511.AbandonRequest{Target: target}).AppendBER(dst)
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Equal(t, dst, got)
 	}
 
@@ -102,7 +103,7 @@ func TestCompareRequestRejectsEmptyAssertionTypeAtomically(t *testing.T) {
 	request := &rfc4511.CompareRequest{Entry: rfc4511.LDAPDN("cn=Jane"), Assertion: rfc4511.AttributeValueAssertion{Value: rfc4511.AssertionValue("Jane")}}
 	dst := []byte{0xde, 0xad}
 	got, err := request.AppendBER(dst)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Equal(t, dst, got)
 }
 

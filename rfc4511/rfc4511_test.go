@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
 	"github.com/wyattanderson/arden/ber"
 	"github.com/wyattanderson/arden/rfc4511"
 )
@@ -97,7 +98,7 @@ func TestRFCReceiverAtomicityAndOwnership(t *testing.T) {
 	prior := rfc4511.SearchRequest{BaseObject: rfc4511.LDAPDN("dc=keep"), Filter: rfc4511.Present{Attribute: rfc4511.AttributeDescription("cn")}}
 	r, err := ber.NewReader([]byte{0x63, 0x00}, ber.DefaultLimits())
 	require.NoError(t, err)
-	assert.Error(t, prior.UnmarshalBER(r))
+	require.Error(t, prior.UnmarshalBER(r))
 	assert.Equal(t, "dc=keep", string(prior.BaseObject))
 
 	encoded, err := (&rfc4511.ExtendedResponse{Result: rfc4511.LDAPResult{ResultCode: rfc4511.ResultSuccess}, ResponseValue: []byte{0, 0xff}, HasResponseValue: true}).AppendBER(nil)
@@ -115,10 +116,10 @@ func TestRFCReceiverAtomicityAndOwnership(t *testing.T) {
 func TestLDAPOIDValidation(t *testing.T) {
 	for _, oid := range []rfc4511.LDAPOID{[]byte(""), []byte("1"), []byte("1."), []byte(".1"), []byte("1..2"), []byte("01.2"), []byte("1.a")} {
 		_, err := oid.AppendBER([]byte{0xaa})
-		assert.Error(t, err, "LDAPOID %q was accepted", oid)
+		require.Error(t, err, "LDAPOID %q was accepted", oid)
 	}
 	_, err := rfc4511.LDAPOID([]byte("1.3.6.1.4.1.1466.20037")).AppendBER(nil)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 }
 
 func TestRFC4511StructuralRejectionsPreserveDestinations(t *testing.T) {
@@ -133,19 +134,19 @@ func TestRFC4511StructuralRejectionsPreserveDestinations(t *testing.T) {
 	} {
 		dst := []byte{0xde, 0xad}
 		got, err := value.AppendBER(dst)
-		assert.Error(t, err, "%T unexpectedly encoded", value)
+		require.Error(t, err, "%T unexpectedly encoded", value)
 		assert.Equal(t, dst, got, "%T changed destination on error", value)
 	}
 
 	r, err := ber.NewReader([]byte{0xa2, 0x08, 0x87, 0x02, 'c', 'n', 0x87, 0x02, 's', 'n'}, ber.DefaultLimits())
 	require.NoError(t, err)
 	var not rfc4511.Not
-	assert.Error(t, not.UnmarshalBER(r))
+	require.Error(t, not.UnmarshalBER(r))
 
 	r, err = ber.NewReader([]byte{0xa4, 0x0c, 0x04, 0x02, 'c', 'n', 0x30, 0x06, 0x80, 0x01, 'a', 0x80, 0x01, 'b'}, ber.DefaultLimits())
 	require.NoError(t, err)
 	var substring rfc4511.SubstringFilter
-	assert.Error(t, substring.UnmarshalBER(r))
+	require.Error(t, substring.UnmarshalBER(r))
 
 	control, err := (rfc4511.Control{Type: rfc4511.LDAPOID("1.2.3")}).AppendBER(nil)
 	require.NoError(t, err)

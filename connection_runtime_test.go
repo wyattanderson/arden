@@ -174,9 +174,7 @@ func TestConnectionSerializesConcurrentShortWrites(t *testing.T) {
 	var wg sync.WaitGroup
 	errs := make(chan error, operations)
 	for range operations {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			stream, err := conn.Do(context.Background(), op)
 			if err == nil {
 				_, err = stream.Next(context.Background())
@@ -185,7 +183,7 @@ func TestConnectionSerializesConcurrentShortWrites(t *testing.T) {
 				}
 			}
 			errs <- err
-		}()
+		})
 	}
 	wg.Wait()
 	close(errs)

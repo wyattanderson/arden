@@ -7,6 +7,7 @@ import (
 	"github.com/wyattanderson/arden/ber"
 )
 
+// Sentinel errors classify public connection and protocol failures.
 var (
 	ErrClosed                = errors.New("arden: closed")
 	ErrTransport             = errors.New("arden: transport failure")
@@ -22,6 +23,7 @@ var (
 // TransportStage identifies the stage at which I/O failed.
 type TransportStage uint8
 
+// Transport failure stages.
 const (
 	StageDial TransportStage = iota + 1
 	StageTLS
@@ -50,6 +52,7 @@ func (s TransportStage) String() string {
 // RequestOutcome records only what the transport can prove about a request.
 type RequestOutcome uint8
 
+// Request outcomes that can be established after transport failure.
 const (
 	OutcomeNotApplicable RequestOutcome = iota
 	OutcomeDefinitelyUnsent
@@ -72,6 +75,8 @@ func (e *TransportError) Error() string {
 }
 
 func (e *TransportError) Unwrap() error { return e.Err }
+
+// Is reports whether the transport error belongs to a public error class.
 func (e *TransportError) Is(target error) bool {
 	return target == ErrTransport ||
 		(target == ErrDefinitelyUnsent && e.Outcome == OutcomeDefinitelyUnsent) ||
@@ -81,6 +86,7 @@ func (e *TransportError) Is(target error) bool {
 // ProtocolErrorKind distinguishes framing, envelope, and routing violations.
 type ProtocolErrorKind uint8
 
+// Protocol failure kinds.
 const (
 	ProtocolFraming ProtocolErrorKind = iota + 1
 	ProtocolEnvelope
@@ -106,7 +112,9 @@ func (e *ProtocolError) Error() string {
 	return fmt.Sprintf("arden: protocol failure (%d): message %d, identifier %s", e.Kind, e.MessageID, e.Got)
 }
 
-func (e *ProtocolError) Unwrap() error        { return e.Err }
+func (e *ProtocolError) Unwrap() error { return e.Err }
+
+// Is reports whether the error is a protocol failure.
 func (e *ProtocolError) Is(target error) bool { return target == ErrProtocol }
 
 // LimitError names a public configured limit without exposing payload data.
@@ -123,6 +131,7 @@ func (e *LimitError) Error() string {
 	return fmt.Sprintf("arden: resource limit %q exceeded: %d > %d", e.Limit, e.Value, e.Max)
 }
 
+// Is reports whether the error is a resource-limit failure.
 func (e *LimitError) Is(target error) bool { return target == ErrResourceLimit }
 
 // RouteError never authorizes implicit rerouting to another endpoint.
@@ -138,12 +147,15 @@ func (e *RouteError) Error() string {
 	return fmt.Sprintf("arden: endpoint %q unavailable: %v", e.Endpoint, e.Err)
 }
 
-func (e *RouteError) Unwrap() error        { return e.Err }
+func (e *RouteError) Unwrap() error { return e.Err }
+
+// Is reports whether the error is an endpoint-availability failure.
 func (e *RouteError) Is(target error) bool { return target == ErrEndpointUnavailable }
 
 // SetupStage identifies a failure before a connection becomes application-ready.
 type SetupStage uint8
 
+// Connection setup stages.
 const (
 	SetupAuthentication SetupStage = iota + 1
 	SetupInitialization
@@ -164,7 +176,9 @@ func (e *SetupError) Error() string {
 	return fmt.Sprintf("arden: endpoint %q setup stage %d failed: %v", e.Endpoint, e.Stage, e.Err)
 }
 
-func (e *SetupError) Unwrap() error        { return e.Err }
+func (e *SetupError) Unwrap() error { return e.Err }
+
+// Is reports whether the error is a connection-setup failure.
 func (e *SetupError) Is(target error) bool { return target == ErrSetup }
 
 // NoticeError represents the RFC 4511 Notice of Disconnection. Diagnostic is
@@ -182,4 +196,5 @@ func (e *NoticeError) Error() string {
 	return fmt.Sprintf("arden: notice of disconnection (result code %d)", e.ResultCode)
 }
 
+// Is reports whether the error is an RFC 4511 Notice of Disconnection.
 func (e *NoticeError) Is(target error) bool { return target == ErrNoticeOfDisconnection }

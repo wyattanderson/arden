@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
 	"github.com/wyattanderson/arden/ber"
 	"github.com/wyattanderson/arden/rfc4511"
 )
@@ -40,7 +41,7 @@ func TestSearchRequestRejectsClosedEnumAndLimitOverflowAtomically(t *testing.T) 
 	} {
 		dst := []byte{0xde, 0xad}
 		got, err := request.AppendBER(dst)
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Equal(t, dst, got)
 	}
 
@@ -58,7 +59,7 @@ func TestSearchRequestRejectsClosedEnumAndLimitOverflowAtomically(t *testing.T) 
 func TestSearchResultReferenceRequiresURIAndPreservesExtensions(t *testing.T) {
 	dst := []byte{0xde, 0xad}
 	got, err := (rfc4511.SearchResultReference{}).AppendBER(dst)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Equal(t, dst, got)
 
 	empty, err := ber.AppendConstructed(nil, rfc4511.SearchResultReferenceIdentifier(), nil)

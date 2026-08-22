@@ -91,7 +91,8 @@ func ldapMessage(t *testing.T, messageID int64, protocol []byte, controlsAndExte
 	if err != nil {
 		t.Fatal(err)
 	}
-	contents := append(messageIDElement, protocol...)
+	contents := append([]byte(nil), messageIDElement...)
+	contents = append(contents, protocol...)
 	if len(controlsAndExtensions) > 0 {
 		controls := make([]byte, 0)
 		for _, control := range controlsAndExtensions[:1] {

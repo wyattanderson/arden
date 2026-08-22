@@ -35,7 +35,7 @@ func TestDialerDirectTLSVerifiesAndClonesConfiguration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 
 	serverResult := make(chan error, 1)
 	go func() {
@@ -44,7 +44,7 @@ func TestDialerDirectTLSVerifiesAndClonesConfiguration(t *testing.T) {
 			serverResult <- err
 			return
 		}
-		defer peer.Close()
+		defer func() { _ = peer.Close() }()
 		framer, err := ber.NewFramer(peer, ber.DefaultLimits())
 		if err != nil {
 			serverResult <- err
@@ -95,12 +95,12 @@ func TestDialerRejectsHostnameMismatch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 	go func() {
 		peer, err := listener.Accept()
 		if err == nil {
-			defer peer.Close()
-			_ = peer.(*tls.Conn).Handshake()
+			defer func() { _ = peer.Close() }()
+			_ = peer.(*tls.Conn).HandshakeContext(context.Background())
 		}
 	}()
 
@@ -114,11 +114,11 @@ func TestDialerRejectsHostnameMismatch(t *testing.T) {
 }
 
 func TestDialerTLSHandshakeUsesContext(t *testing.T) {
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	listener, err := new(net.ListenConfig).Listen(context.Background(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 	accepted := make(chan net.Conn, 1)
 	go func() {
 		peer, err := listener.Accept()
@@ -143,11 +143,11 @@ func TestDialerTLSHandshakeUsesContext(t *testing.T) {
 }
 
 func TestDialerPlaintextRequiresExplicitSelection(t *testing.T) {
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	listener, err := new(net.ListenConfig).Listen(context.Background(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 	requestReady := make(chan Response, 1)
 	serverErr := make(chan error, 1)
 	go func() {
@@ -156,7 +156,7 @@ func TestDialerPlaintextRequiresExplicitSelection(t *testing.T) {
 			serverErr <- err
 			return
 		}
-		defer peer.Close()
+		defer func() { _ = peer.Close() }()
 		framer, err := ber.NewFramer(peer, ber.DefaultLimits())
 		if err != nil {
 			serverErr <- err
@@ -198,18 +198,18 @@ func TestDialerPlaintextRequiresExplicitSelection(t *testing.T) {
 }
 
 func TestTLSFailureNeverFallsBackToPlaintext(t *testing.T) {
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	listener, err := new(net.ListenConfig).Listen(context.Background(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 	firstByte := make(chan byte, 1)
 	go func() {
 		peer, err := listener.Accept()
 		if err != nil {
 			return
 		}
-		defer peer.Close()
+		defer func() { _ = peer.Close() }()
 		var one [1]byte
 		if _, err := peer.Read(one[:]); err == nil {
 			firstByte <- one[0]

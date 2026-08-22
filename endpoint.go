@@ -9,6 +9,7 @@ import (
 // address. The empty value is invalid.
 type EndpointID string
 
+// Validate reports whether id is a usable endpoint identity.
 func (id EndpointID) Validate() error {
 	if id == "" {
 		return errors.New("arden: endpoint ID is empty")
@@ -21,6 +22,7 @@ func (id EndpointID) Validate() error {
 // silently select plaintext.
 type TransportMode uint8
 
+// Supported endpoint transport modes.
 const (
 	TransportDirectTLS TransportMode = iota
 	TransportPlaintext
@@ -34,6 +36,7 @@ type Endpoint struct {
 	Transport  TransportMode
 }
 
+// Validate reports whether the endpoint has a complete, consistent configuration.
 func (e Endpoint) Validate() error {
 	if err := e.ID.Validate(); err != nil {
 		return err
@@ -79,6 +82,7 @@ type Authenticator interface {
 // CancellationPolicy is the endpoint-wide policy frozen after setup.
 type CancellationPolicy uint8
 
+// Supported cancellation policies.
 const (
 	CancellationConservative CancellationPolicy = iota + 1
 	CancellationRFC3909

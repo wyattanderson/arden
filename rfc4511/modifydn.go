@@ -17,7 +17,10 @@ var (
 	modifyDNResponsePattern       = mustResponsePattern(arden.ResponseSpec{Complete: []ber.Identifier{modifyDNResponseIdentifier}})
 )
 
-func ModifyDNRequestIdentifier() ber.Identifier  { return modifyDNRequestIdentifier }
+// ModifyDNRequestIdentifier returns the application identifier for ModifyDNRequest.
+func ModifyDNRequestIdentifier() ber.Identifier { return modifyDNRequestIdentifier }
+
+// ModifyDNResponseIdentifier returns the application identifier for ModifyDNResponse.
 func ModifyDNResponseIdentifier() ber.Identifier { return modifyDNResponseIdentifier }
 
 // ModifyDNRequest is the RFC 4511 ModifyDNRequest protocol operation.
@@ -29,7 +32,10 @@ type ModifyDNRequest struct {
 	Extensions   []UnknownField
 }
 
+//revive:disable-next-line:exported
 func (*ModifyDNRequest) ProtocolIdentifier() ber.Identifier { return modifyDNRequestIdentifier }
+
+//revive:disable-next-line:exported
 func (v *ModifyDNRequest) AppendBER(dst []byte) ([]byte, error) {
 	start := len(dst)
 	if v == nil {
@@ -60,6 +66,8 @@ func (v *ModifyDNRequest) AppendBER(dst []byte) ([]byte, error) {
 	}
 	return encoded, nil
 }
+
+//revive:disable-next-line:exported
 func (v *ModifyDNRequest) UnmarshalBER(r *ber.Reader) error {
 	if v == nil {
 		return nilReceiver("ModifyDNRequest")
@@ -115,9 +123,12 @@ func (v *ModifyDNRequest) UnmarshalBER(r *ber.Reader) error {
 // ModifyDNResponse is the terminal LDAPResult for ModifyDNRequest.
 type ModifyDNResponse struct{ Result LDAPResult }
 
+//revive:disable-next-line:exported
 func (v ModifyDNResponse) AppendBER(dst []byte) ([]byte, error) {
 	return appendResultResponse(dst, modifyDNResponseIdentifier, v.Result)
 }
+
+//revive:disable-next-line:exported
 func (v *ModifyDNResponse) UnmarshalBER(r *ber.Reader) error {
 	if v == nil {
 		return nilReceiver("ModifyDNResponse")
@@ -130,7 +141,10 @@ func (v *ModifyDNResponse) UnmarshalBER(r *ber.Reader) error {
 	return nil
 }
 
+// ModifyDNResponsePattern returns the terminal response pattern for ModifyDNRequest.
 func ModifyDNResponsePattern() arden.ResponsePattern { return modifyDNResponsePattern }
+
+// NewModifyDNOperation creates a complete Modify DN request declaration.
 func NewModifyDNOperation(request *ModifyDNRequest, controls []ber.Marshaler) (arden.Operation, error) {
 	if request == nil {
 		return arden.Operation{}, errors.New("rfc4511: nil ModifyDNRequest")

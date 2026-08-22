@@ -5,6 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
 	"github.com/wyattanderson/arden/ber"
 	"github.com/wyattanderson/arden/rfc4511"
 )
@@ -49,14 +50,14 @@ func TestAddRequestRejectsInvalidAttributeAtomically(t *testing.T) {
 		Attributes: []rfc4511.Attribute{{Type: rfc4511.AttributeDescription("cn")}},
 	}
 	got, err := request.AppendBER(dst)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Equal(t, dst, got)
 
 	prior := rfc4511.AddRequest{Entry: rfc4511.LDAPDN("cn=keep")}
 	malformed := []byte{0x68, 0x09, 0x04, 0x00, 0x30, 0x05, 0x30, 0x03, 0x04, 0x01, 'c'}
 	r, err := ber.NewReader(malformed, ber.DefaultLimits())
 	require.NoError(t, err)
-	assert.Error(t, prior.UnmarshalBER(r))
+	require.Error(t, prior.UnmarshalBER(r))
 	assert.Equal(t, "cn=keep", string(prior.Entry))
 }
 
@@ -77,14 +78,14 @@ func TestAddResponseReferralValidationAndReceiverAtomicity(t *testing.T) {
 	dst := []byte{0xde, 0xad}
 	response := rfc4511.AddResponse{Result: rfc4511.LDAPResult{ResultCode: rfc4511.ResultReferral}}
 	got, err := response.AppendBER(dst)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Equal(t, dst, got)
 
 	prior := rfc4511.AddResponse{Result: rfc4511.LDAPResult{ResultCode: rfc4511.ResultSuccess}}
 	malformed := []byte{0x69, 0x07, 0x0a, 0x01, 0x0a, 0x04, 0x00, 0x04, 0x00}
 	r, err := ber.NewReader(malformed, ber.DefaultLimits())
 	require.NoError(t, err)
-	assert.Error(t, prior.UnmarshalBER(r))
+	require.Error(t, prior.UnmarshalBER(r))
 	assert.Equal(t, rfc4511.ResultSuccess, prior.Result.ResultCode)
 }
 

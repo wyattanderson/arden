@@ -5,6 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
 	"github.com/wyattanderson/arden/ber"
 	"github.com/wyattanderson/arden/rfc4511"
 )
@@ -54,7 +55,7 @@ func TestBindRequestPreservesUnknownAuthentication(t *testing.T) {
 func TestBindRequestValidationBoundariesAreAtomic(t *testing.T) {
 	for _, version := range []int64{1, 127} {
 		_, err := (&rfc4511.BindRequest{Version: version, Authentication: rfc4511.SimpleAuthentication{}}).AppendBER(nil)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	}
 	for _, request := range []*rfc4511.BindRequest{
 		nil,
@@ -65,7 +66,7 @@ func TestBindRequestValidationBoundariesAreAtomic(t *testing.T) {
 	} {
 		dst := []byte{0xde, 0xad}
 		got, err := request.AppendBER(dst)
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Equal(t, dst, got)
 	}
 }
@@ -97,7 +98,7 @@ func TestBindAuthenticationExtensionAndIdentifierBoundaries(t *testing.T) {
 	} {
 		dst := []byte{0xde, 0xad}
 		got, err := (&rfc4511.BindRequest{Version: 3, Authentication: authentication}).AppendBER(dst)
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Equal(t, dst, got)
 	}
 }

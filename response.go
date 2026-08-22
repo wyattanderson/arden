@@ -2,6 +2,7 @@ package arden
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 
 	"github.com/wyattanderson/arden/ber"
@@ -103,7 +104,7 @@ func parseOwnedResponse(message []byte, limits ber.Limits) (Response, error) {
 			return Response{}, fmt.Errorf("arden: LDAPMessage extension: %w", err)
 		}
 		if id == controlsIdentifier {
-			return Response{}, fmt.Errorf("arden: LDAPMessage has duplicate or out-of-order controls")
+			return Response{}, errors.New("arden: LDAPMessage has duplicate or out-of-order controls")
 		}
 		extension, err := envelope.SkipElement()
 		if err != nil {

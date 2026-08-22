@@ -25,8 +25,13 @@ var (
 	})
 )
 
-func ExtendedRequestIdentifier() ber.Identifier      { return extendedRequestIdentifier }
-func ExtendedResponseIdentifier() ber.Identifier     { return extendedResponseIdentifier }
+// ExtendedRequestIdentifier returns the application identifier for ExtendedRequest.
+func ExtendedRequestIdentifier() ber.Identifier { return extendedRequestIdentifier }
+
+// ExtendedResponseIdentifier returns the application identifier for ExtendedResponse.
+func ExtendedResponseIdentifier() ber.Identifier { return extendedResponseIdentifier }
+
+// IntermediateResponseIdentifier returns the application identifier for IntermediateResponse.
 func IntermediateResponseIdentifier() ber.Identifier { return intermediateResponseIdentifier }
 
 // ExtendedRequest is the RFC 4511 ExtendedRequest protocol operation.
@@ -37,7 +42,10 @@ type ExtendedRequest struct {
 	Extensions []UnknownField
 }
 
+//revive:disable-next-line:exported
 func (*ExtendedRequest) ProtocolIdentifier() ber.Identifier { return extendedRequestIdentifier }
+
+//revive:disable-next-line:exported
 func (v *ExtendedRequest) AppendBER(dst []byte) ([]byte, error) {
 	start := len(dst)
 	if v == nil {
@@ -69,6 +77,8 @@ func (v *ExtendedRequest) AppendBER(dst []byte) ([]byte, error) {
 	}
 	return encoded, nil
 }
+
+//revive:disable-next-line:exported
 func (v *ExtendedRequest) UnmarshalBER(r *ber.Reader) error {
 	if v == nil {
 		return nilReceiver("ExtendedRequest")
@@ -130,6 +140,7 @@ type ExtendedResponse struct {
 	Extensions       []UnknownField
 }
 
+//revive:disable-next-line:exported
 func (v ExtendedResponse) AppendBER(dst []byte) ([]byte, error) {
 	start := len(dst)
 	if len(v.Result.Extensions) != 0 {
@@ -169,6 +180,8 @@ func (v ExtendedResponse) AppendBER(dst []byte) ([]byte, error) {
 	}
 	return encoded, nil
 }
+
+//revive:disable-next-line:exported
 func (v *ExtendedResponse) UnmarshalBER(r *ber.Reader) error {
 	if v == nil {
 		return nilReceiver("ExtendedResponse")
@@ -240,6 +253,7 @@ type IntermediateResponse struct {
 	Extensions       []UnknownField
 }
 
+//revive:disable-next-line:exported
 func (v IntermediateResponse) AppendBER(dst []byte) ([]byte, error) {
 	start := len(dst)
 	if v.HasResponseName {
@@ -274,6 +288,8 @@ func (v IntermediateResponse) AppendBER(dst []byte) ([]byte, error) {
 	}
 	return encoded, nil
 }
+
+//revive:disable-next-line:exported
 func (v *IntermediateResponse) UnmarshalBER(r *ber.Reader) error {
 	if v == nil {
 		return nilReceiver("IntermediateResponse")
@@ -332,7 +348,10 @@ func (v *IntermediateResponse) UnmarshalBER(r *ber.Reader) error {
 	return nil
 }
 
+// ExtendedResponsePattern returns the continuing and terminal response pattern for ExtendedRequest.
 func ExtendedResponsePattern() arden.ResponsePattern { return extendedResponsePattern }
+
+// NewExtendedOperation creates a complete Extended request declaration.
 func NewExtendedOperation(request *ExtendedRequest, controls []ber.Marshaler) (arden.Operation, error) {
 	if request == nil {
 		return arden.Operation{}, errors.New("rfc4511: nil ExtendedRequest")

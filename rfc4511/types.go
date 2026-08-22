@@ -8,22 +8,35 @@ import (
 	"github.com/wyattanderson/arden/ber"
 )
 
-// These distinct byte-oriented types share an OCTET STRING wire encoding but
-// carry different LDAP meanings. RFC 4511 sections 4.1.2 through 4.1.6 define
-// their wire forms. They deliberately do not normalize DNs, interpret schema,
-// or convert attribute values through Go strings.
-type (
-	LDAPString           []byte
-	LDAPOID              []byte
-	LDAPDN               []byte
-	RelativeLDAPDN       []byte
-	URI                  []byte
-	AttributeDescription []byte
-	AttributeSelector    []byte
-	MatchingRuleID       []byte
-	AttributeValue       []byte
-	AssertionValue       []byte
-)
+// LDAPString is an LDAP string with an OCTET STRING wire encoding.
+type LDAPString []byte
+
+// LDAPOID is a byte-oriented LDAP object identifier.
+type LDAPOID []byte
+
+// LDAPDN is a byte-oriented LDAP distinguished name.
+type LDAPDN []byte
+
+// RelativeLDAPDN is a byte-oriented LDAP relative distinguished name.
+type RelativeLDAPDN []byte
+
+// URI is a byte-oriented LDAP uniform resource identifier.
+type URI []byte
+
+// AttributeDescription is a byte-oriented LDAP attribute description.
+type AttributeDescription []byte
+
+// AttributeSelector is a byte-oriented LDAP search attribute selector.
+type AttributeSelector []byte
+
+// MatchingRuleID is a byte-oriented LDAP matching rule identifier.
+type MatchingRuleID []byte
+
+// AttributeValue is a byte-oriented LDAP attribute value.
+type AttributeValue []byte
+
+// AssertionValue is a byte-oriented LDAP assertion value.
+type AssertionValue []byte
 
 type ldapOctets interface {
 	LDAPString | LDAPOID | LDAPDN | RelativeLDAPDN | URI | AttributeDescription | AttributeSelector | MatchingRuleID | AttributeValue | AssertionValue
@@ -45,17 +58,23 @@ func unmarshalLDAPOctets[T ldapOctets](dst *T, r *ber.Reader) error {
 	return nil
 }
 
+//revive:disable-next-line:exported
 func (v LDAPString) AppendBER(dst []byte) ([]byte, error) {
 	return appendLDAPOctets(dst, v)
 }
+
+//revive:disable-next-line:exported
 func (v *LDAPString) UnmarshalBER(r *ber.Reader) error { return unmarshalLDAPOctets(v, r) }
 
+//revive:disable-next-line:exported
 func (v LDAPOID) AppendBER(dst []byte) ([]byte, error) {
 	if err := validateLDAPOID(v); err != nil {
 		return dst, err
 	}
 	return appendLDAPOctets(dst, v)
 }
+
+//revive:disable-next-line:exported
 func (v *LDAPOID) UnmarshalBER(r *ber.Reader) error {
 	if v == nil {
 		return errors.New("rfc4511: nil LDAPOID receiver")
@@ -71,50 +90,74 @@ func (v *LDAPOID) UnmarshalBER(r *ber.Reader) error {
 	return nil
 }
 
+//revive:disable-next-line:exported
 func (v LDAPDN) AppendBER(dst []byte) ([]byte, error) { return appendLDAPOctets(dst, v) }
-func (v *LDAPDN) UnmarshalBER(r *ber.Reader) error    { return unmarshalLDAPOctets(v, r) }
 
+//revive:disable-next-line:exported
+func (v *LDAPDN) UnmarshalBER(r *ber.Reader) error { return unmarshalLDAPOctets(v, r) }
+
+//revive:disable-next-line:exported
 func (v RelativeLDAPDN) AppendBER(dst []byte) ([]byte, error) {
 	return appendLDAPOctets(dst, v)
 }
+
+//revive:disable-next-line:exported
 func (v *RelativeLDAPDN) UnmarshalBER(r *ber.Reader) error {
 	return unmarshalLDAPOctets(v, r)
 }
 
+//revive:disable-next-line:exported
 func (v URI) AppendBER(dst []byte) ([]byte, error) { return appendLDAPOctets(dst, v) }
-func (v *URI) UnmarshalBER(r *ber.Reader) error    { return unmarshalLDAPOctets(v, r) }
 
+//revive:disable-next-line:exported
+func (v *URI) UnmarshalBER(r *ber.Reader) error { return unmarshalLDAPOctets(v, r) }
+
+//revive:disable-next-line:exported
 func (v AttributeDescription) AppendBER(dst []byte) ([]byte, error) {
 	return appendLDAPOctets(dst, v)
 }
+
+//revive:disable-next-line:exported
 func (v *AttributeDescription) UnmarshalBER(r *ber.Reader) error {
 	return unmarshalLDAPOctets(v, r)
 }
 
+//revive:disable-next-line:exported
 func (v AttributeSelector) AppendBER(dst []byte) ([]byte, error) {
 	return appendLDAPOctets(dst, v)
 }
+
+//revive:disable-next-line:exported
 func (v *AttributeSelector) UnmarshalBER(r *ber.Reader) error {
 	return unmarshalLDAPOctets(v, r)
 }
 
+//revive:disable-next-line:exported
 func (v MatchingRuleID) AppendBER(dst []byte) ([]byte, error) {
 	return appendLDAPOctets(dst, v)
 }
+
+//revive:disable-next-line:exported
 func (v *MatchingRuleID) UnmarshalBER(r *ber.Reader) error {
 	return unmarshalLDAPOctets(v, r)
 }
 
+//revive:disable-next-line:exported
 func (v AttributeValue) AppendBER(dst []byte) ([]byte, error) {
 	return appendLDAPOctets(dst, v)
 }
+
+//revive:disable-next-line:exported
 func (v *AttributeValue) UnmarshalBER(r *ber.Reader) error {
 	return unmarshalLDAPOctets(v, r)
 }
 
+//revive:disable-next-line:exported
 func (v AssertionValue) AppendBER(dst []byte) ([]byte, error) {
 	return appendLDAPOctets(dst, v)
 }
+
+//revive:disable-next-line:exported
 func (v *AssertionValue) UnmarshalBER(r *ber.Reader) error {
 	return unmarshalLDAPOctets(v, r)
 }

@@ -2,6 +2,7 @@ package ber
 
 import "fmt"
 
+// Universal BER identifiers used by the primitive and constructed encoders.
 var (
 	BooleanIdentifier     = Identifier{Class: ClassUniversal, Number: 1}
 	IntegerIdentifier     = Identifier{Class: ClassUniversal, Number: 2}

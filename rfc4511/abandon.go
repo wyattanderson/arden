@@ -13,6 +13,7 @@ var (
 	abandonResponsePattern   = mustResponsePattern(arden.ResponseSpec{NoResponse: true})
 )
 
+// AbandonRequestIdentifier returns the application identifier for AbandonRequest.
 func AbandonRequestIdentifier() ber.Identifier { return abandonRequestIdentifier }
 
 // AbandonRequest asks the server to abandon Target. The request itself still
@@ -20,7 +21,10 @@ func AbandonRequestIdentifier() ber.Identifier { return abandonRequestIdentifier
 // has no LDAP response. RFC 4511 section 4.11.
 type AbandonRequest struct{ Target arden.MessageID }
 
+//revive:disable-next-line:exported
 func (*AbandonRequest) ProtocolIdentifier() ber.Identifier { return abandonRequestIdentifier }
+
+//revive:disable-next-line:exported
 func (v *AbandonRequest) AppendBER(dst []byte) ([]byte, error) {
 	if v == nil {
 		return dst, errors.New("rfc4511: nil AbandonRequest")
@@ -30,6 +34,8 @@ func (v *AbandonRequest) AppendBER(dst []byte) ([]byte, error) {
 	}
 	return ber.AppendIntegerWithIdentifier(dst, abandonRequestIdentifier, int64(v.Target))
 }
+
+//revive:disable-next-line:exported
 func (v *AbandonRequest) UnmarshalBER(r *ber.Reader) error {
 	if v == nil {
 		return nilReceiver("AbandonRequest")
@@ -45,7 +51,10 @@ func (v *AbandonRequest) UnmarshalBER(r *ber.Reader) error {
 	return nil
 }
 
+// AbandonResponsePattern returns the no-response pattern for AbandonRequest.
 func AbandonResponsePattern() arden.ResponsePattern { return abandonResponsePattern }
+
+// NewAbandonOperation creates a complete Abandon request declaration.
 func NewAbandonOperation(request *AbandonRequest, controls []ber.Marshaler) (arden.Operation, error) {
 	if request == nil {
 		return arden.Operation{}, errors.New("rfc4511: nil AbandonRequest")

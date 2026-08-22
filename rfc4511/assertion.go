@@ -14,6 +14,7 @@ type AttributeValueAssertion struct {
 	Extensions []UnknownField
 }
 
+//revive:disable-next-line:exported
 func (v AttributeValueAssertion) AppendBER(dst []byte) ([]byte, error) {
 	start := len(dst)
 	contents, err := v.appendContents(nil)
@@ -27,6 +28,7 @@ func (v AttributeValueAssertion) AppendBER(dst []byte) ([]byte, error) {
 	return encoded, nil
 }
 
+//revive:disable-next-line:exported
 func (v *AttributeValueAssertion) UnmarshalBER(r *ber.Reader) error {
 	if v == nil {
 		return nilReceiver("AttributeValueAssertion")
