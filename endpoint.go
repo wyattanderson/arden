@@ -59,6 +59,16 @@ type Identity struct {
 	StableID string
 }
 
+// Validate checks that the identity can safely partition endpoint profiles.
+// StableID is caller vocabulary and must not contain credentials, tokens, DNs,
+// or other authentication material.
+func (i Identity) Validate() error {
+	if i.StableID == "" {
+		return errors.New("arden: authentication identity is empty")
+	}
+	return nil
+}
+
 // InitializationSession provides exclusive, ordinary binary LDAP operations
 // during authentication and setup. Implementations own message IDs and do not
 // permit the session to escape initialization.
@@ -70,6 +80,13 @@ type InitializationSession interface {
 // A nil Authentication means no Bind is performed.
 type Authentication interface {
 	Begin(context.Context, Endpoint) (Authenticator, error)
+}
+
+// AuthenticationEndpointValidator is an optional authentication preflight
+// hook. Dialer invokes it before opening a socket, allowing mechanisms to
+// reject an incompatible fixed transport without risking credential writes.
+type AuthenticationEndpointValidator interface {
+	ValidateEndpoint(Endpoint) error
 }
 
 // Authenticator owns one authentication conversation. Close releases all
@@ -91,6 +108,17 @@ const (
 // ConnectionPolicy contains only setup results understood by the core.
 type ConnectionPolicy struct {
 	Cancellation CancellationPolicy
+}
+
+// Validate checks that a setup policy contains only behavior understood by
+// this version of the core.
+func (p ConnectionPolicy) Validate() error {
+	switch p.Cancellation {
+	case CancellationConservative, CancellationRFC3909:
+		return nil
+	default:
+		return errors.New("arden: setup cancellation policy is invalid")
+	}
 }
 
 // Initializer discovers a typed, endpoint- and identity-scoped profile after

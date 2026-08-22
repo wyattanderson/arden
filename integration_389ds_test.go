@@ -5,6 +5,8 @@ package arden_test
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"io"
 	"os"
 	"testing"
@@ -14,52 +16,49 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/wyattanderson/arden"
+	"github.com/wyattanderson/arden/auth"
 	"github.com/wyattanderson/arden/ber"
 	"github.com/wyattanderson/arden/rfc4511"
 )
 
-func Test389DSBindAndRootDSESearch(t *testing.T) {
+func Test389DSSimpleBindBootstrapAndRootDSESearch(t *testing.T) {
 	address := os.Getenv("ARDEN_389DS_ADDR")
+	serverName := os.Getenv("ARDEN_389DS_SERVER_NAME")
+	caCertificatePath := os.Getenv("ARDEN_389DS_CA_CERT")
 	password := os.Getenv("ARDEN_389DS_DM_PASSWORD")
-	if address == "" || password == "" {
+	if address == "" || serverName == "" || caCertificatePath == "" || password == "" {
 		t.Skip("389ds integration environment is not configured; run integration/389ds/test.sh")
 	}
+	caCertificate, err := os.ReadFile(caCertificatePath)
+	require.NoError(t, err)
+	roots := x509.NewCertPool()
+	require.True(t, roots.AppendCertsFromPEM(caCertificate), "389ds test CA certificate is not valid PEM")
+	simpleBind, err := auth.NewSimpleBind(
+		"389ds-directory-manager",
+		[]byte("cn=Directory Manager"),
+		[]byte(password),
+	)
+	require.NoError(t, err)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	conn, err := new(arden.Dialer).Dial(ctx, arden.Endpoint{
-		ID:        "389ds-integration",
-		Address:   address,
-		Transport: arden.TransportPlaintext,
+	conn, err := (&arden.Dialer{
+		TLSConfig:      &tls.Config{RootCAs: roots},
+		Authentication: simpleBind,
+	}).Dial(ctx, arden.Endpoint{
+		ID:         "389ds-integration",
+		Address:    address,
+		ServerName: serverName,
 	})
 	require.NoError(t, err)
+	require.Equal(t, "389ds-directory-manager", conn.Identity().StableID)
 	closed := false
 	t.Cleanup(func() {
 		if !closed {
 			_ = conn.Close()
 		}
 	})
-
-	bind, err := rfc4511.NewBindOperation(&rfc4511.BindRequest{
-		Version:        3,
-		Name:           rfc4511.LDAPDN("cn=Directory Manager"),
-		Authentication: rfc4511.SimpleAuthentication(password),
-	}, nil)
-	require.NoError(t, err)
-
-	bindStream, err := conn.Do(ctx, bind)
-	require.NoError(t, err)
-	bindMessage, err := bindStream.Next(ctx)
-	require.NoError(t, err)
-	require.Equal(t, rfc4511.BindResponseIdentifier(), bindMessage.ProtocolID)
-
-	var bindResponse rfc4511.BindResponse
-	require.NoError(t, bindMessage.UnmarshalProtocol(&bindResponse, ber.DefaultLimits()))
-	require.Equal(t, rfc4511.ResultSuccess, bindResponse.Result.ResultCode,
-		"bind diagnostic: %s", bindResponse.Result.DiagnosticMessage)
-	_, err = bindStream.Next(ctx)
-	require.ErrorIs(t, err, io.EOF)
 
 	search, err := rfc4511.NewSearchOperation(&rfc4511.SearchRequest{
 		BaseObject:   rfc4511.LDAPDN{},

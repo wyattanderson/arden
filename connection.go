@@ -23,6 +23,8 @@ const (
 	defaultUnsolicitedBytes       = 1 << 20
 	defaultCancellationWriteLimit = 5 * time.Second
 	defaultCloseTimeout           = 5 * time.Second
+	defaultInitializationTimeout  = 30 * time.Second
+	defaultInitializationOps      = 16
 )
 
 // ConnectionOptions contains the public resource bounds for one connection.
@@ -35,6 +37,8 @@ type ConnectionOptions struct {
 	MaxUnsolicitedResponseBytes int
 	CancellationWriteTimeout    time.Duration
 	CloseTimeout                time.Duration
+	InitializationTimeout       time.Duration
+	MaxInitializationOperations int
 }
 
 // DefaultConnectionOptions returns conservative bounds suitable for ordinary
@@ -48,6 +52,8 @@ func DefaultConnectionOptions() ConnectionOptions {
 		MaxUnsolicitedResponseBytes: defaultUnsolicitedBytes,
 		CancellationWriteTimeout:    defaultCancellationWriteLimit,
 		CloseTimeout:                defaultCloseTimeout,
+		InitializationTimeout:       defaultInitializationTimeout,
+		MaxInitializationOperations: defaultInitializationOps,
 	}
 }
 
@@ -80,6 +86,12 @@ func (o ConnectionOptions) normalized() (ConnectionOptions, error) {
 	if o.CloseTimeout == 0 {
 		o.CloseTimeout = defaults.CloseTimeout
 	}
+	if o.InitializationTimeout == 0 {
+		o.InitializationTimeout = defaults.InitializationTimeout
+	}
+	if o.MaxInitializationOperations == 0 {
+		o.MaxInitializationOperations = defaults.MaxInitializationOperations
+	}
 	if err := o.BERLimits.Validate(); err != nil {
 		return ConnectionOptions{}, err
 	}
@@ -96,44 +108,81 @@ func (o ConnectionOptions) normalized() (ConnectionOptions, error) {
 		return ConnectionOptions{}, errors.New("arden: CancellationWriteTimeout must be positive")
 	case o.CloseTimeout < 0:
 		return ConnectionOptions{}, errors.New("arden: CloseTimeout must be positive")
+	case o.InitializationTimeout < 0:
+		return ConnectionOptions{}, errors.New("arden: InitializationTimeout must be positive")
+	case o.MaxInitializationOperations < 0:
+		return ConnectionOptions{}, errors.New("arden: MaxInitializationOperations must be positive")
 	}
 	return o, nil
 }
+
+// connectionState is deliberately internal: callers receive a Conn only after
+// setup reaches stateReady, and Done/Err describe every terminal state.
+type connectionState uint8
+
+const (
+	stateDialing connectionState = iota + 1
+	stateTransportSetup
+	stateAuthenticating
+	stateInitializing
+	stateReady
+	stateDraining
+	stateClosed
+)
+
+type operationScope uint8
+
+const (
+	operationApplication operationScope = iota + 1
+	operationInitialization
+)
 
 // Dialer establishes LDAP connections. Direct TLS with normal certificate and
 // hostname verification is selected by the Endpoint zero value. TLSConfig is
 // cloned before its ServerName is set from the endpoint.
 type Dialer struct {
-	NetDialer *net.Dialer
-	TLSConfig *tls.Config
-	Options   ConnectionOptions
+	NetDialer      *net.Dialer
+	TLSConfig      *tls.Config
+	Options        ConnectionOptions
+	Authentication Authentication
 }
 
 // Dial establishes the endpoint's fixed transport and starts its shared LDAP
 // framing and routing runtime. It never attempts StartTLS or plaintext
 // fallback.
 func (d *Dialer) Dial(ctx context.Context, endpoint Endpoint) (*Conn, error) {
+	conn, _, err := d.dial(ctx, endpoint, nil)
+	return conn, err
+}
+
+func (d *Dialer) dial(ctx context.Context, endpoint Endpoint, initializer connectionInitializer) (*Conn, any, error) {
 	if ctx == nil {
-		return nil, errors.New("arden: nil dial context")
+		return nil, nil, errors.New("arden: nil dial context")
 	}
 	if err := endpoint.Validate(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if d == nil {
 		d = new(Dialer)
 	}
 	options, err := d.Options.normalized()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
+	}
+	if validator, ok := d.Authentication.(AuthenticationEndpointValidator); ok {
+		if err := validator.ValidateEndpoint(endpoint); err != nil {
+			return nil, nil, &SetupError{Endpoint: endpoint.ID, Stage: SetupAuthentication, Err: err}
+		}
 	}
 
+	state := stateDialing
 	netDialer := d.NetDialer
 	if netDialer == nil {
 		netDialer = new(net.Dialer)
 	}
 	raw, err := netDialer.DialContext(ctx, "tcp", endpoint.Address)
 	if err != nil {
-		return nil, &TransportError{Stage: StageDial, Outcome: OutcomeNotApplicable, Err: err}
+		return nil, nil, &TransportError{Stage: StageDial, Outcome: OutcomeNotApplicable, Err: err}
 	}
 
 	transport := raw
@@ -146,17 +195,27 @@ func (d *Dialer) Dial(ctx context.Context, endpoint Endpoint) (*Conn, error) {
 		tlsConn := tls.Client(raw, config)
 		if err := tlsConn.HandshakeContext(ctx); err != nil {
 			_ = raw.Close()
-			return nil, &TransportError{Stage: StageTLS, Outcome: OutcomeNotApplicable, Err: err}
+			return nil, nil, &TransportError{Stage: StageTLS, Outcome: OutcomeNotApplicable, Err: err}
 		}
 		transport = tlsConn
 	}
-
-	conn, err := newConn(transport, endpoint, options, MaxMessageID)
+	state, err = advanceConnectionState(state, stateTransportSetup)
 	if err != nil {
 		_ = transport.Close()
-		return nil, err
+		return nil, nil, err
 	}
-	return conn, nil
+
+	conn, err := newConnWithState(transport, endpoint, options, MaxMessageID, state)
+	if err != nil {
+		_ = transport.Close()
+		return nil, nil, err
+	}
+	_, profile, err := d.initialize(ctx, conn, initializer)
+	if err != nil {
+		conn.retire(err)
+		return nil, nil, err
+	}
+	return conn, profile, nil
 }
 
 // DialContext is an alias for Dial following the naming used by net.Dialer.
@@ -176,8 +235,11 @@ type Conn struct {
 	writeToken chan struct{}
 
 	mu         sync.Mutex
+	state      connectionState
 	closing    bool
 	err        error
+	identity   Identity
+	policy     ConnectionPolicy
 	done       chan struct{}
 	nextID     MessageID
 	idChanged  chan struct{}
@@ -215,11 +277,18 @@ type pendingOperation struct {
 }
 
 func newConn(transport net.Conn, endpoint Endpoint, options ConnectionOptions, maxID MessageID) (*Conn, error) {
+	return newConnWithState(transport, endpoint, options, maxID, stateReady)
+}
+
+func newConnWithState(transport net.Conn, endpoint Endpoint, options ConnectionOptions, maxID MessageID, state connectionState) (*Conn, error) {
 	if transport == nil {
 		return nil, errors.New("arden: nil connection transport")
 	}
 	if maxID <= 0 || maxID > MaxMessageID {
 		return nil, errors.New("arden: invalid message ID limit")
+	}
+	if state != stateTransportSetup && state != stateReady {
+		return nil, errors.New("arden: invalid initial connection state")
 	}
 	framer, err := ber.NewFramer(transport, options.BERLimits)
 	if err != nil {
@@ -231,6 +300,9 @@ func newConn(transport net.Conn, endpoint Endpoint, options ConnectionOptions, m
 		options:          options,
 		framer:           framer,
 		maxID:            maxID,
+		state:            state,
+		identity:         Identity{StableID: "unauthenticated"},
+		policy:           ConnectionPolicy{Cancellation: CancellationConservative},
 		writeToken:       make(chan struct{}, 1),
 		done:             make(chan struct{}),
 		idChanged:        make(chan struct{}),
@@ -247,6 +319,22 @@ func newConn(transport net.Conn, endpoint Endpoint, options ConnectionOptions, m
 // Endpoint returns the immutable endpoint used to create the session.
 func (c *Conn) Endpoint() Endpoint { return c.endpoint }
 
+// Identity returns the stable, nonsecret authentication identity selected
+// during setup.
+func (c *Conn) Identity() Identity {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.identity
+}
+
+// Policy returns the core setup policy frozen when the connection became
+// ready.
+func (c *Conn) Policy() ConnectionPolicy {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.policy
+}
+
 // Done is closed when the connection is retired or closed.
 func (c *Conn) Done() <-chan struct{} { return c.done }
 
@@ -260,14 +348,21 @@ func (c *Conn) Err() error {
 
 // Do validates, encodes, registers, and writes one binary LDAP operation.
 func (c *Conn) Do(ctx context.Context, op Operation) (ResponseStream, error) {
+	return c.do(ctx, op, operationApplication)
+}
+
+func (c *Conn) do(ctx context.Context, op Operation, scope operationScope) (ResponseStream, error) {
 	if ctx == nil {
 		return nil, errors.New("arden: nil operation context")
 	}
 	if err := op.Validate(); err != nil {
 		return nil, err
 	}
+	if scope == operationApplication && isAssociationChanging(op.Protocol.ProtocolIdentifier()) {
+		return nil, ErrAssociationChange
+	}
 
-	id, err := c.reserveMessageID(ctx)
+	id, err := c.reserveMessageID(ctx, scope)
 	if err != nil {
 		return nil, err
 	}
@@ -289,7 +384,7 @@ func (c *Conn) Do(ctx context.Context, op Operation) (ResponseStream, error) {
 		ready:         make(chan struct{}, 1),
 		lifecycleDone: make(chan struct{}),
 	}
-	if err := c.installPending(p); err != nil {
+	if err := c.installPending(p, scope); err != nil {
 		c.releaseReserved(id)
 		return nil, err
 	}
@@ -309,6 +404,10 @@ func (c *Conn) Do(ctx context.Context, op Operation) (ResponseStream, error) {
 	}
 	go c.watchOperation(p)
 	return stream, nil
+}
+
+func isAssociationChanging(id ber.Identifier) bool {
+	return id == bindRequestIdentifier || id == unbindRequestIdentifier
 }
 
 func encodeLDAPRequest(id MessageID, op Operation, limits ber.Limits) ([]byte, error) {
@@ -360,7 +459,7 @@ func encodeLDAPRequest(id MessageID, op Operation, limits ber.Limits) ([]byte, e
 	return message, nil
 }
 
-func (c *Conn) reserveMessageID(ctx context.Context) (MessageID, error) {
+func (c *Conn) reserveMessageID(ctx context.Context, scope operationScope) (MessageID, error) {
 	for {
 		c.mu.Lock()
 		if c.err != nil || c.closing {
@@ -370,6 +469,13 @@ func (c *Conn) reserveMessageID(ctx context.Context) (MessageID, error) {
 			}
 			c.mu.Unlock()
 			return 0, err
+		}
+		if !c.scopeAllowedLocked(scope) {
+			c.mu.Unlock()
+			if scope == operationApplication {
+				return 0, ErrConnectionNotReady
+			}
+			return 0, ErrInitializationClosed
 		}
 		if id, ok := c.tryReserveMessageIDLocked(); ok {
 			c.mu.Unlock()
@@ -422,7 +528,7 @@ func (c *Conn) releaseReserved(id MessageID) {
 	c.mu.Unlock()
 }
 
-func (c *Conn) installPending(p *pendingOperation) error {
+func (c *Conn) installPending(p *pendingOperation, scope operationScope) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.err != nil || c.closing {
@@ -431,12 +537,29 @@ func (c *Conn) installPending(p *pendingOperation) error {
 		}
 		return ErrClosed
 	}
+	if !c.scopeAllowedLocked(scope) {
+		if scope == operationApplication {
+			return ErrConnectionNotReady
+		}
+		return ErrInitializationClosed
+	}
 	if _, ok := c.reserved[p.id]; !ok {
 		return errors.New("arden: message ID reservation was lost")
 	}
 	delete(c.reserved, p.id)
 	c.pending[p.id] = p
 	return nil
+}
+
+func (c *Conn) scopeAllowedLocked(scope operationScope) bool {
+	switch scope {
+	case operationApplication:
+		return c.state == stateReady
+	case operationInitialization:
+		return c.state == stateAuthenticating || c.state == stateInitializing
+	default:
+		return false
+	}
 }
 
 func (c *Conn) signalIDChangedLocked() {
@@ -733,6 +856,7 @@ func (c *Conn) sendAbandon(target *pendingOperation) {
 }
 
 var (
+	bindRequestIdentifier    = ber.Identifier{Class: ber.ClassApplication, Constructed: true, Number: 0}
 	abandonRequestIdentifier = ber.Identifier{Class: ber.ClassApplication, Number: 16}
 	unbindRequestIdentifier  = ber.Identifier{Class: ber.ClassApplication, Number: 2}
 )
@@ -1052,6 +1176,9 @@ func (c *Conn) CloseContext(ctx context.Context) error {
 		}
 	}
 	c.closing = true
+	if c.state != stateClosed {
+		c.state = stateDraining
+	}
 	c.mu.Unlock()
 
 	var closeErr error
@@ -1092,6 +1219,7 @@ func (c *Conn) retire(err error) {
 		err = ErrClosed
 	}
 	c.err = err
+	c.state = stateClosed
 	close(c.done)
 	_ = c.transport.Close()
 	for id := range c.reserved {
