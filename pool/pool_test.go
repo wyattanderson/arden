@@ -36,7 +36,7 @@ func (testProtocol) AppendBER(dst []byte) ([]byte, error) {
 func testOperation(t testing.TB) arden.Operation {
 	t.Helper()
 	pattern, err := arden.NewResponsePattern(arden.ResponseSpec{Complete: []ber.Identifier{responseID}})
-	require.NoError(t, err)
+	assert.NoError(t, err)
 	return arden.Operation{
 		Protocol:     testProtocol{},
 		Responses:    pattern,
@@ -235,7 +235,7 @@ func completeStream(t *testing.T, request serverRequest, stream arden.ResponseSt
 	require.NoError(t, err)
 	require.Equal(t, responseID, response.ProtocolID)
 	_, err = stream.Next(context.Background())
-	assert.ErrorIs(t, err, io.EOF)
+	require.ErrorIs(t, err, io.EOF)
 }
 
 func TestPoolSelectsLeastLoadedConnection(t *testing.T) {
@@ -418,7 +418,7 @@ func TestPoolCloseGracefullyDrainsActiveOperation(t *testing.T) {
 	completeStream(t, request, stream)
 	require.NoError(t, <-closed)
 	_, err = pool.Do(context.Background(), ardenpool.Any(), testOperation(t))
-	assert.ErrorIs(t, err, arden.ErrClosed)
+	require.ErrorIs(t, err, arden.ErrClosed)
 }
 
 func TestReplacementRejectsChangedFrozenProfile(t *testing.T) {

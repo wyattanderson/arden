@@ -73,12 +73,12 @@ func readTestMessage(t *testing.T, framer *ber.Framer) Response {
 	t.Helper()
 	message, err := framer.Next()
 	if err != nil {
-		require.NoError(t, err)
+		assert.NoError(t, err)
 		return Response{}
 	}
 	response, err := ParseResponse(message, ber.DefaultLimits())
 	if err != nil {
-		require.NoError(t, err)
+		assert.NoError(t, err)
 		return Response{}
 	}
 	return response
@@ -88,12 +88,12 @@ func testLDAPMessage(t *testing.T, id MessageID, protocolID ber.Identifier, valu
 	t.Helper()
 	protocol, err := ber.AppendElement(nil, protocolID, value)
 	if err != nil {
-		require.NoError(t, err)
+		assert.NoError(t, err)
 		return nil
 	}
 	message, err := encodeInternalRequest(id, protocol)
 	if err != nil {
-		require.NoError(t, err)
+		assert.NoError(t, err)
 		return nil
 	}
 	return message
@@ -102,7 +102,7 @@ func testLDAPMessage(t *testing.T, id MessageID, protocolID ber.Identifier, valu
 func writeTestMessage(t *testing.T, conn net.Conn, message []byte) {
 	t.Helper()
 	if _, err := conn.Write(message); err != nil {
-		require.NoError(t, err)
+		assert.NoError(t, err)
 	}
 }
 
@@ -333,7 +333,7 @@ func TestSlowConsumerCannotBlockUnrelatedOperation(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, testModifyDone, response.ProtocolID)
 	_, err = search.Next(context.Background())
-	assert.ErrorIs(t, err, ErrResourceLimit)
+	require.ErrorIs(t, err, ErrResourceLimit)
 }
 
 func TestUnexpectedMessageIDRetiresConnection(t *testing.T) {
@@ -377,7 +377,7 @@ func TestPeerClosureMarksWrittenOperationAmbiguous(t *testing.T) {
 	var transportErr *TransportError
 	require.ErrorAs(t, err, &transportErr)
 	assert.Equal(t, StagePeerClose, transportErr.Stage)
-	assert.ErrorIs(t, err, ErrAmbiguousOutcome)
+	require.ErrorIs(t, err, ErrAmbiguousOutcome)
 }
 
 func TestMalformedFrameAndEnvelopeRetireConnection(t *testing.T) {
@@ -428,7 +428,7 @@ func TestUnsolicitedResponseAndNoticeOfDisconnection(t *testing.T) {
 		require.ErrorAs(t, err, &notice)
 		assert.Equal(t, int64(52), notice.ResultCode)
 		assert.Equal(t, []byte("server shutdown"), notice.Diagnostic)
-		assert.ErrorIs(t, err, ErrNoticeOfDisconnection)
+		require.ErrorIs(t, err, ErrNoticeOfDisconnection)
 	})
 }
 
@@ -440,7 +440,7 @@ func TestCloseSendsUnbindAndIsIdempotent(t *testing.T) {
 	request := readTestMessage(t, framer)
 	require.Equal(t, rfc4511.UnbindRequestIdentifier(), request.ProtocolID)
 	require.NoError(t, <-closed)
-	assert.ErrorIs(t, conn.Err(), ErrClosed)
+	require.ErrorIs(t, conn.Err(), ErrClosed)
 	assert.NoError(t, conn.Close())
 }
 
@@ -457,10 +457,10 @@ func TestWriteFailureOutcomeAtEveryOffset(t *testing.T) {
 			require.NoError(t, err)
 			_, err = conn.Do(context.Background(), op)
 			if failAt == 0 {
-				assert.ErrorIs(t, err, ErrDefinitelyUnsent)
-				assert.NotErrorIs(t, err, ErrAmbiguousOutcome)
+				require.ErrorIs(t, err, ErrDefinitelyUnsent)
+				require.NotErrorIs(t, err, ErrAmbiguousOutcome)
 			} else {
-				assert.ErrorIs(t, err, ErrAmbiguousOutcome)
+				require.ErrorIs(t, err, ErrAmbiguousOutcome)
 			}
 		})
 	}
@@ -493,8 +493,8 @@ func TestCancellationBeforeAndDuringWrite(t *testing.T) {
 		cancel()
 		_, err := conn.Do(ctx, newTestOperation(t, testModifyRequest, ResponseSpec{NoResponse: true}, CancelNone))
 		conn.releaseWriter()
-		assert.ErrorIs(t, err, context.Canceled)
-		assert.ErrorIs(t, err, ErrDefinitelyUnsent)
+		require.ErrorIs(t, err, context.Canceled)
+		require.ErrorIs(t, err, ErrDefinitelyUnsent)
 		conn.mu.Lock()
 		pending := len(conn.pending)
 		conn.mu.Unlock()
@@ -518,8 +518,8 @@ func TestCancellationBeforeAndDuringWrite(t *testing.T) {
 		cancel()
 		select {
 		case err := <-result:
-			assert.ErrorIs(t, err, context.Canceled)
-			assert.ErrorIs(t, err, ErrAmbiguousOutcome)
+			require.ErrorIs(t, err, context.Canceled)
+			require.ErrorIs(t, err, ErrAmbiguousOutcome)
 		case <-time.After(time.Second):
 			require.Fail(t, "in-progress write did not unblock on cancellation")
 		}

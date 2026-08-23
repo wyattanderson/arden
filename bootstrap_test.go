@@ -154,7 +154,7 @@ func TestAuthenticationAndInitializerAreExclusiveAndOrdered(t *testing.T) {
 	assert.Equal(t, identity, conn.Identity())
 	assert.Equal(t, CancellationRFC3909, conn.Policy().Cancellation)
 	_, err = retained.Do(context.Background(), newTestOperation(t, testModifyRequest, ResponseSpec{NoResponse: true}, CancelNone))
-	assert.ErrorIs(t, err, ErrInitializationClosed)
+	require.ErrorIs(t, err, ErrInitializationClosed)
 }
 
 func TestMockSASLCanUseOpaqueMultiRoundBindTokens(t *testing.T) {
@@ -212,8 +212,8 @@ func TestSetupContextCancellationStopsNextAuthenticationRound(t *testing.T) {
 		}}, nil
 	}}}
 	_, _, err := dialer.initialize(ctx, conn, nil)
-	assert.ErrorIs(t, err, context.Canceled)
-	assert.ErrorIs(t, err, ErrSetup)
+	require.ErrorIs(t, err, context.Canceled)
+	require.ErrorIs(t, err, ErrSetup)
 	select {
 	case <-conn.Done():
 	default:
@@ -232,7 +232,7 @@ func TestInitializationTimeoutBudgetAndProfileMismatch(t *testing.T) {
 		var setupErr *SetupError
 		require.ErrorAs(t, err, &setupErr)
 		assert.Equal(t, SetupInitialization, setupErr.Stage)
-		assert.ErrorIs(t, err, sentinel)
+		require.ErrorIs(t, err, sentinel)
 		select {
 		case <-conn.Done():
 		default:
@@ -250,7 +250,7 @@ func TestInitializationTimeoutBudgetAndProfileMismatch(t *testing.T) {
 		var setupErr *SetupError
 		require.ErrorAs(t, err, &setupErr)
 		assert.Equal(t, SetupInitialization, setupErr.Stage)
-		assert.ErrorIs(t, err, context.DeadlineExceeded)
+		require.ErrorIs(t, err, context.DeadlineExceeded)
 	})
 
 	t.Run("invalid policy", func(t *testing.T) {
@@ -292,7 +292,7 @@ func TestInitializationTimeoutBudgetAndProfileMismatch(t *testing.T) {
 		var setupErr *SetupError
 		require.ErrorAs(t, err, &setupErr)
 		assert.Equal(t, SetupProfileMismatch, setupErr.Stage)
-		assert.ErrorIs(t, err, ErrProfileMismatch)
+		require.ErrorIs(t, err, ErrProfileMismatch)
 		assert.NotContains(t, err.Error(), "sensitive-profile-value")
 	})
 }
@@ -313,7 +313,7 @@ func TestAuthenticationFailureClosesResourcesAndRedactsCause(t *testing.T) {
 	var setupErr *SetupError
 	require.ErrorAs(t, err, &setupErr)
 	assert.Equal(t, SetupAuthentication, setupErr.Stage)
-	assert.ErrorIs(t, err, secretErr)
+	require.ErrorIs(t, err, secretErr)
 	assert.True(t, closed.Load())
 	assert.NotContains(t, err.Error(), "should-never-be-logged")
 	select {
@@ -329,7 +329,7 @@ func TestBindCannotChangeAssociationAfterReady(t *testing.T) {
 	require.ErrorIs(t, err, ErrAssociationChange)
 	unbind := newTestOperation(t, rfc4511.UnbindRequestIdentifier(), ResponseSpec{NoResponse: true}, CancelNone)
 	_, err = conn.Do(context.Background(), unbind)
-	assert.ErrorIs(t, err, ErrAssociationChange)
+	require.ErrorIs(t, err, ErrAssociationChange)
 }
 
 func TestInitializationOptionsAreBounded(t *testing.T) {
@@ -343,6 +343,6 @@ func TestInitializationOptionsAreBounded(t *testing.T) {
 func mustElement(t *testing.T, id ber.Identifier, value []byte) []byte {
 	t.Helper()
 	encoded, err := ber.AppendElement(nil, id, value)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 	return encoded
 }

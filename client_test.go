@@ -95,7 +95,7 @@ func TestClientGetRequiresOneEntry(t *testing.T) {
 		protocolResponse(t, rfc4511.SearchResultDoneIdentifier(), rfc4511.SearchResultDone{Result: rfc4511.LDAPResult{ResultCode: rfc4511.ResultSuccess}}),
 	}}}
 	_, err := NewClient(executor).Get(context.Background(), "uid=missing,dc=example", "uid")
-	assert.ErrorIs(t, err, ErrNotFound)
+	require.ErrorIs(t, err, ErrNotFound)
 }
 
 type scriptedExecutor struct {

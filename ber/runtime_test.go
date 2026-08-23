@@ -161,10 +161,10 @@ func TestFramerTruncation(t *testing.T) {
 		require.NoError(t, err)
 		_, err = framer.Next()
 		if n == 0 {
-			assert.ErrorIs(t, err, io.EOF)
+			require.ErrorIs(t, err, io.EOF)
 			continue
 		}
-		assert.ErrorIs(t, err, ber.ErrTruncated)
+		require.ErrorIs(t, err, ber.ErrTruncated)
 	}
 }
 

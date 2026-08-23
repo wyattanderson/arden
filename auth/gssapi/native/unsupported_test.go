@@ -11,5 +11,5 @@ import (
 func TestNewReportsUnavailable(t *testing.T) {
 	authentication, err := New("identity")
 	assert.Nil(t, authentication)
-	assert.ErrorIs(t, err, ErrUnavailable)
+	require.ErrorIs(t, err, ErrUnavailable)
 }

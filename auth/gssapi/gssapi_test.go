@@ -170,7 +170,7 @@ func TestGSSAPIRejectsSASLDataLayers(t *testing.T) {
 			var negotiationErr *NegotiationError
 			require.ErrorAs(t, err, &negotiationErr)
 			assert.Equal(t, test.failure, negotiationErr.Failure)
-			assert.ErrorIs(t, err, ErrNegotiation)
+			require.ErrorIs(t, err, ErrNegotiation)
 			assert.Empty(t, securityContext.wrapSeen)
 			assert.Len(t, session.operations, 1)
 			assert.NoError(t, authenticator.Close())
@@ -233,7 +233,7 @@ func TestGSSErrorPreservesMajorAndTypedCauseWithoutUnsafeText(t *testing.T) {
 	assert.Equal(t, OperationContinue, gssErr.Operation)
 	assert.True(t, gssErr.MajorKnown)
 	assert.Equal(t, uint32(11<<16), gssErr.Major)
-	assert.ErrorIs(t, err, gogssapi.ErrCredentialsExpired)
+	require.ErrorIs(t, err, gogssapi.ErrCredentialsExpired)
 	assert.NotContains(t, err.Error(), secret)
 	assert.NoError(t, authenticator.Close())
 }

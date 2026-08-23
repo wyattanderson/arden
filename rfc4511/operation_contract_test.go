@@ -128,6 +128,3 @@ func TestRequestMarshalersRejectNilReceiversAtomically(t *testing.T) {
 func requestTypeName(request ber.Marshaler) string {
 	return fmt.Sprintf("%T", request)
 }
-
-//go:fix inline
-func idPointer(id ber.Identifier) *ber.Identifier { return new(id) }

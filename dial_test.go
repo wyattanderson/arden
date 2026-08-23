@@ -113,7 +113,7 @@ func TestDialerTLSHandshakeUsesContext(t *testing.T) {
 	var transportErr *TransportError
 	require.ErrorAs(t, err, &transportErr)
 	assert.Equal(t, StageTLS, transportErr.Stage)
-	assert.ErrorIs(t, err, context.DeadlineExceeded)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
 	select {
 	case peer := <-accepted:
 		_ = peer.Close()

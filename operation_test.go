@@ -129,14 +129,14 @@ func TestResponseUnmarshalProtocol(t *testing.T) {
 
 func TestTransportErrorIdentity(t *testing.T) {
 	unsent := &arden.TransportError{Stage: arden.StageDial, Outcome: arden.OutcomeDefinitelyUnsent, Err: context.DeadlineExceeded}
-	assert.ErrorIs(t, unsent, arden.ErrTransport)
-	assert.ErrorIs(t, unsent, arden.ErrDefinitelyUnsent)
-	assert.ErrorIs(t, unsent, context.DeadlineExceeded)
-	assert.NotErrorIs(t, unsent, arden.ErrAmbiguousOutcome)
+	require.ErrorIs(t, unsent, arden.ErrTransport)
+	require.ErrorIs(t, unsent, arden.ErrDefinitelyUnsent)
+	require.ErrorIs(t, unsent, context.DeadlineExceeded)
+	require.NotErrorIs(t, unsent, arden.ErrAmbiguousOutcome)
 
 	ambiguous := &arden.TransportError{Stage: arden.StageWrite, Outcome: arden.OutcomeAmbiguous, Err: errors.New("short write")}
-	assert.ErrorIs(t, ambiguous, arden.ErrAmbiguousOutcome)
-	assert.NotErrorIs(t, ambiguous, arden.ErrDefinitelyUnsent)
+	require.ErrorIs(t, ambiguous, arden.ErrAmbiguousOutcome)
+	require.NotErrorIs(t, ambiguous, arden.ErrDefinitelyUnsent)
 }
 
 type profile struct{ Vendor []byte }
