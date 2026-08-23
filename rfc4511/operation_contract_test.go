@@ -25,34 +25,34 @@ func TestOperationConstructors(t *testing.T) {
 	}{
 		{"bind", func(c []ber.Marshaler) (protocol.Operation, error) {
 			return NewBindOperation(&BindRequest{}, c)
-		}, BindRequestIdentifier(), idPointer(BindResponseIdentifier()), nil, false, protocol.CancelClose, "ldap.bind"},
+		}, BindRequestIdentifier(), new(BindResponseIdentifier()), nil, false, protocol.CancelClose, "ldap.bind"},
 		{"unbind", func(c []ber.Marshaler) (protocol.Operation, error) {
 			return NewUnbindOperation(&UnbindRequest{}, c)
 		}, UnbindRequestIdentifier(), nil, nil, true, protocol.CancelClose, "ldap.unbind"},
 		{"search", func(c []ber.Marshaler) (protocol.Operation, error) {
 			return NewSearchOperation(&SearchRequest{}, c)
-		}, SearchRequestIdentifier(), idPointer(SearchResultDoneIdentifier()), []ber.Identifier{SearchResultEntryIdentifier(), SearchResultReferenceIdentifier()}, false, protocol.CancelAbandon, "ldap.search"},
+		}, SearchRequestIdentifier(), new(SearchResultDoneIdentifier()), []ber.Identifier{SearchResultEntryIdentifier(), SearchResultReferenceIdentifier()}, false, protocol.CancelAbandon, "ldap.search"},
 		{"modify", func(c []ber.Marshaler) (protocol.Operation, error) {
 			return NewModifyOperation(&ModifyRequest{}, c)
-		}, ModifyRequestIdentifier(), idPointer(ModifyResponseIdentifier()), nil, false, protocol.CancelDrain, "ldap.modify"},
+		}, ModifyRequestIdentifier(), new(ModifyResponseIdentifier()), nil, false, protocol.CancelDrain, "ldap.modify"},
 		{"add", func(c []ber.Marshaler) (protocol.Operation, error) {
 			return NewAddOperation(&AddRequest{}, c)
-		}, AddRequestIdentifier(), idPointer(AddResponseIdentifier()), nil, false, protocol.CancelDrain, "ldap.add"},
+		}, AddRequestIdentifier(), new(AddResponseIdentifier()), nil, false, protocol.CancelDrain, "ldap.add"},
 		{"delete", func(c []ber.Marshaler) (protocol.Operation, error) {
 			return NewDeleteOperation(&DeleteRequest{}, c)
-		}, DeleteRequestIdentifier(), idPointer(DeleteResponseIdentifier()), nil, false, protocol.CancelDrain, "ldap.delete"},
+		}, DeleteRequestIdentifier(), new(DeleteResponseIdentifier()), nil, false, protocol.CancelDrain, "ldap.delete"},
 		{"modify DN", func(c []ber.Marshaler) (protocol.Operation, error) {
 			return NewModifyDNOperation(&ModifyDNRequest{}, c)
-		}, ModifyDNRequestIdentifier(), idPointer(ModifyDNResponseIdentifier()), nil, false, protocol.CancelDrain, "ldap.modify-dn"},
+		}, ModifyDNRequestIdentifier(), new(ModifyDNResponseIdentifier()), nil, false, protocol.CancelDrain, "ldap.modify-dn"},
 		{"compare", func(c []ber.Marshaler) (protocol.Operation, error) {
 			return NewCompareOperation(&CompareRequest{}, c)
-		}, CompareRequestIdentifier(), idPointer(CompareResponseIdentifier()), nil, false, protocol.CancelDrain, "ldap.compare"},
+		}, CompareRequestIdentifier(), new(CompareResponseIdentifier()), nil, false, protocol.CancelDrain, "ldap.compare"},
 		{"abandon", func(c []ber.Marshaler) (protocol.Operation, error) {
 			return NewAbandonOperation(&AbandonRequest{}, c)
 		}, AbandonRequestIdentifier(), nil, nil, true, protocol.CancelNone, "ldap.abandon"},
 		{"extended", func(c []ber.Marshaler) (protocol.Operation, error) {
 			return NewExtendedOperation(&ExtendedRequest{}, c)
-		}, ExtendedRequestIdentifier(), idPointer(ExtendedResponseIdentifier()), []ber.Identifier{IntermediateResponseIdentifier()}, false, protocol.CancelDrain, "ldap.extended"},
+		}, ExtendedRequestIdentifier(), new(ExtendedResponseIdentifier()), []ber.Identifier{IntermediateResponseIdentifier()}, false, protocol.CancelDrain, "ldap.extended"},
 	}
 
 	for _, test := range tests {
@@ -129,4 +129,5 @@ func requestTypeName(request ber.Marshaler) string {
 	return fmt.Sprintf("%T", request)
 }
 
-func idPointer(id ber.Identifier) *ber.Identifier { return &id }
+//go:fix inline
+func idPointer(id ber.Identifier) *ber.Identifier { return new(id) }

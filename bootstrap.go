@@ -143,8 +143,7 @@ func (d *Dialer) authenticate(ctx context.Context, endpoint Endpoint, session In
 }
 
 func setupFailure(endpoint EndpointID, stage SetupStage, err error) error {
-	var setup *SetupError
-	if errors.As(err, &setup) {
+	if _, ok := errors.AsType[*SetupError](err); ok {
 		return err
 	}
 	return &SetupError{Endpoint: endpoint, Stage: stage, Err: err}

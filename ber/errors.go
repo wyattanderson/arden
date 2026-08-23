@@ -53,8 +53,7 @@ func (e *LimitError) Error() string {
 }
 
 func decodeError(offset int, err error) error {
-	var existing *DecodeError
-	if errors.As(err, &existing) {
+	if _, ok := errors.AsType[*DecodeError](err); ok {
 		return err
 	}
 	return &DecodeError{Offset: offset, Err: err}

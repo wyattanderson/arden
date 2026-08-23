@@ -220,9 +220,7 @@ func TestGSSErrorPreservesMajorAndTypedCauseWithoutUnsafeText(t *testing.T) {
 	const secret = "credential cache /secret/path for principal secret@EXAMPLE.TEST"
 	providerCause := gogssapi.FatalStatus{
 		FatalErrorCode: gogssapi.FatalErrorCode(11),
-		InfoStatus: gogssapi.InfoStatus{
-			MechErrors: []error{errors.New(secret)},
-		},
+		MechErrors:     []error{errors.New(secret)},
 	}
 	securityContext := &fakeSecurityContext{continues: []continueResult{{err: providerCause}}}
 	provider := &fakeProvider{name: new(fakeName), securityContext: securityContext}

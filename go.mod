@@ -1,6 +1,6 @@
 module github.com/wyattanderson/arden
 
-go 1.25.0
+go 1.27.0
 
 require (
 	github.com/golang-auth/go-gssapi-c v0.1.4

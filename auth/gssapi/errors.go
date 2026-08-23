@@ -69,16 +69,14 @@ func gssError(operation GSSOperation, err error) error {
 }
 
 func majorStatus(err error) (uint32, bool) {
-	var fatal gogssapi.FatalStatus
-	if errors.As(err, &fatal) {
+	if fatal, ok := errors.AsType[gogssapi.FatalStatus](err); ok {
 		return uint32(fatal.FatalErrorCode)<<16 | uint32(fatal.InformationCode), true
 	}
 	var fatalPointer *gogssapi.FatalStatus
 	if errors.As(err, &fatalPointer) && fatalPointer != nil {
 		return uint32(fatalPointer.FatalErrorCode)<<16 | uint32(fatalPointer.InformationCode), true
 	}
-	var info gogssapi.InfoStatus
-	if errors.As(err, &info) {
+	if info, ok := errors.AsType[gogssapi.InfoStatus](err); ok {
 		return uint32(info.InformationCode), true
 	}
 	var infoPointer *gogssapi.InfoStatus

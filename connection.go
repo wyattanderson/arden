@@ -1010,8 +1010,7 @@ func (c *Conn) classifyReadError(err error) error {
 	if errors.Is(err, io.EOF) {
 		return &TransportError{Stage: StagePeerClose, Outcome: OutcomeNotApplicable, Err: io.EOF}
 	}
-	var decodeErr *ber.DecodeError
-	if errors.As(err, &decodeErr) {
+	if _, ok := errors.AsType[*ber.DecodeError](err); ok {
 		return &ProtocolError{Kind: ProtocolFraming, Err: translateBERLimit(err)}
 	}
 	return &TransportError{Stage: StageRead, Outcome: OutcomeNotApplicable, Err: err}
