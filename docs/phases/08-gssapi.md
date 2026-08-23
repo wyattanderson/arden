@@ -1,5 +1,31 @@
 # Phase 8: optional native GSSAPI
 
+## Implementation status
+
+Implemented while Phase 7 is temporarily deferred:
+
+- `auth/gssapi` implements the RFC 4752 exchange against an injected
+  `github.com/golang-auth/go-gssapi/v3` provider. Unit tests use fake GSS
+  handles and scripted LDAP Bind responses, including binary and empty tokens,
+  cancellation between rounds, server rejection, handle cleanup, typed errors,
+  and authentication-only security-layer selection.
+- `auth/gssapi/native`, enabled by the `gssapi` build tag, registers
+  `github.com/golang-auth/go-gssapi-c` and uses platform default credentials.
+- `cmd/arden-gssapi-smoke` performs a verified LDAPS GSSAPI Bind, requires a
+  non-empty authorization identity from RFC 4532 `Who Am I?`, and performs a
+  read-only root DSE Search against a caller-supplied FreeIPA endpoint.
+- Platform, gssproxy, and troubleshooting documentation is in
+  [`docs/gssapi.md`](../gssapi.md).
+
+FreeIPA execution remains an external smoke check. A containerized FreeIPA
+environment is intentionally deferred until after that check.
+
+Accepted upstream limitation: `go-gssapi` retains typed standardized GSS
+status information and provider diagnostics, but `go-gssapi-c` does not expose
+the raw mechanism-specific minor value after formatting it. Arden's safe typed
+error exposes the reconstructable major status and wrapped provider cause; a
+raw minor field is not provided.
+
 ## Goal
 
 Add Kerberos identity proof through the SASL `GSSAPI` mechanism without

@@ -17,7 +17,9 @@ network retries.
 
 ## Status
 
-Phases 1 through 6 are implemented. The evidence index, RFC 4511 protocol
+Phases 1 through 6 are implemented. Phase 7 is currently deferred, and the
+optional Phase 8 GSSAPI implementation is available pending an external
+FreeIPA smoke check. The evidence index, RFC 4511 protocol
 inventory, transport-independent contracts, error taxonomy, and
 compile-checked API shapes are frozen. The `ber` package provides bounded
 definite-length BER parsing and encoding, strict LDAP primitive handling, and
@@ -35,7 +37,11 @@ The `pool` package adds least-loaded multiplexing, exact endpoint routing,
 exclusive connection leases, bounded admission, jittered replacement,
 lifetime draining, graceful shutdown, and statistics. `Dialer.Logger` emits
 safe debug-level `log/slog` records, core lifecycle hooks are available through
-`Dialer.Tracer`, and `otelldap` is the optional OpenTelemetry adapter.
+`Dialer.Tracer`, and `otelldap` is the optional OpenTelemetry adapter. The
+`auth/gssapi` package implements a mockable RFC 4752 exchange, while the
+build-tagged `auth/gssapi/native` adapter uses the platform GSSAPI through
+`github.com/golang-auth/go-gssapi` and selects authentication-only SASL over
+LDAPS.
 
 See [PROJECT_PLAN.md](PROJECT_PLAN.md) and the individual plans in
 [docs/phases](docs/phases). Phase 1 outputs are summarized in
@@ -76,6 +82,30 @@ DSE or other setup discovery use `arden.Bootstrap[P]`; its initializer runs
 exclusively after authentication and returns the typed endpoint profile before
 the connection is published.
 
+Native Kerberos authentication is opt-in and uses the platform's default
+credential acquisition:
+
+```go
+authentication, err := native.New("service-account-a")
+if err != nil {
+	return err
+}
+
+conn, err := (&arden.Dialer{Authentication: authentication}).Dial(ctx, arden.Endpoint{
+	ID:         "ipa-west",
+	Address:    "ipa-west.example:636",
+	ServerName: "ipa-west.example",
+})
+```
+
+Import `github.com/wyattanderson/arden/auth/gssapi/native` and build with the
+`gssapi` tag. The platform derives the target principal
+`ldap/ipa-west.example` from the `ldap@ipa-west.example` host-based GSS name.
+Integrity and confidentiality SASL data layers are rejected; TLS protects
+subsequent LDAP operations. See [docs/gssapi.md](docs/gssapi.md) for platform
+prerequisites, gssproxy configuration, troubleshooting, and the read-only
+FreeIPA smoke command.
+
 ## 389 Directory Server integration smoke test
 
 With Docker running, execute:
@@ -103,8 +133,8 @@ Set `ARDEN_389DS_IMAGE` to test another image reference. The normal
   downgrade are not supported.
 - 389 Directory Server and FreeIPA.
 - A cgo-free core.
-- Pluggable authentication. Ordinary Bind mechanisms remain possible; native
-  GSSAPI/Kerberos support is a later, optional package.
+- Pluggable authentication. Ordinary Bind mechanisms and optional native
+  GSSAPI/Kerberos authentication remain transparent to application operations.
 
 Compatibility with arbitrary LDAP servers is welcome when it comes naturally,
 but it is not a release requirement.

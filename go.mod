@@ -3,6 +3,8 @@ module github.com/wyattanderson/arden
 go 1.25.0
 
 require (
+	github.com/golang-auth/go-gssapi-c v0.1.4
+	github.com/golang-auth/go-gssapi/v3 v3.0.2-beta7
 	github.com/moby/moby/api v1.55.0
 	github.com/stretchr/testify v1.12.1
 	github.com/testcontainers/testcontainers-go v0.44.0
