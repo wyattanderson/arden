@@ -1,8 +1,10 @@
 package arden_test
 
 import (
-	"bytes"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/wyattanderson/arden"
 	"github.com/wyattanderson/arden/ber"
@@ -16,31 +18,21 @@ func TestParseResponseExposesOwnedEnvelopeViews(t *testing.T) {
 	)
 
 	response, err := arden.ParseResponse(message, ber.DefaultLimits())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if response.Header() != (arden.ResponseHeader{
+	require.NoError(t, err)
+	require.Equal(t, arden.ResponseHeader{
 		MessageID:  7,
 		ProtocolID: ber.Identifier{Class: ber.ClassApplication, Constructed: true, Number: 9},
-	}) {
-		t.Fatalf("Header = %#v", response.Header())
-	}
-	if !bytes.Equal(response.Protocol, protocol) {
-		t.Fatalf("Protocol = %x, want %x", response.Protocol, protocol)
-	}
-	if len(response.Controls) != 1 || !bytes.Equal(response.Controls[0].Raw, []byte{0x30, 0x00}) {
-		t.Fatalf("Controls = %#v", response.Controls)
-	}
-	if len(response.Extensions) != 1 || !bytes.Equal(response.Extensions[0].Raw, []byte{0x83, 0x01, 0x7f}) {
-		t.Fatalf("Extensions = %#v", response.Extensions)
-	}
+	}, response.Header())
+	require.Equal(t, protocol, response.Protocol)
+	require.Len(t, response.Controls, 1)
+	require.Equal(t, []byte{0x30, 0x00}, response.Controls[0].Raw)
+	require.Len(t, response.Extensions, 1)
+	require.Equal(t, []byte{0x83, 0x01, 0x7f}, response.Extensions[0].Raw)
 
 	for i := range message {
 		message[i] = 0
 	}
-	if !bytes.Equal(response.Protocol, protocol) {
-		t.Fatalf("response aliases parser input: %x", response.Protocol)
-	}
+	assert.Equal(t, protocol, response.Protocol)
 	isView := false
 	for i := range response.Bytes {
 		if &response.Protocol[0] == &response.Bytes[i] {
@@ -48,9 +40,7 @@ func TestParseResponseExposesOwnedEnvelopeViews(t *testing.T) {
 			break
 		}
 	}
-	if !isView {
-		t.Fatal("response protocol is not a view into response-owned bytes")
-	}
+	assert.True(t, isView)
 }
 
 func TestParseResponseRejectsMalformedEnvelopeShapes(t *testing.T) {
@@ -78,9 +68,8 @@ func TestParseResponseRejectsMalformedEnvelopeShapes(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if _, err := arden.ParseResponse(test.message, ber.DefaultLimits()); err == nil {
-				t.Fatalf("ParseResponse(%x) succeeded", test.message)
-			}
+			_, err := arden.ParseResponse(test.message, ber.DefaultLimits())
+			assert.Error(t, err)
 		})
 	}
 }
@@ -88,9 +77,7 @@ func TestParseResponseRejectsMalformedEnvelopeShapes(t *testing.T) {
 func ldapMessage(t *testing.T, messageID int64, protocol []byte, controlsAndExtensions ...[]byte) []byte {
 	t.Helper()
 	messageIDElement, err := ber.AppendInteger(nil, messageID)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	contents := append([]byte(nil), messageIDElement...)
 	contents = append(contents, protocol...)
 	if len(controlsAndExtensions) > 0 {
@@ -103,17 +90,13 @@ func ldapMessage(t *testing.T, messageID int64, protocol []byte, controlsAndExte
 			Constructed: true,
 			Number:      0,
 		}, controls)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		for _, extension := range controlsAndExtensions[1:] {
 			contents = append(contents, extension...)
 		}
 	}
 	message, err := ber.AppendSequence(nil, contents)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return message
 }
 

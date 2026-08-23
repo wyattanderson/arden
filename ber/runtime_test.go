@@ -2,10 +2,12 @@ package ber_test
 
 import (
 	"bytes"
-	"errors"
 	"io"
 	"math"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/wyattanderson/arden/ber"
 )
@@ -26,19 +28,11 @@ func TestIdentifierBoundaries(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			got, err := ber.AppendIdentifier(nil, test.id, math.MaxUint32)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !bytes.Equal(got, test.want) {
-				t.Fatalf("AppendIdentifier() = %x, want %x", got, test.want)
-			}
+			require.NoError(t, err)
+			require.Equal(t, test.want, got)
 			e, err := ber.DecodeElement(append(got, 0), limits())
-			if err != nil {
-				t.Fatal(err)
-			}
-			if e.Identifier != test.id {
-				t.Fatalf("identifier = %#v, want %#v", e.Identifier, test.id)
-			}
+			require.NoError(t, err)
+			assert.Equal(t, test.id, e.Identifier)
 		})
 	}
 }
@@ -48,20 +42,13 @@ func TestLengthBoundaries(t *testing.T) {
 		t.Run("length", func(t *testing.T) {
 			value := bytes.Repeat([]byte{0x42}, length)
 			encoded, err := ber.AppendOctetString(nil, value)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			r, err := ber.NewReader(encoded, limits())
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			got, err := r.OctetString()
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !bytes.Equal(got, value) || r.Remaining() != 0 {
-				t.Fatalf("round trip failed for length %d", length)
-			}
+			require.NoError(t, err)
+			assert.Equal(t, value, got)
+			assert.Zero(t, r.Remaining())
 		})
 	}
 }
@@ -69,22 +56,16 @@ func TestLengthBoundaries(t *testing.T) {
 func TestPrimitiveRoundTrips(t *testing.T) {
 	for _, value := range []int64{math.MinInt64, -129, -128, -1, 0, 1, 127, 128, math.MaxInt64} {
 		encoded, err := ber.AppendInteger(nil, value)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		r, err := ber.NewReader(encoded, limits())
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		got, err := r.Integer()
-		if err != nil || got != value {
-			t.Fatalf("Integer(%d) = %d, %v", value, got, err)
-		}
+		require.NoError(t, err)
+		assert.Equal(t, value, got)
 	}
 	encoded, err := ber.AppendBoolean(nil, true)
-	if err != nil || !bytes.Equal(encoded, []byte{1, 1, 0xff}) {
-		t.Fatalf("true BOOLEAN = %x, %v", encoded, err)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, []byte{1, 1, 0xff}, encoded)
 }
 
 func TestReaderRejectsLDAPRestrictionsAtomically(t *testing.T) {
@@ -104,16 +85,10 @@ func TestReaderRejectsLDAPRestrictionsAtomically(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			r, err := ber.NewReader(test.data, limits())
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			err = test.read(r)
-			if !errors.Is(err, test.want) {
-				t.Fatalf("error = %v, want %v", err, test.want)
-			}
-			if r.Offset() != 0 {
-				t.Fatalf("failed primitive advanced cursor to %d", r.Offset())
-			}
+			require.ErrorIs(t, err, test.want)
+			assert.Zero(t, r.Offset())
 		})
 	}
 }
@@ -125,41 +100,29 @@ func TestReaderLimits(t *testing.T) {
 		l.MaxDepth = 1
 		r, _ := ber.NewReader(data, l)
 		child, err := r.Sequence()
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		_, err = child.Sequence()
 		var limit *ber.LimitError
-		if !errors.As(err, &limit) || limit.Limit != "depth" {
-			t.Fatalf("error = %v, want depth limit", err)
-		}
+		require.ErrorAs(t, err, &limit)
+		assert.Equal(t, "depth", limit.Limit)
 	})
 	t.Run("elements", func(t *testing.T) {
 		l := limits()
 		l.MaxElements = 1
 		r, _ := ber.NewReader([]byte{0x05, 0x00, 0x05, 0x00}, l)
-		if err := r.Null(); err != nil {
-			t.Fatal(err)
-		}
-		if err := r.Null(); err == nil {
-			t.Fatal("second element accepted")
-		}
+		require.NoError(t, r.Null())
+		assert.Error(t, r.Null())
 	})
 }
 
 func TestSkipElementValidatesNestedLimits(t *testing.T) {
 	t.Run("peek does not advance", func(t *testing.T) {
 		r, err := ber.NewReader([]byte{0x04, 0x00}, limits())
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		id, err := r.PeekIdentifier()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if id != ber.OctetStringIdentifier || r.Offset() != 0 {
-			t.Fatalf("PeekIdentifier() = %s at offset %d", id, r.Offset())
-		}
+		require.NoError(t, err)
+		assert.Equal(t, ber.OctetStringIdentifier, id)
+		assert.Zero(t, r.Offset())
 	})
 
 	t.Run("unknown extension cannot bypass depth", func(t *testing.T) {
@@ -167,12 +130,9 @@ func TestSkipElementValidatesNestedLimits(t *testing.T) {
 		l := limits()
 		l.MaxDepth = 1
 		r, err := ber.NewReader(data, l)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, err := r.SkipElement(); err == nil {
-			t.Fatal("SkipElement accepted nested value beyond depth limit")
-		}
+		require.NoError(t, err)
+		_, err = r.SkipElement()
+		assert.Error(t, err)
 	})
 }
 
@@ -184,20 +144,12 @@ func TestFramerEverySplit(t *testing.T) {
 		t.Run("split", func(t *testing.T) {
 			reader := &splitReader{parts: [][]byte{frame[:split], frame[split:]}}
 			framer, err := ber.NewFramer(reader, limits())
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			got, err := framer.Next()
-			if err != nil {
-				t.Fatalf("split %d: %v", split, err)
-			}
-			if !bytes.Equal(got, frame) {
-				t.Fatalf("split %d: got %x", split, got)
-			}
+			require.NoError(t, err)
+			require.Equal(t, frame, got)
 			got[0] = 0
-			if frame[0] == 0 {
-				t.Fatal("frame aliases source")
-			}
+			assert.NotZero(t, frame[0])
 		})
 	}
 }
@@ -206,19 +158,13 @@ func TestFramerTruncation(t *testing.T) {
 	frame := []byte{0x30, 0x03, 0x02, 0x01, 0x01}
 	for n := range len(frame) {
 		framer, err := ber.NewFramer(bytes.NewReader(frame[:n]), limits())
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		_, err = framer.Next()
 		if n == 0 {
-			if !errors.Is(err, io.EOF) {
-				t.Fatalf("empty stream: %v", err)
-			}
+			assert.ErrorIs(t, err, io.EOF)
 			continue
 		}
-		if !errors.Is(err, ber.ErrTruncated) {
-			t.Fatalf("truncation at %d: %v", n, err)
-		}
+		assert.ErrorIs(t, err, ber.ErrTruncated)
 	}
 }
 
@@ -227,16 +173,10 @@ func TestReaderTruncation(t *testing.T) {
 	for n := range len(frame) {
 		t.Run("truncation", func(t *testing.T) {
 			r, err := ber.NewReader(frame[:n], limits())
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			_, err = r.ReadElement()
-			if !errors.Is(err, ber.ErrTruncated) {
-				t.Fatalf("truncation at %d: %v", n, err)
-			}
-			if r.Offset() != 0 {
-				t.Fatalf("truncation at %d advanced cursor to %d", n, r.Offset())
-			}
+			require.ErrorIs(t, err, ber.ErrTruncated)
+			assert.Zero(t, r.Offset())
 		})
 	}
 }

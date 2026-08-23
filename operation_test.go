@@ -5,6 +5,9 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/wyattanderson/arden"
 	"github.com/wyattanderson/arden/ber"
 	"github.com/wyattanderson/arden/pool"
@@ -49,9 +52,7 @@ func TestResponsePatternIsImmutableAndTagOnly(t *testing.T) {
 		Continue: continuing,
 		Complete: terminal,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	continuing[0] = modifyDone
 	terminal[0] = modifyDone
@@ -65,9 +66,7 @@ func TestResponsePatternIsImmutableAndTagOnly(t *testing.T) {
 		{searchDone, arden.ClassificationComplete},
 		{modifyDone, arden.ClassificationInvalid},
 	} {
-		if got := pattern.Classify(test.id); got != test.want {
-			t.Errorf("Classify(%s) = %v, want %v", test.id, got, test.want)
-		}
+		assert.Equal(t, test.want, pattern.Classify(test.id))
 	}
 }
 
@@ -77,33 +76,27 @@ func TestPatternRejectsOverlapAndNonApplicationIdentifiers(t *testing.T) {
 		{Complete: []ber.Identifier{{Class: ber.ClassUniversal, Constructed: true, Number: 5}}},
 		{NoResponse: true, Complete: []ber.Identifier{searchDone}},
 	} {
-		if _, err := arden.NewResponsePattern(spec); err == nil {
-			t.Fatalf("NewResponsePattern(%+v) succeeded", spec)
-		}
+		_, err := arden.NewResponsePattern(spec)
+		assert.Error(t, err)
 	}
 }
 
 func TestCompileOnlyContracts(t *testing.T) {
 	pattern, err := arden.NewResponsePattern(arden.ResponseSpec{Complete: []ber.Identifier{searchDone}})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	op := arden.Operation{
 		Protocol:     rawOperation{id: searchRequest, value: []byte{0x63, 0x00}},
 		Responses:    pattern,
 		Cancellation: arden.CancelDrain,
 		Metadata:     arden.OperationMetadata{Label: "root-dse"},
 	}
-	if err := op.Validate(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, op.Validate())
 
 	selection, err := pool.Endpoint(arden.EndpointID("ipa-west"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	if got, ok := selection.EndpointID(); !ok || got != "ipa-west" {
-		t.Fatalf("EndpointID() = %q, %v", got, ok)
+		assert.True(t, ok)
+		assert.Equal(t, arden.EndpointID("ipa-west"), got)
 	}
 
 	var _ arden.Authentication = authenticationContract{}
@@ -116,9 +109,7 @@ func TestCompileOnlyContracts(t *testing.T) {
 func TestResponseUnmarshalProtocol(t *testing.T) {
 	id := ber.Identifier{Class: ber.ClassApplication, Number: 9}
 	protocol, err := ber.AppendPrimitive(nil, id, []byte("result"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	response := arden.Response{
 		MessageID:  7,
 		ProtocolID: id,
@@ -128,31 +119,24 @@ func TestResponseUnmarshalProtocol(t *testing.T) {
 
 	var decoded rawUnmarshaler
 	decoded.id = id
-	if err := response.UnmarshalProtocol(&decoded, ber.DefaultLimits()); err != nil {
-		t.Fatal(err)
-	}
-	if got, want := string(decoded.value), "result"; got != want {
-		t.Fatalf("decoded value = %q, want %q", got, want)
-	}
+	require.NoError(t, response.UnmarshalProtocol(&decoded, ber.DefaultLimits()))
+	require.Equal(t, "result", string(decoded.value))
 
 	withTrailing := response
 	withTrailing.Protocol = append(append([]byte(nil), protocol...), 0x05, 0x00)
-	if err := withTrailing.UnmarshalProtocol(&rawUnmarshaler{id: id}, ber.DefaultLimits()); !errors.Is(err, ber.ErrTrailingData) {
-		t.Fatalf("trailing decode error = %v, want ErrTrailingData", err)
-	}
+	require.ErrorIs(t, withTrailing.UnmarshalProtocol(&rawUnmarshaler{id: id}, ber.DefaultLimits()), ber.ErrTrailingData)
 }
 
 func TestTransportErrorIdentity(t *testing.T) {
 	unsent := &arden.TransportError{Stage: arden.StageDial, Outcome: arden.OutcomeDefinitelyUnsent, Err: context.DeadlineExceeded}
-	if !errors.Is(unsent, arden.ErrTransport) || !errors.Is(unsent, arden.ErrDefinitelyUnsent) ||
-		!errors.Is(unsent, context.DeadlineExceeded) || errors.Is(unsent, arden.ErrAmbiguousOutcome) {
-		t.Fatalf("unexpected unsent error identity: %v", unsent)
-	}
+	assert.ErrorIs(t, unsent, arden.ErrTransport)
+	assert.ErrorIs(t, unsent, arden.ErrDefinitelyUnsent)
+	assert.ErrorIs(t, unsent, context.DeadlineExceeded)
+	assert.NotErrorIs(t, unsent, arden.ErrAmbiguousOutcome)
 
 	ambiguous := &arden.TransportError{Stage: arden.StageWrite, Outcome: arden.OutcomeAmbiguous, Err: errors.New("short write")}
-	if !errors.Is(ambiguous, arden.ErrAmbiguousOutcome) || errors.Is(ambiguous, arden.ErrDefinitelyUnsent) {
-		t.Fatalf("unexpected ambiguous error identity: %v", ambiguous)
-	}
+	assert.ErrorIs(t, ambiguous, arden.ErrAmbiguousOutcome)
+	assert.NotErrorIs(t, ambiguous, arden.ErrDefinitelyUnsent)
 }
 
 type profile struct{ Vendor []byte }

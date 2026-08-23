@@ -6,10 +6,12 @@ import (
 	"errors"
 	"io"
 	"net"
-	"slices"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/wyattanderson/arden/ber"
 	"github.com/wyattanderson/arden/rfc4511"
@@ -36,13 +38,9 @@ func (p testProtocol) AppendBER(dst []byte) ([]byte, error) {
 func newTestOperation(t *testing.T, request ber.Identifier, pattern ResponseSpec, mode CancellationMode) Operation {
 	t.Helper()
 	encoded, err := ber.AppendElement(nil, request, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	responses, err := NewResponsePattern(pattern)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return Operation{
 		Protocol:     testProtocol{id: request, encoded: encoded},
 		Responses:    responses,
@@ -53,14 +51,10 @@ func newTestOperation(t *testing.T, request ber.Identifier, pattern ResponseSpec
 func newPipeConnection(t *testing.T, options ConnectionOptions, maxID MessageID) (*Conn, net.Conn) {
 	t.Helper()
 	normalized, err := options.normalized()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	client, server := net.Pipe()
 	conn, err := newConn(client, Endpoint{ID: "test", Address: "pipe", Transport: TransportPlaintext}, normalized, maxID)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() {
 		conn.retire(ErrClosed)
 		_ = server.Close()
@@ -71,9 +65,7 @@ func newPipeConnection(t *testing.T, options ConnectionOptions, maxID MessageID)
 func newTestFramer(t *testing.T, conn net.Conn) *ber.Framer {
 	t.Helper()
 	framer, err := ber.NewFramer(conn, ber.DefaultLimits())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return framer
 }
 
@@ -81,12 +73,12 @@ func readTestMessage(t *testing.T, framer *ber.Framer) Response {
 	t.Helper()
 	message, err := framer.Next()
 	if err != nil {
-		t.Errorf("read LDAP message: %v", err)
+		require.NoError(t, err)
 		return Response{}
 	}
 	response, err := ParseResponse(message, ber.DefaultLimits())
 	if err != nil {
-		t.Errorf("parse LDAP message: %v", err)
+		require.NoError(t, err)
 		return Response{}
 	}
 	return response
@@ -96,12 +88,12 @@ func testLDAPMessage(t *testing.T, id MessageID, protocolID ber.Identifier, valu
 	t.Helper()
 	protocol, err := ber.AppendElement(nil, protocolID, value)
 	if err != nil {
-		t.Errorf("encode protocol: %v", err)
+		require.NoError(t, err)
 		return nil
 	}
 	message, err := encodeInternalRequest(id, protocol)
 	if err != nil {
-		t.Errorf("encode LDAP message: %v", err)
+		require.NoError(t, err)
 		return nil
 	}
 	return message
@@ -110,7 +102,7 @@ func testLDAPMessage(t *testing.T, id MessageID, protocolID ber.Identifier, valu
 func writeTestMessage(t *testing.T, conn net.Conn, message []byte) {
 	t.Helper()
 	if _, err := conn.Write(message); err != nil {
-		t.Errorf("write LDAP message: %v", err)
+		require.NoError(t, err)
 	}
 }
 
@@ -130,34 +122,24 @@ func TestConnectionRoutesInterleavedOperations(t *testing.T) {
 	search, err := conn.Do(context.Background(), newTestOperation(t, testSearchRequest, ResponseSpec{
 		Continue: []ber.Identifier{testSearchEntry}, Complete: []ber.Identifier{testSearchDone},
 	}, CancelDrain))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	modify, err := conn.Do(context.Background(), newTestOperation(t, testModifyRequest, ResponseSpec{
 		Complete: []ber.Identifier{testModifyDone},
 	}, CancelDrain))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	searchEntry, err := search.Next(context.Background())
-	if err != nil || searchEntry.ProtocolID != testSearchEntry {
-		t.Fatalf("search entry = %#v, %v", searchEntry.Header(), err)
-	}
+	require.NoError(t, err)
+	require.Equal(t, testSearchEntry, searchEntry.ProtocolID)
 	modifyDone, err := modify.Next(context.Background())
-	if err != nil || modifyDone.ProtocolID != testModifyDone {
-		t.Fatalf("modify result = %#v, %v", modifyDone.Header(), err)
-	}
+	require.NoError(t, err)
+	require.Equal(t, testModifyDone, modifyDone.ProtocolID)
 	searchDone, err := search.Next(context.Background())
-	if err != nil || searchDone.ProtocolID != testSearchDone {
-		t.Fatalf("search done = %#v, %v", searchDone.Header(), err)
-	}
-	if _, err := search.Next(context.Background()); !errors.Is(err, io.EOF) {
-		t.Fatalf("search terminal error = %v, want EOF", err)
-	}
-	if err := <-serverErr; err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	require.Equal(t, testSearchDone, searchDone.ProtocolID)
+	_, err = search.Next(context.Background())
+	require.ErrorIs(t, err, io.EOF)
+	require.NoError(t, <-serverErr)
 }
 
 func TestConnectionSerializesConcurrentShortWrites(t *testing.T) {
@@ -189,16 +171,13 @@ func TestConnectionSerializesConcurrentShortWrites(t *testing.T) {
 	wg.Wait()
 	close(errs)
 	for err := range errs {
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 	}
 	seen := make(map[MessageID]bool)
 	for range operations {
 		id := <-ids
-		if id == 0 || seen[id] {
-			t.Fatalf("invalid or duplicate concurrent message ID %d", id)
-		}
+		require.NotZero(t, id)
+		require.NotContains(t, seen, id)
 		seen[id] = true
 	}
 }
@@ -215,16 +194,11 @@ func TestMessageIDWrapSkipsOnlyLiveIDs(t *testing.T) {
 	op := newTestOperation(t, testModifyRequest, ResponseSpec{NoResponse: true}, CancelNone)
 	for range 3 {
 		stream, err := conn.Do(context.Background(), op)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, err := stream.Next(context.Background()); !errors.Is(err, io.EOF) {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
+		_, err = stream.Next(context.Background())
+		require.ErrorIs(t, err, io.EOF)
 	}
-	if got := []MessageID{<-ids, <-ids, <-ids}; !slices.Equal(got, []MessageID{1, 2, 1}) {
-		t.Fatalf("message IDs = %v, want [1 2 1]", got)
-	}
+	assert.Equal(t, []MessageID{1, 2, 1}, []MessageID{<-ids, <-ids, <-ids})
 }
 
 func TestCanceledDrainReleasesIDOnlyAfterTerminalResponse(t *testing.T) {
@@ -238,14 +212,11 @@ func TestCanceledDrainReleasesIDOnlyAfterTerminalResponse(t *testing.T) {
 	firstRequestReady := make(chan Response, 1)
 	go func() { firstRequestReady <- readTestMessage(t, framer) }()
 	first, err := conn.Do(opCtx, op)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	firstRequest := <-firstRequestReady
 	cancel()
-	if _, err := first.Next(context.Background()); !errors.Is(err, context.Canceled) {
-		t.Fatalf("canceled stream error = %v", err)
-	}
+	_, err = first.Next(context.Background())
+	require.ErrorIs(t, err, context.Canceled)
 
 	secondResult := make(chan ResponseStream, 1)
 	secondErr := make(chan error, 1)
@@ -256,25 +227,20 @@ func TestCanceledDrainReleasesIDOnlyAfterTerminalResponse(t *testing.T) {
 	}()
 	select {
 	case err := <-secondErr:
-		t.Fatalf("second operation completed before drain with %v", err)
+		assert.Fail(t, "second operation completed before drain", "%v", err)
 	case <-time.After(25 * time.Millisecond):
 	}
 
 	writeTestMessage(t, peer, testLDAPMessage(t, firstRequest.MessageID, testSearchEntry, nil))
 	writeTestMessage(t, peer, testLDAPMessage(t, firstRequest.MessageID, testSearchDone, nil))
 	secondRequest := readTestMessage(t, framer)
-	if secondRequest.MessageID != firstRequest.MessageID {
-		t.Fatalf("reused message ID = %d, want %d", secondRequest.MessageID, firstRequest.MessageID)
-	}
+	require.Equal(t, firstRequest.MessageID, secondRequest.MessageID)
 	writeTestMessage(t, peer, testLDAPMessage(t, secondRequest.MessageID, testSearchDone, nil))
 	second := <-secondResult
-	if err := <-secondErr; err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, <-secondErr)
 	response, err := second.Next(context.Background())
-	if err != nil || response.ProtocolID != testSearchDone {
-		t.Fatalf("second response = %#v, %v", response.Header(), err)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, testSearchDone, response.ProtocolID)
 }
 
 func TestTerminalResponseWinsCancellationRace(t *testing.T) {
@@ -284,22 +250,19 @@ func TestTerminalResponseWinsCancellationRace(t *testing.T) {
 	go func() { requestReady <- readTestMessage(t, framer) }()
 	ctx, cancel := context.WithCancel(context.Background())
 	stream, err := conn.Do(ctx, newTestOperation(t, testModifyRequest, ResponseSpec{Complete: []ber.Identifier{testModifyDone}}, CancelDrain))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	request := <-requestReady
 	writeTestMessage(t, peer, testLDAPMessage(t, request.MessageID, testModifyDone, nil))
 	concrete := stream.(*responseStream)
 	select {
 	case <-concrete.pending.ready:
 	case <-time.After(time.Second):
-		t.Fatal("terminal response was not routed")
+		require.Fail(t, "terminal response was not routed")
 	}
 	cancel()
 	response, err := stream.Next(context.Background())
-	if err != nil || response.ProtocolID != testModifyDone {
-		t.Fatalf("terminal/cancellation race = %#v, %v", response.Header(), err)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, testModifyDone, response.ProtocolID)
 }
 
 func TestAbandonCancellationTombstonesTarget(t *testing.T) {
@@ -312,41 +275,31 @@ func TestAbandonCancellationTombstonesTarget(t *testing.T) {
 	targetReady := make(chan Response, 1)
 	go func() { targetReady <- readTestMessage(t, framer) }()
 	stream, err := conn.Do(opCtx, op)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	target := <-targetReady
 	cancel()
-	if _, err := stream.Next(context.Background()); !errors.Is(err, context.Canceled) {
-		t.Fatalf("canceled stream error = %v", err)
-	}
+	_, err = stream.Next(context.Background())
+	require.ErrorIs(t, err, context.Canceled)
 
 	abandon := readTestMessage(t, framer)
-	if abandon.ProtocolID != rfc4511.AbandonRequestIdentifier() {
-		t.Fatalf("cancellation protocol = %s, want Abandon", abandon.ProtocolID)
-	}
+	require.Equal(t, rfc4511.AbandonRequestIdentifier(), abandon.ProtocolID)
 	r, err := ber.NewReader(abandon.Protocol, ber.DefaultLimits())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	abandonedID, err := r.IntegerWithIdentifier(rfc4511.AbandonRequestIdentifier())
-	if err != nil || MessageID(abandonedID) != target.MessageID {
-		t.Fatalf("Abandon target = %d, %v; want %d", abandonedID, err, target.MessageID)
-	}
+	require.NoError(t, err)
+	require.Equal(t, target.MessageID, MessageID(abandonedID))
 
 	writeTestMessage(t, peer, testLDAPMessage(t, target.MessageID, testSearchEntry, nil))
 	writeTestMessage(t, peer, testLDAPMessage(t, target.MessageID, testSearchDone, nil))
 	select {
 	case <-conn.Done():
-		t.Fatalf("tombstoned responses retired connection: %v", conn.Err())
+		assert.Fail(t, "tombstoned responses retired connection", "%v", conn.Err())
 	case <-time.After(25 * time.Millisecond):
 	}
 	conn.mu.Lock()
 	_, tombstoned := conn.tombstones[target.MessageID]
 	conn.mu.Unlock()
-	if !tombstoned {
-		t.Fatal("Abandon target was reused after a terminal response")
-	}
+	assert.True(t, tombstoned)
 }
 
 func TestSlowConsumerCannotBlockUnrelatedOperation(t *testing.T) {
@@ -365,14 +318,10 @@ func TestSlowConsumerCannotBlockUnrelatedOperation(t *testing.T) {
 		requests <- readTestMessage(t, framer)
 	}()
 	search, err := conn.Do(context.Background(), searchOp)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	searchRequest := <-requests
 	modify, err := conn.Do(context.Background(), modifyOp)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	modifyRequest := <-requests
 
 	writeTestMessage(t, peer, testLDAPMessage(t, searchRequest.MessageID, testSearchEntry, []byte("one")))
@@ -381,12 +330,10 @@ func TestSlowConsumerCannotBlockUnrelatedOperation(t *testing.T) {
 	writeTestMessage(t, peer, testLDAPMessage(t, searchRequest.MessageID, testSearchDone, nil))
 
 	response, err := modify.Next(context.Background())
-	if err != nil || response.ProtocolID != testModifyDone {
-		t.Fatalf("unrelated operation = %#v, %v", response.Header(), err)
-	}
-	if _, err := search.Next(context.Background()); !errors.Is(err, ErrResourceLimit) {
-		t.Fatalf("slow consumer error = %v, want resource limit", err)
-	}
+	require.NoError(t, err)
+	require.Equal(t, testModifyDone, response.ProtocolID)
+	_, err = search.Next(context.Background())
+	assert.ErrorIs(t, err, ErrResourceLimit)
 }
 
 func TestUnexpectedMessageIDRetiresConnection(t *testing.T) {
@@ -395,12 +342,11 @@ func TestUnexpectedMessageIDRetiresConnection(t *testing.T) {
 	select {
 	case <-conn.Done():
 	case <-time.After(time.Second):
-		t.Fatal("connection did not retire")
+		require.Fail(t, "connection did not retire")
 	}
 	var protocolErr *ProtocolError
-	if !errors.As(conn.Err(), &protocolErr) || protocolErr.Kind != ProtocolUnexpectedMessageID {
-		t.Fatalf("connection error = %v", conn.Err())
-	}
+	require.ErrorAs(t, conn.Err(), &protocolErr)
+	assert.Equal(t, ProtocolUnexpectedMessageID, protocolErr.Kind)
 }
 
 func TestUnexpectedApplicationTagRetiresConnection(t *testing.T) {
@@ -409,16 +355,13 @@ func TestUnexpectedApplicationTagRetiresConnection(t *testing.T) {
 	requestReady := make(chan Response, 1)
 	go func() { requestReady <- readTestMessage(t, framer) }()
 	stream, err := conn.Do(context.Background(), newTestOperation(t, testModifyRequest, ResponseSpec{Complete: []ber.Identifier{testModifyDone}}, CancelDrain))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	request := <-requestReady
 	writeTestMessage(t, peer, testLDAPMessage(t, request.MessageID, testSearchEntry, nil))
 	_, err = stream.Next(context.Background())
 	var protocolErr *ProtocolError
-	if !errors.As(err, &protocolErr) || protocolErr.Kind != ProtocolUnexpectedIdentifier {
-		t.Fatalf("stream error = %v", err)
-	}
+	require.ErrorAs(t, err, &protocolErr)
+	assert.Equal(t, ProtocolUnexpectedIdentifier, protocolErr.Kind)
 }
 
 func TestPeerClosureMarksWrittenOperationAmbiguous(t *testing.T) {
@@ -427,16 +370,14 @@ func TestPeerClosureMarksWrittenOperationAmbiguous(t *testing.T) {
 	requestReady := make(chan Response, 1)
 	go func() { requestReady <- readTestMessage(t, framer) }()
 	stream, err := conn.Do(context.Background(), newTestOperation(t, testModifyRequest, ResponseSpec{Complete: []ber.Identifier{testModifyDone}}, CancelDrain))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	<-requestReady
 	_ = peer.Close()
 	_, err = stream.Next(context.Background())
 	var transportErr *TransportError
-	if !errors.As(err, &transportErr) || transportErr.Stage != StagePeerClose || !errors.Is(err, ErrAmbiguousOutcome) {
-		t.Fatalf("peer closure error = %v", err)
-	}
+	require.ErrorAs(t, err, &transportErr)
+	assert.Equal(t, StagePeerClose, transportErr.Stage)
+	assert.ErrorIs(t, err, ErrAmbiguousOutcome)
 }
 
 func TestMalformedFrameAndEnvelopeRetireConnection(t *testing.T) {
@@ -454,12 +395,11 @@ func TestMalformedFrameAndEnvelopeRetireConnection(t *testing.T) {
 			select {
 			case <-conn.Done():
 			case <-time.After(time.Second):
-				t.Fatal("connection did not retire")
+				require.Fail(t, "connection did not retire")
 			}
 			var protocolErr *ProtocolError
-			if !errors.As(conn.Err(), &protocolErr) || protocolErr.Kind != test.kind {
-				t.Fatalf("connection error = %v", conn.Err())
-			}
+			require.ErrorAs(t, conn.Err(), &protocolErr)
+			assert.Equal(t, test.kind, protocolErr.Kind)
 		})
 	}
 }
@@ -472,9 +412,8 @@ func TestUnsolicitedResponseAndNoticeOfDisconnection(t *testing.T) {
 		contents, _ = ber.AppendOctetString(contents, nil)
 		writeTestMessage(t, peer, testLDAPMessage(t, 0, rfc4511.ExtendedResponseIdentifier(), contents))
 		response, err := conn.NextUnsolicited(context.Background())
-		if err != nil || response.MessageID != 0 {
-			t.Fatalf("unsolicited response = %#v, %v", response.Header(), err)
-		}
+		require.NoError(t, err)
+		assert.Zero(t, response.MessageID)
 	})
 
 	t.Run("notice", func(t *testing.T) {
@@ -486,12 +425,10 @@ func TestUnsolicitedResponseAndNoticeOfDisconnection(t *testing.T) {
 		writeTestMessage(t, peer, testLDAPMessage(t, 0, rfc4511.ExtendedResponseIdentifier(), contents))
 		_, err := conn.NextUnsolicited(context.Background())
 		var notice *NoticeError
-		if !errors.As(err, &notice) || notice.ResultCode != 52 || !bytes.Equal(notice.Diagnostic, []byte("server shutdown")) {
-			t.Fatalf("notice error = %#v", err)
-		}
-		if !errors.Is(err, ErrNoticeOfDisconnection) {
-			t.Fatalf("notice identity = %v", err)
-		}
+		require.ErrorAs(t, err, &notice)
+		assert.Equal(t, int64(52), notice.ResultCode)
+		assert.Equal(t, []byte("server shutdown"), notice.Diagnostic)
+		assert.ErrorIs(t, err, ErrNoticeOfDisconnection)
 	})
 }
 
@@ -501,44 +438,29 @@ func TestCloseSendsUnbindAndIsIdempotent(t *testing.T) {
 	closed := make(chan error, 1)
 	go func() { closed <- conn.Close() }()
 	request := readTestMessage(t, framer)
-	if request.ProtocolID != rfc4511.UnbindRequestIdentifier() {
-		t.Fatalf("close protocol = %s, want Unbind", request.ProtocolID)
-	}
-	if err := <-closed; err != nil {
-		t.Fatal(err)
-	}
-	if !errors.Is(conn.Err(), ErrClosed) {
-		t.Fatalf("close error = %v", conn.Err())
-	}
-	if err := conn.Close(); err != nil {
-		t.Fatalf("second close = %v", err)
-	}
+	require.Equal(t, rfc4511.UnbindRequestIdentifier(), request.ProtocolID)
+	require.NoError(t, <-closed)
+	assert.ErrorIs(t, conn.Err(), ErrClosed)
+	assert.NoError(t, conn.Close())
 }
 
 func TestWriteFailureOutcomeAtEveryOffset(t *testing.T) {
 	op := newTestOperation(t, testModifyRequest, ResponseSpec{NoResponse: true}, CancelNone)
 	encoded, err := encodeLDAPRequest(1, op, ber.DefaultLimits())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	for failAt := range len(encoded) {
 		t.Run("offset", func(t *testing.T) {
 			transport := newScriptedConn(failAt, 3)
 			options, err := (ConnectionOptions{}).normalized()
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			conn, err := newConn(transport, Endpoint{ID: "write", Address: "scripted", Transport: TransportPlaintext}, options, MaxMessageID)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			_, err = conn.Do(context.Background(), op)
 			if failAt == 0 {
-				if !errors.Is(err, ErrDefinitelyUnsent) || errors.Is(err, ErrAmbiguousOutcome) {
-					t.Fatalf("offset zero error = %v", err)
-				}
-			} else if !errors.Is(err, ErrAmbiguousOutcome) {
-				t.Fatalf("offset %d error = %v, want ambiguous", failAt, err)
+				assert.ErrorIs(t, err, ErrDefinitelyUnsent)
+				assert.NotErrorIs(t, err, ErrAmbiguousOutcome)
+			} else {
+				assert.ErrorIs(t, err, ErrAmbiguousOutcome)
 			}
 		})
 	}
@@ -547,28 +469,20 @@ func TestWriteFailureOutcomeAtEveryOffset(t *testing.T) {
 func TestSuccessfulShortWritesProduceOneCompleteEnvelope(t *testing.T) {
 	transport := newScriptedConn(-1, 2)
 	options, err := (ConnectionOptions{}).normalized()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	conn, err := newConn(transport, Endpoint{ID: "write", Address: "scripted", Transport: TransportPlaintext}, options, MaxMessageID)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer conn.retire(ErrClosed)
 	op := newTestOperation(t, testModifyRequest, ResponseSpec{NoResponse: true}, CancelNone)
 	stream, err := conn.Do(context.Background(), op)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := stream.Next(context.Background()); !errors.Is(err, io.EOF) {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	_, err = stream.Next(context.Background())
+	require.ErrorIs(t, err, io.EOF)
 	transport.mu.Lock()
 	written := bytes.Clone(transport.written.Bytes())
 	transport.mu.Unlock()
-	if _, err := ParseResponse(written, ber.DefaultLimits()); err != nil {
-		t.Fatalf("short writes produced malformed envelope: %x: %v", written, err)
-	}
+	_, err = ParseResponse(written, ber.DefaultLimits())
+	assert.NoError(t, err)
 }
 
 func TestCancellationBeforeAndDuringWrite(t *testing.T) {
@@ -579,27 +493,20 @@ func TestCancellationBeforeAndDuringWrite(t *testing.T) {
 		cancel()
 		_, err := conn.Do(ctx, newTestOperation(t, testModifyRequest, ResponseSpec{NoResponse: true}, CancelNone))
 		conn.releaseWriter()
-		if !errors.Is(err, context.Canceled) || !errors.Is(err, ErrDefinitelyUnsent) {
-			t.Fatalf("pre-write cancellation = %v", err)
-		}
+		assert.ErrorIs(t, err, context.Canceled)
+		assert.ErrorIs(t, err, ErrDefinitelyUnsent)
 		conn.mu.Lock()
 		pending := len(conn.pending)
 		conn.mu.Unlock()
-		if pending != 0 {
-			t.Fatalf("pre-write cancellation left %d pending operations", pending)
-		}
+		assert.Zero(t, pending)
 	})
 
 	t.Run("during write", func(t *testing.T) {
 		transport := newBlockingWriteConn()
 		options, err := (ConnectionOptions{}).normalized()
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		conn, err := newConn(transport, Endpoint{ID: "write", Address: "blocking", Transport: TransportPlaintext}, options, MaxMessageID)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		ctx, cancel := context.WithCancel(context.Background())
 		result := make(chan error, 1)
 		op := newTestOperation(t, testModifyRequest, ResponseSpec{NoResponse: true}, CancelNone)
@@ -611,11 +518,10 @@ func TestCancellationBeforeAndDuringWrite(t *testing.T) {
 		cancel()
 		select {
 		case err := <-result:
-			if !errors.Is(err, context.Canceled) || !errors.Is(err, ErrAmbiguousOutcome) {
-				t.Fatalf("in-write cancellation = %v", err)
-			}
+			assert.ErrorIs(t, err, context.Canceled)
+			assert.ErrorIs(t, err, ErrAmbiguousOutcome)
 		case <-time.After(time.Second):
-			t.Fatal("in-progress write did not unblock on cancellation")
+			require.Fail(t, "in-progress write did not unblock on cancellation")
 		}
 	})
 }

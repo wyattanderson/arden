@@ -7,34 +7,28 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"errors"
 	"io"
 	"math/big"
 	"net"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/wyattanderson/arden/ber"
 )
 
 func TestEndpointTransportValidation(t *testing.T) {
-	if err := (Endpoint{ID: "tls", Address: "localhost:636"}).Validate(); err == nil {
-		t.Fatal("default direct-TLS endpoint accepted an empty server name")
-	}
-	if err := (Endpoint{ID: "plain", Address: "localhost:389", Transport: TransportPlaintext}).Validate(); err != nil {
-		t.Fatalf("explicit plaintext endpoint: %v", err)
-	}
-	if err := (Endpoint{ID: "bad", Address: "localhost:389", Transport: TransportMode(99)}).Validate(); err == nil {
-		t.Fatal("invalid transport mode was accepted")
-	}
+	require.Error(t, (Endpoint{ID: "tls", Address: "localhost:636"}).Validate())
+	require.NoError(t, (Endpoint{ID: "plain", Address: "localhost:389", Transport: TransportPlaintext}).Validate())
+	assert.Error(t, (Endpoint{ID: "bad", Address: "localhost:389", Transport: TransportMode(99)}).Validate())
 }
 
 func TestDialerDirectTLSVerifiesAndClonesConfiguration(t *testing.T) {
 	certificate, roots := testServerCertificate(t, "ldap.test")
 	listener, err := tls.Listen("tcp", "127.0.0.1:0", &tls.Config{Certificates: []tls.Certificate{certificate}})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer func() { _ = listener.Close() }()
 
 	serverResult := make(chan error, 1)
@@ -69,32 +63,21 @@ func TestDialerDirectTLSVerifiesAndClonesConfiguration(t *testing.T) {
 	conn, err := dialer.Dial(context.Background(), Endpoint{
 		ID: "tls", Address: listener.Addr().String(), ServerName: "ldap.test",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer conn.retire(ErrClosed)
-	if callerTLS.ServerName != "caller-value.invalid" {
-		t.Fatalf("Dial mutated caller TLS config ServerName to %q", callerTLS.ServerName)
-	}
+	require.Equal(t, "caller-value.invalid", callerTLS.ServerName)
 
 	stream, err := conn.Do(context.Background(), newTestOperation(t, testModifyRequest, ResponseSpec{Complete: []ber.Identifier{testModifyDone}}, CancelDrain))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := stream.Next(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if err := <-serverResult; err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	_, err = stream.Next(context.Background())
+	require.NoError(t, err)
+	assert.NoError(t, <-serverResult)
 }
 
 func TestDialerRejectsHostnameMismatch(t *testing.T) {
 	certificate, roots := testServerCertificate(t, "ldap.test")
 	listener, err := tls.Listen("tcp", "127.0.0.1:0", &tls.Config{Certificates: []tls.Certificate{certificate}})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer func() { _ = listener.Close() }()
 	go func() {
 		peer, err := listener.Accept()
@@ -108,16 +91,13 @@ func TestDialerRejectsHostnameMismatch(t *testing.T) {
 		ID: "tls", Address: listener.Addr().String(), ServerName: "wrong.test",
 	})
 	var transportErr *TransportError
-	if !errors.As(err, &transportErr) || transportErr.Stage != StageTLS {
-		t.Fatalf("hostname mismatch error = %v", err)
-	}
+	require.ErrorAs(t, err, &transportErr)
+	assert.Equal(t, StageTLS, transportErr.Stage)
 }
 
 func TestDialerTLSHandshakeUsesContext(t *testing.T) {
 	listener, err := new(net.ListenConfig).Listen(context.Background(), "tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer func() { _ = listener.Close() }()
 	accepted := make(chan net.Conn, 1)
 	go func() {
@@ -131,22 +111,20 @@ func TestDialerTLSHandshakeUsesContext(t *testing.T) {
 	defer cancel()
 	_, err = new(Dialer).Dial(ctx, Endpoint{ID: "tls", Address: listener.Addr().String(), ServerName: "ldap.test"})
 	var transportErr *TransportError
-	if !errors.As(err, &transportErr) || transportErr.Stage != StageTLS || !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("handshake timeout error = %v", err)
-	}
+	require.ErrorAs(t, err, &transportErr)
+	assert.Equal(t, StageTLS, transportErr.Stage)
+	assert.ErrorIs(t, err, context.DeadlineExceeded)
 	select {
 	case peer := <-accepted:
 		_ = peer.Close()
 	case <-time.After(time.Second):
-		t.Fatal("server did not accept TLS connection")
+		assert.Fail(t, "server did not accept TLS connection")
 	}
 }
 
 func TestDialerPlaintextRequiresExplicitSelection(t *testing.T) {
 	listener, err := new(net.ListenConfig).Listen(context.Background(), "tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer func() { _ = listener.Close() }()
 	requestReady := make(chan Response, 1)
 	serverErr := make(chan error, 1)
@@ -177,31 +155,20 @@ func TestDialerPlaintextRequiresExplicitSelection(t *testing.T) {
 	conn, err := new(Dialer).Dial(context.Background(), Endpoint{
 		ID: "plain", Address: listener.Addr().String(), Transport: TransportPlaintext,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer conn.retire(ErrClosed)
 	stream, err := conn.Do(context.Background(), newTestOperation(t, testModifyRequest, ResponseSpec{NoResponse: true}, CancelNone))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := stream.Next(context.Background()); !errors.Is(err, io.EOF) {
-		t.Fatalf("no-response stream error = %v", err)
-	}
+	require.NoError(t, err)
+	_, err = stream.Next(context.Background())
+	require.ErrorIs(t, err, io.EOF)
 	request := <-requestReady
-	if request.ProtocolID != testModifyRequest {
-		t.Fatalf("plaintext protocol = %s", request.ProtocolID)
-	}
-	if err := <-serverErr; err != nil {
-		t.Fatal(err)
-	}
+	require.Equal(t, testModifyRequest, request.ProtocolID)
+	assert.NoError(t, <-serverErr)
 }
 
 func TestTLSFailureNeverFallsBackToPlaintext(t *testing.T) {
 	listener, err := new(net.ListenConfig).Listen(context.Background(), "tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer func() { _ = listener.Close() }()
 	firstByte := make(chan byte, 1)
 	go func() {
@@ -220,25 +187,20 @@ func TestTLSFailureNeverFallsBackToPlaintext(t *testing.T) {
 		ID: "default-tls", Address: listener.Addr().String(), ServerName: "ldap.test",
 	})
 	var transportErr *TransportError
-	if !errors.As(err, &transportErr) || transportErr.Stage != StageTLS {
-		t.Fatalf("TLS failure error = %v", err)
-	}
+	require.ErrorAs(t, err, &transportErr)
+	require.Equal(t, StageTLS, transportErr.Stage)
 	select {
 	case got := <-firstByte:
-		if got != 0x16 {
-			t.Fatalf("first transport byte = 0x%02x, want TLS handshake record", got)
-		}
+		assert.Equal(t, byte(0x16), got)
 	case <-time.After(time.Second):
-		t.Fatal("plaintext peer received no TLS bytes")
+		assert.Fail(t, "plaintext peer received no TLS bytes")
 	}
 }
 
 func testServerCertificate(t *testing.T, serverName string) (tls.Certificate, *x509.CertPool) {
 	t.Helper()
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	template := &x509.Certificate{
 		SerialNumber: big.NewInt(1),
 		Subject:      pkix.Name{CommonName: serverName},
@@ -249,15 +211,11 @@ func testServerCertificate(t *testing.T, serverName string) (tls.Certificate, *x
 		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 	}
 	der, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	certificate := tls.Certificate{Certificate: [][]byte{der}, PrivateKey: key}
 	roots := x509.NewCertPool()
 	parsed, err := x509.ParseCertificate(der)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	roots.AddCert(parsed)
 	return certificate, roots
 }

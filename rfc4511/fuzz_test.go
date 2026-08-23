@@ -1,9 +1,10 @@
 package rfc4511
 
 import (
-	"bytes"
 	"reflect"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/wyattanderson/arden/ber"
 )
@@ -33,22 +34,17 @@ func FuzzRFC4511Unmarshalers(f *testing.F) {
 			if err == nil {
 				if decoder.UnmarshalBER(r) == nil && r.RequireEmpty() == nil {
 					marshaler, ok := decoder.(ber.Marshaler)
-					if !ok {
-						t.Fatalf("successful decoder %T does not implement ber.Marshaler", decoder)
-					}
+					require.True(t, ok)
 					canonical, err := marshaler.AppendBER(nil)
-					if err != nil {
-						t.Fatalf("%T accepted input but could not re-encode it: %v", decoder, err)
-					}
+					require.NoError(t, err)
 					roundTripped := reflect.New(reflect.TypeOf(decoder).Elem()).Interface().(ber.Unmarshaler)
 					roundTripReader, err := ber.NewReader(canonical, ber.DefaultLimits())
-					if err != nil || roundTripped.UnmarshalBER(roundTripReader) != nil || roundTripReader.RequireEmpty() != nil {
-						t.Fatalf("%T produced an encoding it could not decode", decoder)
-					}
+					require.NoError(t, err)
+					require.NoError(t, roundTripped.UnmarshalBER(roundTripReader))
+					require.NoError(t, roundTripReader.RequireEmpty())
 					reencoded, err := roundTripped.(ber.Marshaler).AppendBER(nil)
-					if err != nil || !bytes.Equal(canonical, reencoded) {
-						t.Fatalf("%T encoding did not stabilize after a valid round trip", decoder)
-					}
+					require.NoError(t, err)
+					require.Equal(t, canonical, reencoded)
 				}
 			}
 		}

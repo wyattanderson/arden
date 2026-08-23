@@ -1,11 +1,12 @@
 package auth
 
 import (
-	"bytes"
 	"context"
-	"errors"
 	"io"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/wyattanderson/arden"
 	"github.com/wyattanderson/arden/ber"
@@ -46,105 +47,69 @@ func TestAnonymousUsesMinimalOrdinaryBind(t *testing.T) {
 	authenticator, err := (Anonymous{}).Begin(context.Background(), arden.Endpoint{
 		ID: "plain", Address: "unused", Transport: arden.TransportPlaintext,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	identity, err := authenticator.Authenticate(context.Background(), session)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if identity.StableID != anonymousStableID {
-		t.Fatalf("anonymous identity = %q", identity.StableID)
-	}
-	if len(session.operations) != 1 {
-		t.Fatalf("Bind operations = %d, want 1", len(session.operations))
-	}
+	require.NoError(t, err)
+	require.Equal(t, anonymousStableID, identity.StableID)
+	require.Len(t, session.operations, 1)
 	request, ok := session.operations[0].Protocol.(*rfc4511.BindRequest)
-	if !ok {
-		t.Fatalf("anonymous protocol = %T", session.operations[0].Protocol)
-	}
+	require.True(t, ok)
 	credentials, ok := request.Authentication.(rfc4511.SimpleAuthentication)
-	if request.Version != 3 || len(request.Name) != 0 || !ok || len(credentials) != 0 {
-		t.Fatalf("anonymous Bind = %#v", request)
-	}
+	assert.Equal(t, int64(3), request.Version)
+	assert.Empty(t, request.Name)
+	assert.True(t, ok)
+	assert.Empty(t, credentials)
 }
 
 func TestSimpleBindUsesStringValuesAndClearsPerConnectionCopies(t *testing.T) {
 	const bindDN = "cn=user"
 	const credential = "password"
 	configuration, err := NewSimpleBind("service-account-a", bindDN, credential)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	authenticatorValue, err := configuration.Begin(context.Background(), arden.Endpoint{
 		ID: "tls", Address: "unused", ServerName: "ldap.test",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	authenticator := authenticatorValue.(*bindAuthenticator)
 	session := &recordingSession{response: bindResponse(t, rfc4511.ResultSuccess, nil)}
 	identity, err := authenticator.Authenticate(context.Background(), session)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if identity.StableID != "service-account-a" {
-		t.Fatalf("Simple identity = %q", identity.StableID)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "service-account-a", identity.StableID)
 	request := session.operations[0].Protocol.(*rfc4511.BindRequest)
-	if request.Name != "cn=user" {
-		t.Fatalf("Bind DN = %x", request.Name)
-	}
-	if got := string(request.Authentication.(rfc4511.SimpleAuthentication)); got != credential {
-		t.Fatalf("Bind credentials = %q", got)
-	}
-	if err := authenticator.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if authenticator.name != "" || authenticator.credentials != nil {
-		t.Fatal("per-connection authentication material was retained after Close")
-	}
+	require.Equal(t, rfc4511.LDAPDN(bindDN), request.Name)
+	require.Equal(t, credential, string(request.Authentication.(rfc4511.SimpleAuthentication)))
+	require.NoError(t, authenticator.Close())
+	assert.Empty(t, authenticator.name)
+	assert.Nil(t, authenticator.credentials)
 }
 
 func TestSimpleBindRejectsPlaintextBeforeBegin(t *testing.T) {
 	configuration, err := NewSimpleBind("service-account-a", "uid=user", "password")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	endpoint := arden.Endpoint{ID: "plain", Address: "unused", Transport: arden.TransportPlaintext}
-	if err := configuration.ValidateEndpoint(endpoint); err == nil {
-		t.Fatal("Simple Bind accepted plaintext")
-	}
-	if _, err := configuration.Begin(context.Background(), endpoint); err == nil {
-		t.Fatal("Simple Bind Begin accepted plaintext")
-	}
+	require.Error(t, configuration.ValidateEndpoint(endpoint))
+	_, err = configuration.Begin(context.Background(), endpoint)
+	assert.Error(t, err)
 }
 
 func TestBindFailureReportsOnlyResultCode(t *testing.T) {
 	const secret = "server diagnostic containing password-value"
 	session := &recordingSession{response: bindResponse(t, rfc4511.ResultInvalidCredentials, []byte(secret))}
 	authenticator, err := (Anonymous{}).Begin(context.Background(), arden.Endpoint{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	_, err = authenticator.Authenticate(context.Background(), session)
 	var bindErr *BindError
-	if !errors.As(err, &bindErr) || bindErr.ResultCode != rfc4511.ResultInvalidCredentials {
-		t.Fatalf("Bind error = %v", err)
-	}
-	if bytes.Contains([]byte(err.Error()), []byte(secret)) {
-		t.Fatalf("Bind error leaked server diagnostic: %v", err)
-	}
+	require.ErrorAs(t, err, &bindErr)
+	assert.Equal(t, rfc4511.ResultInvalidCredentials, bindErr.ResultCode)
+	assert.NotContains(t, err.Error(), secret)
 }
 
 func TestSimpleBindRejectsAmbiguousEmptyAuthentication(t *testing.T) {
-	if _, err := NewSimpleBind("identity", "", "password"); err == nil {
-		t.Fatal("Simple Bind accepted an empty DN")
-	}
-	if _, err := NewSimpleBind("identity", "uid=user", ""); err == nil {
-		t.Fatal("Simple Bind accepted empty credentials")
-	}
+	_, err := NewSimpleBind("identity", "", "password")
+	require.Error(t, err)
+	_, err = NewSimpleBind("identity", "uid=user", "")
+	assert.Error(t, err)
 }
 
 func bindResponse(t *testing.T, code rfc4511.ResultCode, diagnostic []byte) arden.Response {
@@ -152,21 +117,13 @@ func bindResponse(t *testing.T, code rfc4511.ResultCode, diagnostic []byte) arde
 	protocol, err := (rfc4511.BindResponse{Result: rfc4511.LDAPResult{
 		ResultCode: code, DiagnosticMessage: rfc4511.LDAPString(diagnostic),
 	}}).AppendBER(nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	contents, err := ber.AppendInteger(nil, 1)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	contents = append(contents, protocol...)
 	message, err := ber.AppendSequence(nil, contents)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	response, err := arden.ParseResponse(message, ber.DefaultLimits())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return response
 }

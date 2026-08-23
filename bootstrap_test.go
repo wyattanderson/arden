@@ -10,6 +10,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/wyattanderson/arden/ber"
 	"github.com/wyattanderson/arden/rfc4511"
 )
@@ -43,16 +46,12 @@ func (a *authenticatorStub) Close() error {
 func newSetupPipeConnection(t *testing.T, options ConnectionOptions) (*Conn, net.Conn) {
 	t.Helper()
 	normalized, err := options.normalized()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	client, server := net.Pipe()
 	conn, err := newConnWithState(client, Endpoint{
 		ID: "setup", Address: "pipe", Transport: TransportPlaintext,
 	}, normalized, MaxMessageID, stateTransportSetup)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() {
 		conn.retire(ErrClosed)
 		_ = server.Close()
@@ -63,13 +62,9 @@ func newSetupPipeConnection(t *testing.T, options ConnectionOptions) (*Conn, net
 func bindLikeOperation(t *testing.T, token []byte) Operation {
 	t.Helper()
 	protocol, err := ber.AppendElement(nil, rfc4511.BindRequestIdentifier(), token)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	pattern, err := NewResponsePattern(ResponseSpec{Complete: []ber.Identifier{testBindResponse}})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return Operation{
 		Protocol:     testProtocol{id: rfc4511.BindRequestIdentifier(), encoded: protocol},
 		Responses:    pattern,
@@ -95,21 +90,14 @@ func performSetupRoundTrip(ctx context.Context, session InitializationSession, o
 func TestNoAuthenticationPublishesReadyConnectionWithoutBind(t *testing.T) {
 	conn, _ := newSetupPipeConnection(t, ConnectionOptions{})
 	identity, profile, err := new(Dialer).initialize(context.Background(), conn, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if profile != nil || identity.StableID != unauthenticatedIdentity {
-		t.Fatalf("no-auth setup = %#v, %#v", identity, profile)
-	}
+	require.NoError(t, err)
+	assert.Nil(t, profile)
+	assert.Equal(t, unauthenticatedIdentity, identity.StableID)
 	conn.mu.Lock()
 	state := conn.state
 	conn.mu.Unlock()
-	if state != stateReady {
-		t.Fatalf("connection state = %d, want ready", state)
-	}
-	if conn.Policy().Cancellation != CancellationConservative {
-		t.Fatalf("default policy = %#v", conn.Policy())
-	}
+	assert.Equal(t, stateReady, state)
+	assert.Equal(t, CancellationConservative, conn.Policy().Cancellation)
 }
 
 func TestAuthenticationAndInitializerAreExclusiveAndOrdered(t *testing.T) {
@@ -158,24 +146,15 @@ func TestAuthenticationAndInitializerAreExclusiveAndOrdered(t *testing.T) {
 	}
 
 	identity, profile, err := dialer.initialize(context.Background(), conn, initializer)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := <-peerErr; err != nil {
-		t.Fatal(err)
-	}
-	if !closed {
-		t.Fatal("authenticator resources were not closed")
-	}
-	if identity.StableID != "principal-a" || profile != "profile-a" {
-		t.Fatalf("setup handoff = %#v, %#v", identity, profile)
-	}
-	if conn.Identity() != identity || conn.Policy().Cancellation != CancellationRFC3909 {
-		t.Fatalf("frozen connection setup = %#v, %#v", conn.Identity(), conn.Policy())
-	}
-	if _, err := retained.Do(context.Background(), newTestOperation(t, testModifyRequest, ResponseSpec{NoResponse: true}, CancelNone)); !errors.Is(err, ErrInitializationClosed) {
-		t.Fatalf("retained initialization session error = %v", err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, <-peerErr)
+	assert.True(t, closed)
+	assert.Equal(t, "principal-a", identity.StableID)
+	assert.Equal(t, "profile-a", profile)
+	assert.Equal(t, identity, conn.Identity())
+	assert.Equal(t, CancellationRFC3909, conn.Policy().Cancellation)
+	_, err = retained.Do(context.Background(), newTestOperation(t, testModifyRequest, ResponseSpec{NoResponse: true}, CancelNone))
+	assert.ErrorIs(t, err, ErrInitializationClosed)
 }
 
 func TestMockSASLCanUseOpaqueMultiRoundBindTokens(t *testing.T) {
@@ -205,12 +184,9 @@ func TestMockSASLCanUseOpaqueMultiRoundBindTokens(t *testing.T) {
 			return Identity{StableID: "mock-sasl"}, nil
 		}}, nil
 	}}}
-	if _, _, err := dialer.initialize(context.Background(), conn, nil); err != nil {
-		t.Fatal(err)
-	}
-	if err := <-peerErr; err != nil {
-		t.Fatal(err)
-	}
+	_, _, err := dialer.initialize(context.Background(), conn, nil)
+	require.NoError(t, err)
+	assert.NoError(t, <-peerErr)
 }
 
 func TestSetupContextCancellationStopsNextAuthenticationRound(t *testing.T) {
@@ -236,13 +212,12 @@ func TestSetupContextCancellationStopsNextAuthenticationRound(t *testing.T) {
 		}}, nil
 	}}}
 	_, _, err := dialer.initialize(ctx, conn, nil)
-	if !errors.Is(err, context.Canceled) || !errors.Is(err, ErrSetup) {
-		t.Fatalf("canceled authentication error = %v", err)
-	}
+	assert.ErrorIs(t, err, context.Canceled)
+	assert.ErrorIs(t, err, ErrSetup)
 	select {
 	case <-conn.Done():
 	default:
-		t.Fatal("authentication failure left the connection usable")
+		assert.Fail(t, "authentication failure left the connection usable")
 	}
 }
 
@@ -255,13 +230,13 @@ func TestInitializationTimeoutBudgetAndProfileMismatch(t *testing.T) {
 		}
 		_, _, err := new(Dialer).initialize(context.Background(), conn, initializer)
 		var setupErr *SetupError
-		if !errors.As(err, &setupErr) || setupErr.Stage != SetupInitialization || !errors.Is(err, sentinel) {
-			t.Fatalf("initializer failure = %v", err)
-		}
+		require.ErrorAs(t, err, &setupErr)
+		assert.Equal(t, SetupInitialization, setupErr.Stage)
+		assert.ErrorIs(t, err, sentinel)
 		select {
 		case <-conn.Done():
 		default:
-			t.Fatal("failed initializer left the connection usable")
+			assert.Fail(t, "failed initializer left the connection usable")
 		}
 	})
 
@@ -273,9 +248,9 @@ func TestInitializationTimeoutBudgetAndProfileMismatch(t *testing.T) {
 		}
 		_, _, err := new(Dialer).initialize(context.Background(), conn, initializer)
 		var setupErr *SetupError
-		if !errors.As(err, &setupErr) || setupErr.Stage != SetupInitialization || !errors.Is(err, context.DeadlineExceeded) {
-			t.Fatalf("initializer timeout = %v", err)
-		}
+		require.ErrorAs(t, err, &setupErr)
+		assert.Equal(t, SetupInitialization, setupErr.Stage)
+		assert.ErrorIs(t, err, context.DeadlineExceeded)
 	})
 
 	t.Run("invalid policy", func(t *testing.T) {
@@ -285,9 +260,8 @@ func TestInitializationTimeoutBudgetAndProfileMismatch(t *testing.T) {
 		}
 		_, _, err := new(Dialer).initialize(context.Background(), conn, initializer)
 		var setupErr *SetupError
-		if !errors.As(err, &setupErr) || setupErr.Stage != SetupInitialization {
-			t.Fatalf("invalid setup policy = %v", err)
-		}
+		require.ErrorAs(t, err, &setupErr)
+		assert.Equal(t, SetupInitialization, setupErr.Stage)
 	})
 
 	t.Run("operation budget", func(t *testing.T) {
@@ -304,9 +278,8 @@ func TestInitializationTimeoutBudgetAndProfileMismatch(t *testing.T) {
 		}
 		_, _, err := new(Dialer).initialize(context.Background(), conn, initializer)
 		var limit *LimitError
-		if !errors.As(err, &limit) || limit.Limit != "initialization operations" {
-			t.Fatalf("initializer budget error = %v", err)
-		}
+		require.ErrorAs(t, err, &limit)
+		assert.Equal(t, "initialization operations", limit.Limit)
 	})
 
 	t.Run("profile mismatch", func(t *testing.T) {
@@ -317,12 +290,10 @@ func TestInitializationTimeoutBudgetAndProfileMismatch(t *testing.T) {
 		}
 		_, _, err := new(Dialer).initialize(context.Background(), conn, initializer)
 		var setupErr *SetupError
-		if !errors.As(err, &setupErr) || setupErr.Stage != SetupProfileMismatch || !errors.Is(err, ErrProfileMismatch) {
-			t.Fatalf("profile mismatch = %v", err)
-		}
-		if bytes.Contains([]byte(err.Error()), []byte("sensitive-profile-value")) {
-			t.Fatalf("setup error leaked profile contents: %v", err)
-		}
+		require.ErrorAs(t, err, &setupErr)
+		assert.Equal(t, SetupProfileMismatch, setupErr.Stage)
+		assert.ErrorIs(t, err, ErrProfileMismatch)
+		assert.NotContains(t, err.Error(), "sensitive-profile-value")
 	})
 }
 
@@ -340,51 +311,38 @@ func TestAuthenticationFailureClosesResourcesAndRedactsCause(t *testing.T) {
 	}}}
 	_, _, err := dialer.initialize(context.Background(), conn, nil)
 	var setupErr *SetupError
-	if !errors.As(err, &setupErr) || setupErr.Stage != SetupAuthentication || !errors.Is(err, secretErr) {
-		t.Fatalf("authentication failure = %v", err)
-	}
-	if !closed.Load() {
-		t.Fatal("failed authenticator was not closed")
-	}
-	if bytes.Contains([]byte(err.Error()), []byte("should-never-be-logged")) {
-		t.Fatalf("setup error leaked authentication material: %v", err)
-	}
+	require.ErrorAs(t, err, &setupErr)
+	assert.Equal(t, SetupAuthentication, setupErr.Stage)
+	assert.ErrorIs(t, err, secretErr)
+	assert.True(t, closed.Load())
+	assert.NotContains(t, err.Error(), "should-never-be-logged")
 	select {
 	case <-conn.Done():
 	default:
-		t.Fatal("failed authentication connection was not closed")
+		assert.Fail(t, "failed authentication connection was not closed")
 	}
 }
 
 func TestBindCannotChangeAssociationAfterReady(t *testing.T) {
 	conn, _ := newPipeConnection(t, ConnectionOptions{}, MaxMessageID)
-	if _, err := conn.Do(context.Background(), bindLikeOperation(t, []byte("late-bind"))); !errors.Is(err, ErrAssociationChange) {
-		t.Fatalf("application Bind error = %v", err)
-	}
+	_, err := conn.Do(context.Background(), bindLikeOperation(t, []byte("late-bind")))
+	require.ErrorIs(t, err, ErrAssociationChange)
 	unbind := newTestOperation(t, rfc4511.UnbindRequestIdentifier(), ResponseSpec{NoResponse: true}, CancelNone)
-	if _, err := conn.Do(context.Background(), unbind); !errors.Is(err, ErrAssociationChange) {
-		t.Fatalf("application Unbind error = %v", err)
-	}
+	_, err = conn.Do(context.Background(), unbind)
+	assert.ErrorIs(t, err, ErrAssociationChange)
 }
 
 func TestInitializationOptionsAreBounded(t *testing.T) {
 	defaults := DefaultConnectionOptions()
-	if defaults.InitializationTimeout <= 0 || defaults.MaxInitializationOperations <= 0 {
-		t.Fatalf("unbounded initialization defaults = %#v", defaults)
-	}
-	if err := (ConnectionOptions{InitializationTimeout: -time.Second}).Validate(); err == nil {
-		t.Fatal("negative initialization timeout was accepted")
-	}
-	if err := (ConnectionOptions{MaxInitializationOperations: -1}).Validate(); err == nil {
-		t.Fatal("negative initialization operation budget was accepted")
-	}
+	assert.Positive(t, defaults.InitializationTimeout)
+	assert.Positive(t, defaults.MaxInitializationOperations)
+	require.Error(t, (ConnectionOptions{InitializationTimeout: -time.Second}).Validate())
+	assert.Error(t, (ConnectionOptions{MaxInitializationOperations: -1}).Validate())
 }
 
 func mustElement(t *testing.T, id ber.Identifier, value []byte) []byte {
 	t.Helper()
 	encoded, err := ber.AppendElement(nil, id, value)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return encoded
 }

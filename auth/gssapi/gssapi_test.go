@@ -6,11 +6,12 @@ import (
 	"errors"
 	"io"
 	"slices"
-	"strings"
 	"sync"
 	"testing"
 
 	gogssapi "github.com/golang-auth/go-gssapi/v3"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/wyattanderson/arden"
 	"github.com/wyattanderson/arden/auth"
@@ -52,68 +53,46 @@ func TestAuthenticationOnlyGSSAPIExchange(t *testing.T) {
 	}}
 
 	authenticatorValue, err := authentication.Begin(context.Background(), tlsEndpoint())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	identity, err := authenticatorValue.Authenticate(context.Background(), session)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if identity.StableID != "kerberos-principal-a" {
-		t.Fatalf("identity = %#v", identity)
-	}
-	if provider.importedName != "ldap@ipa.example.test" || provider.importedType != gogssapi.GSS_NT_HOSTBASED_SERVICE.OidString() {
-		t.Fatalf("imported target = %q, %q", provider.importedName, provider.importedType)
-	}
-	if provider.initOptions.Mech == nil || provider.initOptions.Mech.OidString() != gogssapi.GSS_MECH_KRB5.OidString() {
-		t.Fatalf("requested mechanism = %#v", provider.initOptions.Mech)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "kerberos-principal-a", identity.StableID)
+	require.Equal(t, "ldap@ipa.example.test", provider.importedName)
+	require.Equal(t, gogssapi.GSS_NT_HOSTBASED_SERVICE.OidString(), provider.importedType)
+	require.NotNil(t, provider.initOptions.Mech)
+	require.Equal(t, gogssapi.GSS_MECH_KRB5.OidString(), provider.initOptions.Mech.OidString())
 	wantFlags := gogssapi.ContextFlagMutual | gogssapi.ContextFlagInteg
-	if provider.initOptions.Flags != wantFlags {
-		t.Fatalf("requested flags = %v, want %v", provider.initOptions.Flags, wantFlags)
-	}
-	if got, want := securityContext.continueInputs, [][]byte{nil, []byte("server-context-one")}; !slices.EqualFunc(got, want, bytes.Equal) {
-		t.Fatalf("context inputs = %q, want %q", got, want)
-	}
-	if !bytes.Equal(securityContext.unwrapSeen, []byte("wrapped-server-offer")) {
-		t.Fatalf("Unwrap input = %q", securityContext.unwrapSeen)
-	}
+	require.Equal(t, wantFlags, provider.initOptions.Flags)
+	require.True(t, slices.EqualFunc(securityContext.continueInputs, [][]byte{nil, []byte("server-context-one")}, bytes.Equal))
+	require.Equal(t, []byte("wrapped-server-offer"), securityContext.unwrapSeen)
 	wantSelection := append([]byte{layerNone, 0, 0, 0}, []byte("dn:uid=delegate,dc=example")...)
-	if !bytes.Equal(securityContext.wrapSeen, wantSelection) || securityContext.wrapConfidential || securityContext.wrapQoP != 0 {
-		t.Fatalf("Wrap = %x, confidential=%t, qop=%d", securityContext.wrapSeen, securityContext.wrapConfidential, securityContext.wrapQoP)
-	}
+	require.Equal(t, wantSelection, securityContext.wrapSeen)
+	require.False(t, securityContext.wrapConfidential)
+	require.Zero(t, securityContext.wrapQoP)
 
 	wantTokens := [][]byte{
 		[]byte("client-context-one"),
 		{},
 		[]byte("wrapped-client-selection"),
 	}
-	if len(session.operations) != len(wantTokens) {
-		t.Fatalf("Bind operations = %d, want %d", len(session.operations), len(wantTokens))
-	}
+	require.Len(t, session.operations, len(wantTokens))
 	for i, operation := range session.operations {
 		request, ok := operation.Protocol.(*rfc4511.BindRequest)
-		if !ok {
-			t.Fatalf("operation %d protocol = %T", i, operation.Protocol)
-		}
+		require.True(t, ok)
 		sasl, ok := request.Authentication.(rfc4511.SASLAuthentication)
-		if !ok || string(sasl.Mechanism) != "GSSAPI" || !sasl.HasCredentials || !bytes.Equal(sasl.Credentials, wantTokens[i]) {
-			t.Fatalf("operation %d SASL = %#v", i, request.Authentication)
-		}
-		if len(request.Name) != 0 || operation.Metadata.Label != "ldap.bind" {
-			t.Fatalf("operation %d Bind metadata = %#v, name=%q", i, operation.Metadata, request.Name)
-		}
+		require.True(t, ok)
+		assert.Equal(t, "GSSAPI", string(sasl.Mechanism))
+		assert.True(t, sasl.HasCredentials)
+		assert.Equal(t, wantTokens[i], sasl.Credentials)
+		assert.Empty(t, request.Name)
+		assert.Equal(t, "ldap.bind", operation.Metadata.Label)
 	}
 
-	if err := authenticatorValue.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err := authenticatorValue.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if provider.name.releases != 1 || securityContext.deletes != 1 || provider.releases != 1 {
-		t.Fatalf("release counts: name=%d context=%d provider=%d", provider.name.releases, securityContext.deletes, provider.releases)
-	}
+	require.NoError(t, authenticatorValue.Close())
+	require.NoError(t, authenticatorValue.Close())
+	assert.Equal(t, 1, provider.name.releases)
+	assert.Equal(t, 1, securityContext.deletes)
+	assert.Equal(t, 1, provider.releases)
 }
 
 func TestGSSAPIRejectsPlaintextBeforeCreatingProvider(t *testing.T) {
@@ -122,19 +101,12 @@ func TestGSSAPIRejectsPlaintextBeforeCreatingProvider(t *testing.T) {
 		providerCalls++
 		return &fakeProvider{}, nil
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	endpoint := arden.Endpoint{ID: "plain", Address: "ipa.example.test:389", Transport: arden.TransportPlaintext}
-	if err := authentication.ValidateEndpoint(endpoint); err == nil {
-		t.Fatal("ValidateEndpoint accepted plaintext")
-	}
-	if _, err := authentication.Begin(context.Background(), endpoint); err == nil {
-		t.Fatal("Begin accepted plaintext")
-	}
-	if providerCalls != 0 {
-		t.Fatalf("provider factory calls = %d, want 0", providerCalls)
-	}
+	require.Error(t, authentication.ValidateEndpoint(endpoint))
+	_, err = authentication.Begin(context.Background(), endpoint)
+	require.Error(t, err)
+	assert.Zero(t, providerCalls)
 }
 
 func TestGSSAPIReplacementConversationUsesNewProviderAndStableIdentity(t *testing.T) {
@@ -147,38 +119,26 @@ func TestGSSAPIReplacementConversationUsesNewProviderAndStableIdentity(t *testin
 		providers = append(providers, provider)
 		return provider, nil
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
-	for i := range 2 {
+	for range 2 {
 		authenticator, err := authentication.Begin(context.Background(), tlsEndpoint())
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		session := &scriptedSession{responses: []arden.Response{
 			bindResponse(t, rfc4511.ResultSASLBindInProgress, true, []byte("offer"), nil),
 			bindResponse(t, rfc4511.ResultSuccess, false, nil, nil),
 		}}
 		identity, err := authenticator.Authenticate(context.Background(), session)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if identity.StableID != "pool-partition-a" {
-			t.Fatalf("conversation %d identity = %#v", i, identity)
-		}
-		if err := authenticator.Close(); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
+		require.Equal(t, "pool-partition-a", identity.StableID)
+		require.NoError(t, authenticator.Close())
 	}
 
-	if len(providers) != 2 || providers[0] == providers[1] {
-		t.Fatalf("providers = %#v, want two distinct instances", providers)
-	}
-	for i, provider := range providers {
-		if provider.releases != 1 || provider.securityContext.deletes != 1 {
-			t.Fatalf("provider %d cleanup: provider=%d context=%d", i, provider.releases, provider.securityContext.deletes)
-		}
+	require.Len(t, providers, 2)
+	require.NotSame(t, providers[0], providers[1])
+	for _, provider := range providers {
+		assert.Equal(t, 1, provider.releases)
+		assert.Equal(t, 1, provider.securityContext.deletes)
 	}
 }
 
@@ -205,20 +165,15 @@ func TestGSSAPIRejectsSASLDataLayers(t *testing.T) {
 				bindResponse(t, rfc4511.ResultSASLBindInProgress, true, []byte("offer"), nil),
 			}}
 			authenticator, err := authentication.Begin(context.Background(), tlsEndpoint())
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			_, err = authenticator.Authenticate(context.Background(), session)
 			var negotiationErr *NegotiationError
-			if !errors.As(err, &negotiationErr) || negotiationErr.Failure != test.failure || !errors.Is(err, ErrNegotiation) {
-				t.Fatalf("error = %#v, want failure %v", err, test.failure)
-			}
-			if len(securityContext.wrapSeen) != 0 || len(session.operations) != 1 {
-				t.Fatalf("invalid offer advanced exchange: wrap=%x operations=%d", securityContext.wrapSeen, len(session.operations))
-			}
-			if err := authenticator.Close(); err != nil {
-				t.Fatal(err)
-			}
+			require.ErrorAs(t, err, &negotiationErr)
+			assert.Equal(t, test.failure, negotiationErr.Failure)
+			assert.ErrorIs(t, err, ErrNegotiation)
+			assert.Empty(t, securityContext.wrapSeen)
+			assert.Len(t, session.operations, 1)
+			assert.NoError(t, authenticator.Close())
 		})
 	}
 }
@@ -253,19 +208,12 @@ func TestGSSAPICancellationStopsBetweenNativeRounds(t *testing.T) {
 		},
 	}
 	authenticator, err := authentication.Begin(ctx, tlsEndpoint())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	_, err = authenticator.Authenticate(ctx, session)
-	if !errors.Is(err, context.Canceled) {
-		t.Fatalf("error = %v, want context cancellation", err)
-	}
-	if len(securityContext.continueInputs) != 1 || len(session.operations) != 1 {
-		t.Fatalf("cancellation advanced exchange: continues=%d operations=%d", len(securityContext.continueInputs), len(session.operations))
-	}
-	if err := authenticator.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.ErrorIs(t, err, context.Canceled)
+	assert.Len(t, securityContext.continueInputs, 1)
+	assert.Len(t, session.operations, 1)
+	assert.NoError(t, authenticator.Close())
 }
 
 func TestGSSErrorPreservesMajorAndTypedCauseWithoutUnsafeText(t *testing.T) {
@@ -280,23 +228,16 @@ func TestGSSErrorPreservesMajorAndTypedCauseWithoutUnsafeText(t *testing.T) {
 	provider := &fakeProvider{name: new(fakeName), securityContext: securityContext}
 	authentication := newTestAuthentication(t, provider)
 	authenticator, err := authentication.Begin(context.Background(), tlsEndpoint())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	_, err = authenticator.Authenticate(context.Background(), &scriptedSession{})
 	var gssErr *Error
-	if !errors.As(err, &gssErr) || gssErr.Operation != OperationContinue || !gssErr.MajorKnown || gssErr.Major != 11<<16 {
-		t.Fatalf("GSS error = %#v", err)
-	}
-	if !errors.Is(err, gogssapi.ErrCredentialsExpired) {
-		t.Fatalf("GSS error lost typed cause: %v", err)
-	}
-	if strings.Contains(err.Error(), secret) {
-		t.Fatalf("safe error leaked provider text: %v", err)
-	}
-	if err := authenticator.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.ErrorAs(t, err, &gssErr)
+	assert.Equal(t, OperationContinue, gssErr.Operation)
+	assert.True(t, gssErr.MajorKnown)
+	assert.Equal(t, uint32(11<<16), gssErr.Major)
+	assert.ErrorIs(t, err, gogssapi.ErrCredentialsExpired)
+	assert.NotContains(t, err.Error(), secret)
+	assert.NoError(t, authenticator.Close())
 }
 
 func TestProviderFailureAndPartialSetupReleaseHandlesOnce(t *testing.T) {
@@ -305,37 +246,27 @@ func TestProviderFailureAndPartialSetupReleaseHandlesOnce(t *testing.T) {
 		authentication, err := NewWithProviderFactory("identity", func() (gogssapi.Provider, error) {
 			return nil, errors.New(secret)
 		})
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		_, err = authentication.Begin(context.Background(), tlsEndpoint())
 		var gssErr *Error
-		if !errors.As(err, &gssErr) || gssErr.Operation != OperationNewProvider || strings.Contains(err.Error(), secret) {
-			t.Fatalf("provider error = %#v", err)
-		}
+		require.ErrorAs(t, err, &gssErr)
+		assert.Equal(t, OperationNewProvider, gssErr.Operation)
+		assert.NotContains(t, err.Error(), secret)
 	})
 
 	t.Run("context initialization failure", func(t *testing.T) {
 		provider := &fakeProvider{name: new(fakeName), initErr: errors.New("init failed")}
 		authentication := newTestAuthentication(t, provider)
 		authenticator, err := authentication.Begin(context.Background(), tlsEndpoint())
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		_, err = authenticator.Authenticate(context.Background(), &scriptedSession{})
 		var gssErr *Error
-		if !errors.As(err, &gssErr) || gssErr.Operation != OperationInitContext {
-			t.Fatalf("initialization error = %#v", err)
-		}
-		if err := authenticator.Close(); err != nil {
-			t.Fatal(err)
-		}
-		if err := authenticator.Close(); err != nil {
-			t.Fatal(err)
-		}
-		if provider.name.releases != 1 || provider.releases != 1 {
-			t.Fatalf("release counts: name=%d provider=%d", provider.name.releases, provider.releases)
-		}
+		require.ErrorAs(t, err, &gssErr)
+		assert.Equal(t, OperationInitContext, gssErr.Operation)
+		require.NoError(t, authenticator.Close())
+		require.NoError(t, authenticator.Close())
+		assert.Equal(t, 1, provider.name.releases)
+		assert.Equal(t, 1, provider.releases)
 	})
 }
 
@@ -352,17 +283,12 @@ func TestGSSAPIContextRoundLimitAndBindFailure(t *testing.T) {
 			bindResponse(t, rfc4511.ResultSASLBindInProgress, true, []byte("server-two"), nil),
 		}}
 		authenticator, err := authentication.Begin(context.Background(), tlsEndpoint())
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		_, err = authenticator.Authenticate(context.Background(), session)
 		var negotiationErr *NegotiationError
-		if !errors.As(err, &negotiationErr) || negotiationErr.Failure != FailureTooManyRounds {
-			t.Fatalf("round-limit error = %#v", err)
-		}
-		if err := authenticator.Close(); err != nil {
-			t.Fatal(err)
-		}
+		require.ErrorAs(t, err, &negotiationErr)
+		assert.Equal(t, FailureTooManyRounds, negotiationErr.Failure)
+		assert.NoError(t, authenticator.Close())
 	})
 
 	t.Run("server rejection", func(t *testing.T) {
@@ -374,43 +300,30 @@ func TestGSSAPIContextRoundLimitAndBindFailure(t *testing.T) {
 			bindResponse(t, rfc4511.ResultInvalidCredentials, false, nil, []byte(secret)),
 		}}
 		authenticator, err := authentication.Begin(context.Background(), tlsEndpoint())
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		_, err = authenticator.Authenticate(context.Background(), session)
 		var bindErr *auth.BindError
-		if !errors.As(err, &bindErr) || bindErr.ResultCode != rfc4511.ResultInvalidCredentials {
-			t.Fatalf("Bind error = %#v", err)
-		}
-		if strings.Contains(err.Error(), secret) {
-			t.Fatalf("Bind error leaked diagnostic: %v", err)
-		}
-		if err := authenticator.Close(); err != nil {
-			t.Fatal(err)
-		}
+		require.ErrorAs(t, err, &bindErr)
+		assert.Equal(t, rfc4511.ResultInvalidCredentials, bindErr.ResultCode)
+		assert.NotContains(t, err.Error(), secret)
+		assert.NoError(t, authenticator.Close())
 	})
 }
 
 func TestGSSAPIConfigurationValidation(t *testing.T) {
 	factory := func() (gogssapi.Provider, error) { return &fakeProvider{}, nil }
-	if _, err := NewWithProviderFactory("", factory); err == nil {
-		t.Fatal("accepted empty stable identity")
-	}
-	if _, err := NewWithProviderFactory("identity", nil); err == nil {
-		t.Fatal("accepted nil provider factory")
-	}
-	if _, err := NewWithProviderFactory("identity", factory, nil); err == nil {
-		t.Fatal("accepted nil option")
-	}
-	if _, err := NewWithProviderFactory("identity", factory, WithMaxContextRounds(0)); err == nil {
-		t.Fatal("accepted zero round limit")
-	}
-	if _, err := NewWithProviderFactory("identity", factory, WithAuthorizationID(string([]byte{0xff}))); err == nil {
-		t.Fatal("accepted invalid UTF-8 authorization identity")
-	}
-	if _, err := NewWithProviderFactory("identity", factory, WithAuthorizationID("dn:user\x00suffix")); err == nil {
-		t.Fatal("accepted U+0000 authorization identity")
-	}
+	_, err := NewWithProviderFactory("", factory)
+	require.Error(t, err)
+	_, err = NewWithProviderFactory("identity", nil)
+	require.Error(t, err)
+	_, err = NewWithProviderFactory("identity", factory, nil)
+	require.Error(t, err)
+	_, err = NewWithProviderFactory("identity", factory, WithMaxContextRounds(0))
+	require.Error(t, err)
+	_, err = NewWithProviderFactory("identity", factory, WithAuthorizationID(string([]byte{0xff})))
+	require.Error(t, err)
+	_, err = NewWithProviderFactory("identity", factory, WithAuthorizationID("dn:user\x00suffix"))
+	assert.Error(t, err)
 }
 
 func newTestAuthentication(t *testing.T, provider *fakeProvider, options ...Option) *Authentication {
@@ -418,9 +331,7 @@ func newTestAuthentication(t *testing.T, provider *fakeProvider, options ...Opti
 	authentication, err := NewWithProviderFactory("kerberos-principal-a", func() (gogssapi.Provider, error) {
 		return provider, nil
 	}, options...)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return authentication
 }
 
@@ -639,21 +550,13 @@ func bindResponse(t *testing.T, code rfc4511.ResultCode, hasCredentials bool, cr
 		HasServerSASLCredentials: hasCredentials,
 		ServerSASLCredentials:    bytes.Clone(credentials),
 	}).AppendBER(nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	contents, err := ber.AppendInteger(nil, 1)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	contents = append(contents, protocol...)
 	message, err := ber.AppendSequence(nil, contents)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	response, err := arden.ParseResponse(message, ber.DefaultLimits())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return response
 }

@@ -6,6 +6,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"go.opentelemetry.io/otel/codes"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
@@ -20,9 +23,7 @@ func TestAdapterCreatesSafeOrderedClientSpan(t *testing.T) {
 	provider := sdktrace.NewTracerProvider()
 	provider.RegisterSpanProcessor(recorder)
 	adapter, err := New(Config{TracerProvider: provider})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	started := time.Now()
 	_, operation := adapter.Start(context.Background(), arden.TraceStart{
 		Endpoint:        "ipa-west",
@@ -42,27 +43,22 @@ func TestAdapterCreatesSafeOrderedClientSpan(t *testing.T) {
 	})
 
 	ended := recorder.Ended()
-	if len(ended) != 1 {
-		t.Fatalf("ended spans = %d, want 1", len(ended))
-	}
+	require.Len(t, ended, 1)
 	span := ended[0]
-	if span.Name() != "ldap.search" || span.SpanKind() != oteltrace.SpanKindClient {
-		t.Fatalf("span identity = %q, %v", span.Name(), span.SpanKind())
-	}
-	if span.Status().Code != codes.Error || span.Status().Description != "transport" {
-		t.Fatalf("span status = %#v", span.Status())
-	}
-	if events := span.Events(); len(events) != 2 || events[0].Name != "queued" || events[1].Name != "written" {
-		t.Fatalf("span events = %#v", events)
-	}
+	require.Equal(t, "ldap.search", span.Name())
+	require.Equal(t, oteltrace.SpanKindClient, span.SpanKind())
+	require.Equal(t, codes.Error, span.Status().Code)
+	require.Equal(t, "transport", span.Status().Description)
+	events := span.Events()
+	require.Len(t, events, 2)
+	require.Equal(t, "queued", events[0].Name)
+	require.Equal(t, "written", events[1].Name)
 	attrs := make(map[string]string)
 	for _, attr := range span.Attributes() {
 		attrs[string(attr.Key)] = fmt.Sprint(attr.Value.AsInterface())
 	}
-	if attrs["arden.endpoint.id"] != "ipa-west" || attrs["arden.endpoint.address"] != "ipa-west.example:636" || attrs["arden.connection.id"] != "42" {
-		t.Fatalf("safe span attributes = %#v", attrs)
-	}
-	if _, exists := attrs["arden.ldap.message_id"]; exists {
-		t.Fatal("zero/default message ID was attached")
-	}
+	assert.Equal(t, "ipa-west", attrs["arden.endpoint.id"])
+	assert.Equal(t, "ipa-west.example:636", attrs["arden.endpoint.address"])
+	assert.Equal(t, "42", attrs["arden.connection.id"])
+	assert.NotContains(t, attrs, "arden.ldap.message_id")
 }

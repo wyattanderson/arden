@@ -4,10 +4,12 @@ import (
 	"context"
 	"log/slog"
 	"net"
-	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/wyattanderson/arden/ber"
 )
@@ -101,16 +103,12 @@ func (h *captureHandler) WithGroup(string) slog.Handler { return h }
 func newObservedPipeConnection(t *testing.T, logger *slog.Logger, tracer Tracer, traceMessageIDs bool) (*Conn, net.Conn) {
 	t.Helper()
 	options, err := (ConnectionOptions{}).normalized()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	client, server := net.Pipe()
 	conn, err := newObservedConnWithState(client, Endpoint{
 		ID: "trace-endpoint", Address: "ldap.trace.test:389", Transport: TransportPlaintext,
 	}, options, MaxMessageID, stateReady, logger, tracer, traceMessageIDs)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() {
 		conn.retire(ErrClosed)
 		_ = server.Close()
@@ -135,13 +133,11 @@ func TestTraceOrderingCountsAndSlowHookIsolation(t *testing.T) {
 	operation := newTestOperation(t, testModifyRequest, ResponseSpec{Complete: []ber.Identifier{testModifyDone}}, CancelDrain)
 	operation.Metadata.Label = "ldap.modify"
 	stream, err := conn.Do(context.Background(), operation)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	select {
 	case <-trace.blocked:
 	case <-time.After(time.Second):
-		t.Fatal("first-response hook did not run")
+		require.Fail(t, "first-response hook did not run")
 	}
 	responseReady := make(chan error, 1)
 	go func() {
@@ -150,39 +146,34 @@ func TestTraceOrderingCountsAndSlowHookIsolation(t *testing.T) {
 	}()
 	select {
 	case err := <-responseReady:
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 	case <-time.After(100 * time.Millisecond):
-		t.Fatal("slow trace hook blocked socket response delivery")
+		require.Fail(t, "slow trace hook blocked socket response delivery")
 	}
 	close(trace.release)
 	select {
 	case <-trace.ended:
 	case <-time.After(time.Second):
-		t.Fatal("trace did not end")
+		require.Fail(t, "trace did not end")
 	}
 
 	trace.mu.Lock()
 	defer trace.mu.Unlock()
-	if trace.start.Endpoint != "trace-endpoint" || trace.start.EndpointAddress != "ldap.trace.test:389" || trace.start.Connection == 0 {
-		t.Fatalf("trace start identity = %#v", trace.start)
-	}
-	if trace.start.ApplicationTag != testModifyRequest || trace.start.RequestID != testModifyRequest || trace.start.MessageID != 0 {
-		t.Fatalf("trace start request metadata = %#v", trace.start)
-	}
+	assert.Equal(t, EndpointID("trace-endpoint"), trace.start.Endpoint)
+	assert.Equal(t, "ldap.trace.test:389", trace.start.EndpointAddress)
+	assert.NotZero(t, trace.start.Connection)
+	assert.Equal(t, testModifyRequest, trace.start.ApplicationTag)
+	assert.Equal(t, testModifyRequest, trace.start.RequestID)
+	assert.Zero(t, trace.start.MessageID)
 	wantKinds := []TraceEventKind{TraceQueued, TraceWritten, TraceFirstResponse}
-	if len(trace.events) != len(wantKinds) {
-		t.Fatalf("trace events = %#v", trace.events)
-	}
+	require.Len(t, trace.events, len(wantKinds))
 	for i, want := range wantKinds {
-		if trace.events[i].Kind != want {
-			t.Fatalf("trace event %d = %v, want %v", i, trace.events[i].Kind, want)
-		}
+		assert.Equal(t, want, trace.events[i].Kind)
 	}
-	if trace.end.RequestBytes == 0 || trace.end.ResponseBytes != uint64(len(responseBytes(t, 1, []byte("directory-secret")))) || trace.end.Responses != 1 || trace.end.ErrorClass != "none" {
-		t.Fatalf("trace end = %#v", trace.end)
-	}
+	assert.NotZero(t, trace.end.RequestBytes)
+	assert.Equal(t, uint64(len(responseBytes(t, 1, []byte("directory-secret")))), trace.end.ResponseBytes)
+	assert.Equal(t, uint64(1), trace.end.Responses)
+	assert.Equal(t, "none", trace.end.ErrorClass)
 }
 
 func TestTracePanicDoesNotRetireConnection(t *testing.T) {
@@ -194,20 +185,16 @@ func TestTracePanicDoesNotRetireConnection(t *testing.T) {
 		writeTestMessage(t, peer, testLDAPMessage(t, request.MessageID, testModifyDone, nil))
 	}()
 	stream, err := conn.Do(context.Background(), newTestOperation(t, testModifyRequest, ResponseSpec{Complete: []ber.Identifier{testModifyDone}}, CancelDrain))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := stream.Next(context.Background()); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, func() error { _, err := stream.Next(context.Background()); return err }())
 	select {
 	case <-trace.ended:
 	case <-time.After(time.Second):
-		t.Fatal("trace did not survive event panic")
+		require.Fail(t, "trace did not survive event panic")
 	}
 	select {
 	case <-conn.Done():
-		t.Fatalf("trace panic retired connection: %v", conn.Err())
+		assert.Fail(t, "trace panic retired connection", "%v", conn.Err())
 	default:
 	}
 }
@@ -225,12 +212,8 @@ func TestDebugLoggingUsesOnlySafeFieldsAndMessageIDIsOptIn(t *testing.T) {
 	operation := newTestOperation(t, testModifyRequest, ResponseSpec{Complete: []ber.Identifier{testModifyDone}}, CancelDrain)
 	operation.Metadata.Label = "safe.operation"
 	stream, err := conn.Do(context.Background(), operation)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := stream.Next(context.Background()); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, func() error { _, err := stream.Next(context.Background()); return err }())
 	<-trace.ended
 	eventuallyRecords(t, records, func(records []capturedRecord) bool {
 		for _, record := range records {
@@ -241,22 +224,16 @@ func TestDebugLoggingUsesOnlySafeFieldsAndMessageIDIsOptIn(t *testing.T) {
 		return false
 	})
 	for _, record := range records() {
-		if _, exists := record.attrs["message_id"]; exists {
-			t.Fatalf("message ID logged without opt-in: %#v", record)
-		}
-		if strings.Contains(record.message, string(secret)) {
-			t.Fatalf("secret appeared in log message: %#v", record)
-		}
+		assert.NotContains(t, record.attrs, "message_id")
+		assert.NotContains(t, record.message, string(secret))
 		for key, value := range record.attrs {
-			if strings.Contains(value, string(secret)) {
-				t.Fatalf("secret appeared in log field %q", key)
-			}
+			assert.NotContains(t, value, string(secret), "log field %q", key)
 		}
 	}
 	completed := records()[len(records())-1]
-	if completed.attrs["endpoint_id"] != "trace-endpoint" || completed.attrs["endpoint_address"] != "ldap.trace.test:389" || completed.attrs["operation"] != "safe.operation" {
-		t.Fatalf("safe endpoint/operation fields = %#v", completed.attrs)
-	}
+	assert.Equal(t, "trace-endpoint", completed.attrs["endpoint_id"])
+	assert.Equal(t, "ldap.trace.test:389", completed.attrs["endpoint_address"])
+	assert.Equal(t, "safe.operation", completed.attrs["operation"])
 
 	optInTrace := &recordedTrace{ended: make(chan struct{})}
 	optIn, optInPeer := newObservedPipeConnection(t, nil, optInTrace, true)
@@ -266,18 +243,12 @@ func TestDebugLoggingUsesOnlySafeFieldsAndMessageIDIsOptIn(t *testing.T) {
 		writeTestMessage(t, optInPeer, testLDAPMessage(t, request.MessageID, testModifyDone, nil))
 	}()
 	optInStream, err := optIn.Do(context.Background(), newTestOperation(t, testModifyRequest, ResponseSpec{Complete: []ber.Identifier{testModifyDone}}, CancelDrain))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := optInStream.Next(context.Background()); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, func() error { _, err := optInStream.Next(context.Background()); return err }())
 	<-optInTrace.ended
 	optInTrace.mu.Lock()
 	defer optInTrace.mu.Unlock()
-	if optInTrace.start.MessageID == 0 {
-		t.Fatal("message ID missing after explicit opt-in")
-	}
+	assert.NotZero(t, optInTrace.start.MessageID)
 }
 
 func responseBytes(t *testing.T, messageID MessageID, value []byte) []byte {
@@ -290,7 +261,7 @@ func eventuallyRecords(t *testing.T, records func() []capturedRecord, condition 
 	deadline := time.Now().Add(time.Second)
 	for !condition(records()) {
 		if time.Now().After(deadline) {
-			t.Fatal("log record condition was not satisfied")
+			require.Fail(t, "log record condition was not satisfied")
 		}
 		time.Sleep(time.Millisecond)
 	}

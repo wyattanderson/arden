@@ -8,6 +8,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/wyattanderson/arden"
 	"github.com/wyattanderson/arden/ber"
 	"github.com/wyattanderson/arden/rfc4511"
@@ -22,19 +25,13 @@ func TestWhoAmIVerifiesAuthenticatedAuthorizationIdentity(t *testing.T) {
 	})}
 
 	got, err := rfc4532.WhoAmI(context.Background(), executor)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got != "u:alice@EXAMPLE.TEST" {
-		t.Fatalf("authorization identity = %q", got)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "u:alice@EXAMPLE.TEST", got)
 	request, ok := executor.operation.Protocol.(*rfc4511.ExtendedRequest)
-	if !ok || request.Name != rfc4532.OID || request.HasValue {
-		t.Fatalf("Who Am I? request = %#v", executor.operation.Protocol)
-	}
-	if !executor.stream.closed {
-		t.Fatal("Who Am I? response stream was not closed")
-	}
+	require.True(t, ok)
+	assert.Equal(t, rfc4532.OID, request.Name)
+	assert.False(t, request.HasValue)
+	assert.True(t, executor.stream.closed)
 }
 
 func TestWhoAmIRejectsResponsesThatDoNotVerifyAuthentication(t *testing.T) {
@@ -74,12 +71,9 @@ func TestWhoAmIRejectsResponsesThatDoNotVerifyAuthentication(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			executor := &scriptedExecutor{response: extendedResponse(t, test.response)}
 			_, err := rfc4532.WhoAmI(context.Background(), executor)
-			if err == nil || !strings.Contains(err.Error(), test.want) {
-				t.Fatalf("error = %v, want substring %q", err, test.want)
-			}
-			if strings.Contains(err.Error(), diagnostic) {
-				t.Fatalf("error leaked server diagnostic: %v", err)
-			}
+			require.Error(t, err)
+			assert.ErrorContains(t, err, test.want)
+			assert.NotContains(t, err.Error(), diagnostic)
 		})
 	}
 }
@@ -118,21 +112,13 @@ func (s *singleResponseStream) Close() error {
 func extendedResponse(t *testing.T, response rfc4511.ExtendedResponse) arden.Response {
 	t.Helper()
 	protocol, err := response.AppendBER(nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	contents, err := ber.AppendInteger(nil, 1)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	contents = append(contents, protocol...)
 	message, err := ber.AppendSequence(nil, contents)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	decoded, err := arden.ParseResponse(message, ber.DefaultLimits())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return decoded
 }

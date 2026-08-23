@@ -167,6 +167,6 @@ func requestPageCookie(t *testing.T, operation Operation) []byte {
 		require.NoError(t, err)
 		return cookie
 	}
-	t.Fatal("paged-results control missing")
+	require.Fail(t, "paged-results control missing")
 	return nil
 }
