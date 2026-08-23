@@ -1,7 +1,6 @@
 package arden
 
 import (
-	"bytes"
 	"context"
 	"crypto/tls"
 	"errors"
@@ -9,12 +8,12 @@ import (
 	"io"
 	"log/slog"
 	"net"
-	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/wyattanderson/arden/ber"
+	"github.com/wyattanderson/arden/rfc4511"
 )
 
 const (
@@ -504,7 +503,7 @@ func (c *Conn) do(ctx context.Context, op Operation, scope operationScope) (Resp
 }
 
 func isAssociationChanging(id ber.Identifier) bool {
-	return id == bindRequestIdentifier || id == unbindRequestIdentifier
+	return id == rfc4511.BindRequestIdentifier() || id == rfc4511.UnbindRequestIdentifier()
 }
 
 func encodeLDAPRequest(id MessageID, op Operation, limits ber.Limits) ([]byte, error) {
@@ -965,18 +964,12 @@ func (c *Conn) sendAbandon(target *pendingOperation) {
 	}
 }
 
-var (
-	bindRequestIdentifier    = ber.Identifier{Class: ber.ClassApplication, Constructed: true, Number: 0}
-	abandonRequestIdentifier = ber.Identifier{Class: ber.ClassApplication, Number: 16}
-	unbindRequestIdentifier  = ber.Identifier{Class: ber.ClassApplication, Number: 2}
-)
-
 func encodeAbandonRequest(messageID, target MessageID) ([]byte, error) {
-	protocol, err := ber.AppendIntegerWithIdentifier(nil, abandonRequestIdentifier, int64(target))
+	protocolValue, err := (&rfc4511.AbandonRequest{Target: target}).AppendBER(nil)
 	if err != nil {
 		return nil, err
 	}
-	return encodeInternalRequest(messageID, protocol)
+	return encodeInternalRequest(messageID, protocolValue)
 }
 
 func encodeInternalRequest(messageID MessageID, protocol []byte) ([]byte, error) {
@@ -1129,7 +1122,7 @@ func (c *Conn) route(response Response) error {
 }
 
 func (c *Conn) routeUnsolicited(response Response) error {
-	if response.ProtocolID != extendedResponseIdentifier {
+	if response.ProtocolID != rfc4511.ExtendedResponseIdentifier() {
 		return &ProtocolError{Kind: ProtocolUnexpectedIdentifier, MessageID: 0, Got: response.ProtocolID}
 	}
 	notice, err := parseNotice(response.Protocol, c.options.BERLimits)
@@ -1157,90 +1150,27 @@ func (c *Conn) routeUnsolicited(response Response) error {
 	return nil
 }
 
-var (
-	extendedResponseIdentifier = ber.Identifier{Class: ber.ClassApplication, Constructed: true, Number: 24}
-	referralIdentifier         = ber.Identifier{Class: ber.ClassContextSpecific, Constructed: true, Number: 3}
-	responseNameIdentifier     = ber.Identifier{Class: ber.ClassContextSpecific, Number: 10}
-	responseValueIdentifier    = ber.Identifier{Class: ber.ClassContextSpecific, Number: 11}
-	noticeOfDisconnectionOID   = []byte("1.3.6.1.4.1.1466.20036")
-)
+const noticeOfDisconnectionOID rfc4511.LDAPOID = "1.3.6.1.4.1.1466.20036"
 
 func parseNotice(protocol []byte, limits ber.Limits) (*NoticeError, error) {
 	r, err := ber.NewReader(protocol, limits)
 	if err != nil {
 		return nil, err
 	}
-	contents, err := r.Constructed(extendedResponseIdentifier)
-	if err != nil {
+	var response rfc4511.ExtendedResponse
+	if err := response.UnmarshalBER(r); err != nil {
 		return nil, err
 	}
 	if err := r.RequireEmpty(); err != nil {
 		return nil, err
 	}
-	resultCode, err := contents.Enumerated()
-	if err != nil {
-		return nil, err
-	}
-	if _, err := contents.OctetString(); err != nil {
-		return nil, err
-	}
-	diagnostic, err := contents.OctetString()
-	if err != nil {
-		return nil, err
-	}
-	if !contents.Empty() {
-		id, err := contents.PeekIdentifier()
-		if err != nil {
-			return nil, err
-		}
-		if id == referralIdentifier {
-			referrals, err := contents.Constructed(referralIdentifier)
-			if err != nil {
-				return nil, err
-			}
-			if referrals.Empty() {
-				return nil, errors.New("arden: unsolicited referral is empty")
-			}
-			for !referrals.Empty() {
-				if _, err := referrals.OctetString(); err != nil {
-					return nil, err
-				}
-			}
-		}
-	}
-	var responseName []byte
-	if !contents.Empty() {
-		id, err := contents.PeekIdentifier()
-		if err != nil {
-			return nil, err
-		}
-		if id == responseNameIdentifier {
-			responseName, err = contents.Primitive(responseNameIdentifier)
-			if err != nil {
-				return nil, err
-			}
-		}
-	}
-	if !contents.Empty() {
-		id, err := contents.PeekIdentifier()
-		if err != nil {
-			return nil, err
-		}
-		if id == responseValueIdentifier {
-			if _, err := contents.Primitive(responseValueIdentifier); err != nil {
-				return nil, err
-			}
-		}
-	}
-	for !contents.Empty() {
-		if _, err := contents.SkipElement(); err != nil {
-			return nil, err
-		}
-	}
-	if !bytes.Equal(responseName, noticeOfDisconnectionOID) {
+	if !response.HasResponseName || response.ResponseName != noticeOfDisconnectionOID {
 		return nil, nil
 	}
-	return &NoticeError{ResultCode: resultCode, Diagnostic: slices.Clone(diagnostic)}, nil
+	return &NoticeError{
+		ResultCode: int64(response.Result.ResultCode),
+		Diagnostic: []byte(response.Result.DiagnosticMessage),
+	}, nil
 }
 
 // NextUnsolicited returns the next non-notice unsolicited ExtendedResponse.
@@ -1322,8 +1252,8 @@ func (c *Conn) CloseContext(ctx context.Context) error {
 		id, ok := c.tryReserveMessageIDLocked()
 		c.mu.Unlock()
 		if ok {
-			protocol, _ := ber.AppendPrimitive(nil, unbindRequestIdentifier, nil)
-			message, _ := encodeInternalRequest(id, protocol)
+			protocolValue, _ := (&rfc4511.UnbindRequest{}).AppendBER(nil)
+			message, _ := encodeInternalRequest(id, protocolValue)
 			_, closeErr = c.writeAll(ctx, message)
 			c.releaseReserved(id)
 		}

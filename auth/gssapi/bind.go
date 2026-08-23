@@ -59,11 +59,6 @@ func exchangeBind(ctx context.Context, session arden.InitializationSession, toke
 		}
 		return bindResult{}, err
 	}
-	clear(decoded.Result.MatchedDN)
-	clear(decoded.Result.DiagnosticMessage)
-	for _, referral := range decoded.Result.Referrals {
-		clear(referral)
-	}
 	return bindResult{
 		code:           decoded.Result.ResultCode,
 		credentials:    decoded.ServerSASLCredentials,

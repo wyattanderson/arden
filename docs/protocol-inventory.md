@@ -89,7 +89,7 @@ consumer interprets these values; response routing does not.
 - Controls, extended operations, unsolicited notifications, and intermediate
   responses carry assigned OIDs with extension-defined OCTET STRING payloads.
 - Unknown protocol operations remain representable by `ber.Identifier` plus a
-  handwritten `arden.ProtocolOperation`; they are not accepted as responses
+  handwritten `protocol.ProtocolOperation`; they are not accepted as responses
   unless explicitly included in a response pattern.
 
 ## BER and envelope restrictions

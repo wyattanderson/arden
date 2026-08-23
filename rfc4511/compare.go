@@ -1,18 +1,17 @@
 package rfc4511
 
 import (
-	"bytes"
 	"errors"
 	"slices"
 
-	"github.com/wyattanderson/arden"
 	"github.com/wyattanderson/arden/ber"
+	"github.com/wyattanderson/arden/protocol"
 )
 
 var (
 	compareRequestIdentifier  = applicationConstructed(14)
 	compareResponseIdentifier = applicationConstructed(15)
-	compareResponsePattern    = mustResponsePattern(arden.ResponseSpec{Complete: []ber.Identifier{compareResponseIdentifier}})
+	compareResponsePattern    = mustResponsePattern(protocol.ResponseSpec{Complete: []ber.Identifier{compareResponseIdentifier}})
 )
 
 // CompareRequestIdentifier returns the application identifier for CompareRequest.
@@ -35,9 +34,9 @@ func (*CompareRequest) ProtocolIdentifier() ber.Identifier { return compareReque
 func (v *CompareRequest) AppendBER(dst []byte) ([]byte, error) {
 	start := len(dst)
 	if v == nil {
-		return dst, errors.New("rfc4511: nil CompareRequest")
+		return dst, errors.New("arden: nil CompareRequest")
 	}
-	contents, err := ber.AppendOctetString(nil, v.Entry)
+	contents, err := ber.AppendOctetString(nil, []byte(v.Entry))
 	if err != nil {
 		return dst[:start], err
 	}
@@ -75,7 +74,7 @@ func (v *CompareRequest) UnmarshalBER(r *ber.Reader) error {
 	if err != nil {
 		return err
 	}
-	*v = CompareRequest{Entry: LDAPDN(bytes.Clone(entry)), Assertion: assertion, Extensions: extensions}
+	*v = CompareRequest{Entry: LDAPDN(string(entry)), Assertion: assertion, Extensions: extensions}
 	return nil
 }
 
@@ -102,16 +101,16 @@ func (v *CompareResponse) UnmarshalBER(r *ber.Reader) error {
 }
 
 // CompareResponsePattern returns the terminal response pattern for CompareRequest.
-func CompareResponsePattern() arden.ResponsePattern { return compareResponsePattern }
+func CompareResponsePattern() protocol.ResponsePattern { return compareResponsePattern }
 
 // NewCompareOperation creates a complete Compare request declaration.
-func NewCompareOperation(request *CompareRequest, controls []ber.Marshaler) (arden.Operation, error) {
+func NewCompareOperation(request *CompareRequest, controls []ber.Marshaler) (protocol.Operation, error) {
 	if request == nil {
-		return arden.Operation{}, errors.New("rfc4511: nil CompareRequest")
+		return protocol.Operation{}, errors.New("arden: nil CompareRequest")
 	}
-	op := arden.Operation{Protocol: request, Controls: slices.Clone(controls), Responses: CompareResponsePattern(), Cancellation: arden.CancelDrain, Metadata: arden.OperationMetadata{Label: "ldap.compare"}}
+	op := protocol.Operation{Protocol: request, Controls: slices.Clone(controls), Responses: CompareResponsePattern(), Cancellation: protocol.CancelDrain, Metadata: protocol.OperationMetadata{Label: "ldap.compare"}}
 	if err := op.Validate(); err != nil {
-		return arden.Operation{}, err
+		return protocol.Operation{}, err
 	}
 	return op, nil
 }

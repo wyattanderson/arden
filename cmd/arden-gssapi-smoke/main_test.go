@@ -11,6 +11,7 @@ import (
 	"github.com/wyattanderson/arden"
 	"github.com/wyattanderson/arden/ber"
 	"github.com/wyattanderson/arden/rfc4511"
+	"github.com/wyattanderson/arden/rfc4532"
 )
 
 func TestWhoAmIVerifiesAuthenticatedAuthorizationIdentity(t *testing.T) {
@@ -20,7 +21,7 @@ func TestWhoAmIVerifiesAuthenticatedAuthorizationIdentity(t *testing.T) {
 		HasResponseValue: true,
 	})}
 
-	got, err := whoAmI(context.Background(), executor)
+	got, err := rfc4532.WhoAmI(context.Background(), executor)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -28,7 +29,7 @@ func TestWhoAmIVerifiesAuthenticatedAuthorizationIdentity(t *testing.T) {
 		t.Fatalf("authorization identity = %q", got)
 	}
 	request, ok := executor.operation.Protocol.(*rfc4511.ExtendedRequest)
-	if !ok || string(request.Name) != whoAmIOID || request.HasValue {
+	if !ok || request.Name != rfc4532.OID || request.HasValue {
 		t.Fatalf("Who Am I? request = %#v", executor.operation.Protocol)
 	}
 	if !executor.stream.closed {
@@ -44,13 +45,6 @@ func TestWhoAmIRejectsResponsesThatDoNotVerifyAuthentication(t *testing.T) {
 		want     string
 	}{
 		{
-			name: "anonymous",
-			response: rfc4511.ExtendedResponse{
-				Result: rfc4511.LDAPResult{ResultCode: rfc4511.ResultSuccess}, HasResponseValue: true,
-			},
-			want: "anonymous authorization identity",
-		},
-		{
 			name:     "missing response value",
 			response: rfc4511.ExtendedResponse{Result: rfc4511.LDAPResult{ResultCode: rfc4511.ResultSuccess}},
 			want:     "omitted the authorization identity",
@@ -59,7 +53,7 @@ func TestWhoAmIRejectsResponsesThatDoNotVerifyAuthentication(t *testing.T) {
 			name: "unexpected response name",
 			response: rfc4511.ExtendedResponse{
 				Result:           rfc4511.LDAPResult{ResultCode: rfc4511.ResultSuccess},
-				ResponseName:     rfc4511.LDAPOID(whoAmIOID),
+				ResponseName:     rfc4532.OID,
 				HasResponseName:  true,
 				ResponseValue:    []byte("u:alice"),
 				HasResponseValue: true,
@@ -70,7 +64,7 @@ func TestWhoAmIRejectsResponsesThatDoNotVerifyAuthentication(t *testing.T) {
 			name: "server rejection",
 			response: rfc4511.ExtendedResponse{Result: rfc4511.LDAPResult{
 				ResultCode:        rfc4511.ResultInsufficientAccessRights,
-				DiagnosticMessage: []byte(diagnostic),
+				DiagnosticMessage: rfc4511.LDAPString(diagnostic),
 			}},
 			want: "LDAP result code",
 		},
@@ -79,7 +73,7 @@ func TestWhoAmIRejectsResponsesThatDoNotVerifyAuthentication(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			executor := &scriptedExecutor{response: extendedResponse(t, test.response)}
-			_, err := whoAmI(context.Background(), executor)
+			_, err := rfc4532.WhoAmI(context.Background(), executor)
 			if err == nil || !strings.Contains(err.Error(), test.want) {
 				t.Fatalf("error = %v, want substring %q", err, test.want)
 			}

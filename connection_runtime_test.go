@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/wyattanderson/arden/ber"
+	"github.com/wyattanderson/arden/rfc4511"
 )
 
 var (
@@ -321,14 +322,14 @@ func TestAbandonCancellationTombstonesTarget(t *testing.T) {
 	}
 
 	abandon := readTestMessage(t, framer)
-	if abandon.ProtocolID != abandonRequestIdentifier {
+	if abandon.ProtocolID != rfc4511.AbandonRequestIdentifier() {
 		t.Fatalf("cancellation protocol = %s, want Abandon", abandon.ProtocolID)
 	}
 	r, err := ber.NewReader(abandon.Protocol, ber.DefaultLimits())
 	if err != nil {
 		t.Fatal(err)
 	}
-	abandonedID, err := r.IntegerWithIdentifier(abandonRequestIdentifier)
+	abandonedID, err := r.IntegerWithIdentifier(rfc4511.AbandonRequestIdentifier())
 	if err != nil || MessageID(abandonedID) != target.MessageID {
 		t.Fatalf("Abandon target = %d, %v; want %d", abandonedID, err, target.MessageID)
 	}
@@ -469,7 +470,7 @@ func TestUnsolicitedResponseAndNoticeOfDisconnection(t *testing.T) {
 		contents, _ := ber.AppendEnumerated(nil, 0)
 		contents, _ = ber.AppendOctetString(contents, nil)
 		contents, _ = ber.AppendOctetString(contents, nil)
-		writeTestMessage(t, peer, testLDAPMessage(t, 0, extendedResponseIdentifier, contents))
+		writeTestMessage(t, peer, testLDAPMessage(t, 0, rfc4511.ExtendedResponseIdentifier(), contents))
 		response, err := conn.NextUnsolicited(context.Background())
 		if err != nil || response.MessageID != 0 {
 			t.Fatalf("unsolicited response = %#v, %v", response.Header(), err)
@@ -481,8 +482,8 @@ func TestUnsolicitedResponseAndNoticeOfDisconnection(t *testing.T) {
 		contents, _ := ber.AppendEnumerated(nil, 52)
 		contents, _ = ber.AppendOctetString(contents, nil)
 		contents, _ = ber.AppendOctetString(contents, []byte("server shutdown"))
-		contents, _ = ber.AppendPrimitive(contents, responseNameIdentifier, noticeOfDisconnectionOID)
-		writeTestMessage(t, peer, testLDAPMessage(t, 0, extendedResponseIdentifier, contents))
+		contents, _ = ber.AppendPrimitive(contents, ber.Identifier{Class: ber.ClassContextSpecific, Number: 10}, []byte(noticeOfDisconnectionOID))
+		writeTestMessage(t, peer, testLDAPMessage(t, 0, rfc4511.ExtendedResponseIdentifier(), contents))
 		_, err := conn.NextUnsolicited(context.Background())
 		var notice *NoticeError
 		if !errors.As(err, &notice) || notice.ResultCode != 52 || !bytes.Equal(notice.Diagnostic, []byte("server shutdown")) {
@@ -500,7 +501,7 @@ func TestCloseSendsUnbindAndIsIdempotent(t *testing.T) {
 	closed := make(chan error, 1)
 	go func() { closed <- conn.Close() }()
 	request := readTestMessage(t, framer)
-	if request.ProtocolID != unbindRequestIdentifier {
+	if request.ProtocolID != rfc4511.UnbindRequestIdentifier() {
 		t.Fatalf("close protocol = %s, want Unbind", request.ProtocolID)
 	}
 	if err := <-closed; err != nil {

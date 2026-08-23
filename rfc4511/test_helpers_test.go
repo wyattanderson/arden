@@ -1,4 +1,4 @@
-package rfc4511_test
+package rfc4511
 
 import (
 	"testing"

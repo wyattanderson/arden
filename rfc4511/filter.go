@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/wyattanderson/arden/ber"
 )
@@ -37,6 +38,32 @@ type Filter interface {
 	FilterIdentifier() ber.Identifier
 }
 
+// Equal constructs a text equality filter without filter-string interpolation.
+func Equal(attribute, value string) Filter {
+	return EqualityMatch{Assertion: AttributeValueAssertion{
+		Type: AttributeDescription(attribute), Value: AssertionValue(value),
+	}}
+}
+
+// EqualBytes constructs an equality filter for a binary assertion value.
+func EqualBytes(attribute string, value []byte) Filter {
+	return EqualityMatch{Assertion: AttributeValueAssertion{
+		Type: AttributeDescription(attribute), Value: bytes.Clone(value),
+	}}
+}
+
+// Has constructs a presence filter.
+func Has(attribute string) Filter { return Present{Attribute: AttributeDescription(attribute)} }
+
+// All constructs an AND filter.
+func All(filters ...Filter) Filter { return And{Filters: slices.Clone(filters)} }
+
+// Any constructs an OR filter.
+func Any(filters ...Filter) Filter { return Or{Filters: slices.Clone(filters)} }
+
+// Negate constructs a NOT filter.
+func Negate(filter Filter) Filter { return Not{Filter: filter} }
+
 // UnknownFilter preserves an unrecognized extensible Filter alternative. It
 // can be returned by RFC decoders and re-encoded, while third-party filters
 // implement Filter directly for values they understand.
@@ -51,7 +78,7 @@ func (f UnknownFilter) FilterIdentifier() ber.Identifier { return f.identifier }
 //revive:disable-next-line:exported
 func (f UnknownFilter) AppendBER(dst []byte) ([]byte, error) {
 	if len(f.raw) == 0 {
-		return dst, errors.New("rfc4511: unknown filter was not decoded")
+		return dst, errors.New("arden: unknown filter was not decoded")
 	}
 	return append(dst, f.raw...), nil
 }
@@ -117,7 +144,7 @@ func (Not) FilterIdentifier() ber.Identifier { return notFilterIdentifier }
 func (f Not) AppendBER(dst []byte) ([]byte, error) {
 	start := len(dst)
 	if f.Filter == nil {
-		return dst, errors.New("rfc4511: NOT filter has no child")
+		return dst, errors.New("arden: NOT filter has no child")
 	}
 	contents, err := appendFilter(nil, f.Filter)
 	if err != nil {
@@ -257,7 +284,7 @@ func (f Present) AppendBER(dst []byte) ([]byte, error) {
 	if err := requireNonEmpty("present attribute description", f.Attribute); err != nil {
 		return dst, err
 	}
-	return ber.AppendPrimitive(dst, presentIdentifier, f.Attribute)
+	return ber.AppendPrimitive(dst, presentIdentifier, []byte(f.Attribute))
 }
 
 //revive:disable-next-line:exported
@@ -272,7 +299,7 @@ func (f *Present) UnmarshalBER(r *ber.Reader) error {
 	if err := requireNonEmpty("present attribute description", attribute); err != nil {
 		return err
 	}
-	*f = Present{Attribute: AttributeDescription(bytes.Clone(attribute))}
+	*f = Present{Attribute: AttributeDescription(string(attribute))}
 	return nil
 }
 
@@ -297,9 +324,9 @@ func (f SubstringFilter) AppendBER(dst []byte) ([]byte, error) {
 		return dst, err
 	}
 	if f.Initial == nil && len(f.Any) == 0 && f.Final == nil {
-		return dst, errors.New("rfc4511: substring filter requires at least one part")
+		return dst, errors.New("arden: substring filter requires at least one part")
 	}
-	contents, err := ber.AppendOctetString(nil, f.Type)
+	contents, err := ber.AppendOctetString(nil, []byte(f.Type))
 	if err != nil {
 		return dst[:start], err
 	}
@@ -313,7 +340,7 @@ func (f SubstringFilter) AppendBER(dst []byte) ([]byte, error) {
 	for i, value := range f.Any {
 		parts, err = appendImplicitOctets(parts, anySubstringIdentifier, value)
 		if err != nil {
-			return dst[:start], fmt.Errorf("rfc4511: substring any part %d: %w", i, err)
+			return dst[:start], fmt.Errorf("arden: substring any part %d: %w", i, err)
 		}
 	}
 	if f.Final != nil {
@@ -357,7 +384,7 @@ func (f *SubstringFilter) UnmarshalBER(r *ber.Reader) error {
 	if err != nil {
 		return err
 	}
-	decoded := SubstringFilter{Type: AttributeDescription(bytes.Clone(typeValue))}
+	decoded := SubstringFilter{Type: AttributeDescription(string(typeValue))}
 	for !parts.Empty() {
 		id, err := parts.PeekIdentifier()
 		if err != nil {
@@ -366,7 +393,7 @@ func (f *SubstringFilter) UnmarshalBER(r *ber.Reader) error {
 		switch id {
 		case initialSubstringIdentifier:
 			if decoded.Initial != nil || len(decoded.Any) != 0 || decoded.Final != nil {
-				return errors.New("rfc4511: substring initial part is out of order")
+				return errors.New("arden: substring initial part is out of order")
 			}
 			value, err := readImplicitOctets(parts, initialSubstringIdentifier)
 			if err != nil {
@@ -376,7 +403,7 @@ func (f *SubstringFilter) UnmarshalBER(r *ber.Reader) error {
 			decoded.Initial = &initial
 		case anySubstringIdentifier:
 			if decoded.Final != nil {
-				return errors.New("rfc4511: substring any part follows final part")
+				return errors.New("arden: substring any part follows final part")
 			}
 			value, err := readImplicitOctets(parts, anySubstringIdentifier)
 			if err != nil {
@@ -385,7 +412,7 @@ func (f *SubstringFilter) UnmarshalBER(r *ber.Reader) error {
 			decoded.Any = append(decoded.Any, AssertionValue(value))
 		case finalSubstringIdentifier:
 			if decoded.Final != nil {
-				return errors.New("rfc4511: substring has multiple final parts")
+				return errors.New("arden: substring has multiple final parts")
 			}
 			value, err := readImplicitOctets(parts, finalSubstringIdentifier)
 			if err != nil {
@@ -401,7 +428,7 @@ func (f *SubstringFilter) UnmarshalBER(r *ber.Reader) error {
 		}
 	}
 	if decoded.Initial == nil && len(decoded.Any) == 0 && decoded.Final == nil {
-		return errors.New("rfc4511: substring filter requires at least one part")
+		return errors.New("arden: substring filter requires at least one part")
 	}
 	if err := contents.RequireEmpty(); err != nil {
 		return err
@@ -530,7 +557,7 @@ func (f *ExtensibleMatch) UnmarshalBER(r *ber.Reader) error {
 			return err
 		}
 		if id == matchingRuleIdentifier || id == matchingTypeIdentifier || id == matchValueIdentifier || id == dnAttributesIdentifier {
-			return fmt.Errorf("rfc4511: duplicate or out-of-order extensible match field %s", id)
+			return fmt.Errorf("arden: duplicate or out-of-order extensible match field %s", id)
 		}
 		decoded.Extensions, err = decodeUnknownFields(contents)
 		if err != nil {
@@ -546,7 +573,7 @@ func (f *ExtensibleMatch) UnmarshalBER(r *ber.Reader) error {
 
 func (f ExtensibleMatch) validate() error {
 	if f.MatchingRule == nil && f.Type == nil {
-		return errors.New("rfc4511: extensible match requires a matching rule or type")
+		return errors.New("arden: extensible match requires a matching rule or type")
 	}
 	if f.MatchingRule != nil {
 		if err := requireNonEmpty("matching rule", *f.MatchingRule); err != nil {
@@ -564,14 +591,14 @@ func (f ExtensibleMatch) validate() error {
 func appendFilterSet(dst []byte, id ber.Identifier, filters []Filter, name string) ([]byte, error) {
 	start := len(dst)
 	if len(filters) == 0 {
-		return dst, fmt.Errorf("rfc4511: %s filter requires at least one child", name)
+		return dst, fmt.Errorf("arden: %s filter requires at least one child", name)
 	}
 	contents := make([]byte, 0)
 	var err error
 	for i, filter := range filters {
 		contents, err = appendFilter(contents, filter)
 		if err != nil {
-			return dst[:start], fmt.Errorf("rfc4511: %s filter child %d: %w", name, i, err)
+			return dst[:start], fmt.Errorf("arden: %s filter child %d: %w", name, i, err)
 		}
 	}
 	encoded, err := ber.AppendConstructed(dst, id, contents)
@@ -595,7 +622,7 @@ func decodeFilterSet(r *ber.Reader, id ber.Identifier, name string) ([]Filter, e
 		filters = append(filters, filter)
 	}
 	if len(filters) == 0 {
-		return nil, fmt.Errorf("rfc4511: %s filter requires at least one child", name)
+		return nil, fmt.Errorf("arden: %s filter requires at least one child", name)
 	}
 	return filters, nil
 }
@@ -603,11 +630,11 @@ func decodeFilterSet(r *ber.Reader, id ber.Identifier, name string) ([]Filter, e
 func appendFilter(dst []byte, filter Filter) ([]byte, error) {
 	start := len(dst)
 	if filter == nil {
-		return dst, errors.New("rfc4511: nil filter")
+		return dst, errors.New("arden: nil filter")
 	}
 	id := filter.FilterIdentifier()
 	if !id.Valid() || id.Class != ber.ClassContextSpecific {
-		return dst, fmt.Errorf("rfc4511: filter identifier %s is not context-specific", id)
+		return dst, fmt.Errorf("arden: filter identifier %s is not context-specific", id)
 	}
 	encoded, err := filter.AppendBER(dst)
 	if err != nil {
@@ -615,10 +642,10 @@ func appendFilter(dst []byte, filter Filter) ([]byte, error) {
 	}
 	value, err := ber.DecodeElement(encoded[start:], validationLimits())
 	if err != nil {
-		return dst[:start], fmt.Errorf("rfc4511: filter encoding: %w", err)
+		return dst[:start], fmt.Errorf("arden: filter encoding: %w", err)
 	}
 	if value.Identifier != id {
-		return dst[:start], fmt.Errorf("rfc4511: filter encoded %s, declared %s", value.Identifier, id)
+		return dst[:start], fmt.Errorf("arden: filter encoded %s, declared %s", value.Identifier, id)
 	}
 	return encoded, nil
 }
@@ -671,7 +698,7 @@ func decodeFilter(r *ber.Reader) (Filter, error) {
 		return filter, err
 	default:
 		if id.Class != ber.ClassContextSpecific {
-			return nil, fmt.Errorf("rfc4511: filter identifier %s is not context-specific", id)
+			return nil, fmt.Errorf("arden: filter identifier %s is not context-specific", id)
 		}
 		e, err := r.SkipElement()
 		if err != nil {

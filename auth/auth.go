@@ -48,7 +48,7 @@ func (Anonymous) Begin(ctx context.Context, _ arden.Endpoint) (arden.Authenticat
 
 type bindAuthenticator struct {
 	identity    arden.Identity
-	name        []byte
+	name        string
 	credentials []byte
 	used        bool
 	closed      bool
@@ -110,9 +110,8 @@ func (a *bindAuthenticator) Close() error {
 		return nil
 	}
 	a.closed = true
-	clear(a.name)
 	clear(a.credentials)
-	a.name = nil
+	a.name = ""
 	a.credentials = nil
 	return nil
 }

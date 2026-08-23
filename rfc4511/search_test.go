@@ -1,4 +1,4 @@
-package rfc4511_test
+package rfc4511
 
 import (
 	"math"
@@ -8,33 +8,32 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/wyattanderson/arden/ber"
-	"github.com/wyattanderson/arden/rfc4511"
 )
 
 func TestSearchRequestRoundTripsBoundariesAndExtensibleScope(t *testing.T) {
-	request := &rfc4511.SearchRequest{
-		BaseObject:       rfc4511.LDAPDN("dc=example,dc=com"),
-		Scope:            rfc4511.SearchScope(99),
-		DerefAliases:     rfc4511.DerefAlways,
+	request := &SearchRequest{
+		BaseObject:       LDAPDN("dc=example,dc=com"),
+		Scope:            SearchScope(99),
+		DerefAliases:     DerefAlways,
 		SizeLimit:        math.MaxInt32,
 		TimeLimitSeconds: math.MaxInt32,
 		TypesOnly:        true,
-		Filter:           rfc4511.Present{Attribute: rfc4511.AttributeDescription("objectClass")},
-		Attributes:       []rfc4511.AttributeSelector{rfc4511.AttributeSelector("cn"), rfc4511.AttributeSelector("+")},
+		Filter:           Present{Attribute: AttributeDescription("objectClass")},
+		Attributes:       []AttributeSelector{AttributeSelector("cn"), AttributeSelector("+")},
 	}
 	encoded, err := request.AppendBER(nil)
 	require.NoError(t, err)
-	var got rfc4511.SearchRequest
+	var got SearchRequest
 	decode(t, encoded, &got)
 	assert.Equal(t, *request, got)
 }
 
 func TestSearchRequestRejectsClosedEnumAndLimitOverflowAtomically(t *testing.T) {
-	validFilter := rfc4511.Present{Attribute: rfc4511.AttributeDescription("cn")}
-	for _, request := range []*rfc4511.SearchRequest{
+	validFilter := Present{Attribute: AttributeDescription("cn")}
+	for _, request := range []*SearchRequest{
 		nil,
-		{DerefAliases: rfc4511.DerefAliases(-1), Filter: validFilter},
-		{DerefAliases: rfc4511.DerefAliases(4), Filter: validFilter},
+		{DerefAliases: DerefAliases(-1), Filter: validFilter},
+		{DerefAliases: DerefAliases(4), Filter: validFilter},
 		{SizeLimit: math.MaxInt32 + 1, Filter: validFilter},
 		{TimeLimitSeconds: math.MaxInt32 + 1, Filter: validFilter},
 		{},
@@ -50,7 +49,7 @@ func TestSearchRequestRejectsClosedEnumAndLimitOverflowAtomically(t *testing.T) 
 		searchRequestEncoding(t, 0, 0, -1, 0),
 		searchRequestEncoding(t, 0, 0, 0, math.MaxInt32+1),
 	} {
-		prior := rfc4511.SearchRequest{BaseObject: rfc4511.LDAPDN("dc=keep"), Filter: validFilter}
+		prior := SearchRequest{BaseObject: LDAPDN("dc=keep"), Filter: validFilter}
 		requireDecodeError(t, encoded, &prior)
 		assert.Equal(t, "dc=keep", string(prior.BaseObject))
 	}
@@ -58,23 +57,23 @@ func TestSearchRequestRejectsClosedEnumAndLimitOverflowAtomically(t *testing.T) 
 
 func TestSearchResultReferenceRequiresURIAndPreservesExtensions(t *testing.T) {
 	dst := []byte{0xde, 0xad}
-	got, err := (rfc4511.SearchResultReference{}).AppendBER(dst)
+	got, err := (SearchResultReference{}).AppendBER(dst)
 	require.Error(t, err)
 	assert.Equal(t, dst, got)
 
-	empty, err := ber.AppendConstructed(nil, rfc4511.SearchResultReferenceIdentifier(), nil)
+	empty, err := ber.AppendConstructed(nil, SearchResultReferenceIdentifier(), nil)
 	require.NoError(t, err)
-	requireDecodeError(t, empty, &rfc4511.SearchResultReference{})
+	requireDecodeError(t, empty, &SearchResultReference{})
 
 	contents, err := ber.AppendOctetString(nil, []byte("ldap://example"))
 	require.NoError(t, err)
 	contents, err = ber.AppendPrimitive(contents, ber.Identifier{Class: ber.ClassContextSpecific, Number: 5}, []byte{0x7f})
 	require.NoError(t, err)
-	encoded, err := ber.AppendConstructed(nil, rfc4511.SearchResultReferenceIdentifier(), contents)
+	encoded, err := ber.AppendConstructed(nil, SearchResultReferenceIdentifier(), contents)
 	require.NoError(t, err)
-	var reference rfc4511.SearchResultReference
+	var reference SearchResultReference
 	decode(t, encoded, &reference)
-	assert.Equal(t, []rfc4511.URI{rfc4511.URI("ldap://example")}, reference.URIs)
+	assert.Equal(t, []URI{URI("ldap://example")}, reference.URIs)
 	require.Len(t, reference.Extensions, 1)
 	reencoded, err := reference.AppendBER(nil)
 	require.NoError(t, err)
@@ -95,11 +94,11 @@ func searchRequestEncoding(t *testing.T, scope, deref, size, timeLimit int64) []
 	require.NoError(t, err)
 	contents, err = ber.AppendBoolean(contents, false)
 	require.NoError(t, err)
-	contents, err = (rfc4511.Present{Attribute: rfc4511.AttributeDescription("cn")}).AppendBER(contents)
+	contents, err = (Present{Attribute: AttributeDescription("cn")}).AppendBER(contents)
 	require.NoError(t, err)
 	contents, err = ber.AppendSequence(contents, nil)
 	require.NoError(t, err)
-	encoded, err := ber.AppendConstructed(nil, rfc4511.SearchRequestIdentifier(), contents)
+	encoded, err := ber.AppendConstructed(nil, SearchRequestIdentifier(), contents)
 	require.NoError(t, err)
 	return encoded
 }

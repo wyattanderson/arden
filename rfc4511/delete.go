@@ -1,18 +1,17 @@
 package rfc4511
 
 import (
-	"bytes"
 	"errors"
 	"slices"
 
-	"github.com/wyattanderson/arden"
 	"github.com/wyattanderson/arden/ber"
+	"github.com/wyattanderson/arden/protocol"
 )
 
 var (
 	deleteRequestIdentifier  = applicationPrimitive(10)
 	deleteResponseIdentifier = applicationConstructed(11)
-	deleteResponsePattern    = mustResponsePattern(arden.ResponseSpec{Complete: []ber.Identifier{deleteResponseIdentifier}})
+	deleteResponsePattern    = mustResponsePattern(protocol.ResponseSpec{Complete: []ber.Identifier{deleteResponseIdentifier}})
 )
 
 // DeleteRequestIdentifier returns the application identifier for DeleteRequest.
@@ -30,9 +29,9 @@ func (*DeleteRequest) ProtocolIdentifier() ber.Identifier { return deleteRequest
 //revive:disable-next-line:exported
 func (v *DeleteRequest) AppendBER(dst []byte) ([]byte, error) {
 	if v == nil {
-		return dst, errors.New("rfc4511: nil DeleteRequest")
+		return dst, errors.New("arden: nil DeleteRequest")
 	}
-	return ber.AppendPrimitive(dst, deleteRequestIdentifier, v.Entry)
+	return ber.AppendPrimitive(dst, deleteRequestIdentifier, []byte(v.Entry))
 }
 
 //revive:disable-next-line:exported
@@ -44,7 +43,7 @@ func (v *DeleteRequest) UnmarshalBER(r *ber.Reader) error {
 	if err != nil {
 		return err
 	}
-	*v = DeleteRequest{Entry: LDAPDN(bytes.Clone(entry))}
+	*v = DeleteRequest{Entry: LDAPDN(string(entry))}
 	return nil
 }
 
@@ -70,16 +69,16 @@ func (v *DeleteResponse) UnmarshalBER(r *ber.Reader) error {
 }
 
 // DeleteResponsePattern returns the terminal response pattern for DeleteRequest.
-func DeleteResponsePattern() arden.ResponsePattern { return deleteResponsePattern }
+func DeleteResponsePattern() protocol.ResponsePattern { return deleteResponsePattern }
 
 // NewDeleteOperation creates a complete Delete request declaration.
-func NewDeleteOperation(request *DeleteRequest, controls []ber.Marshaler) (arden.Operation, error) {
+func NewDeleteOperation(request *DeleteRequest, controls []ber.Marshaler) (protocol.Operation, error) {
 	if request == nil {
-		return arden.Operation{}, errors.New("rfc4511: nil DeleteRequest")
+		return protocol.Operation{}, errors.New("arden: nil DeleteRequest")
 	}
-	op := arden.Operation{Protocol: request, Controls: slices.Clone(controls), Responses: DeleteResponsePattern(), Cancellation: arden.CancelDrain, Metadata: arden.OperationMetadata{Label: "ldap.delete"}}
+	op := protocol.Operation{Protocol: request, Controls: slices.Clone(controls), Responses: DeleteResponsePattern(), Cancellation: protocol.CancelDrain, Metadata: protocol.OperationMetadata{Label: "ldap.delete"}}
 	if err := op.Validate(); err != nil {
-		return arden.Operation{}, err
+		return protocol.Operation{}, err
 	}
 	return op, nil
 }

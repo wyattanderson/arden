@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/wyattanderson/arden/ber"
+	"github.com/wyattanderson/arden/rfc4511"
 )
 
 var testBindResponse = ber.Identifier{Class: ber.ClassApplication, Constructed: true, Number: 1}
@@ -61,7 +62,7 @@ func newSetupPipeConnection(t *testing.T, options ConnectionOptions) (*Conn, net
 
 func bindLikeOperation(t *testing.T, token []byte) Operation {
 	t.Helper()
-	protocol, err := ber.AppendElement(nil, bindRequestIdentifier, token)
+	protocol, err := ber.AppendElement(nil, rfc4511.BindRequestIdentifier(), token)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +71,7 @@ func bindLikeOperation(t *testing.T, token []byte) Operation {
 		t.Fatal(err)
 	}
 	return Operation{
-		Protocol:     testProtocol{id: bindRequestIdentifier, encoded: protocol},
+		Protocol:     testProtocol{id: rfc4511.BindRequestIdentifier(), encoded: protocol},
 		Responses:    pattern,
 		Cancellation: CancelClose,
 	}
@@ -117,7 +118,7 @@ func TestAuthenticationAndInitializerAreExclusiveAndOrdered(t *testing.T) {
 	peerErr := make(chan error, 1)
 	go func() {
 		first := readTestMessage(t, framer)
-		if !bytes.Equal(first.Protocol, mustElement(t, bindRequestIdentifier, []byte("round-one"))) {
+		if !bytes.Equal(first.Protocol, mustElement(t, rfc4511.BindRequestIdentifier(), []byte("round-one"))) {
 			peerErr <- errors.New("first setup request was not the authentication round")
 			return
 		}
@@ -185,7 +186,7 @@ func TestMockSASLCanUseOpaqueMultiRoundBindTokens(t *testing.T) {
 	go func() {
 		for _, token := range tokens {
 			request := readTestMessage(t, framer)
-			if !bytes.Equal(request.Protocol, mustElement(t, bindRequestIdentifier, token)) {
+			if !bytes.Equal(request.Protocol, mustElement(t, rfc4511.BindRequestIdentifier(), token)) {
 				peerErr <- errors.New("SASL token changed before framing")
 				return
 			}
@@ -360,7 +361,7 @@ func TestBindCannotChangeAssociationAfterReady(t *testing.T) {
 	if _, err := conn.Do(context.Background(), bindLikeOperation(t, []byte("late-bind"))); !errors.Is(err, ErrAssociationChange) {
 		t.Fatalf("application Bind error = %v", err)
 	}
-	unbind := newTestOperation(t, unbindRequestIdentifier, ResponseSpec{NoResponse: true}, CancelNone)
+	unbind := newTestOperation(t, rfc4511.UnbindRequestIdentifier(), ResponseSpec{NoResponse: true}, CancelNone)
 	if _, err := conn.Do(context.Background(), unbind); !errors.Is(err, ErrAssociationChange) {
 		t.Fatalf("application Unbind error = %v", err)
 	}

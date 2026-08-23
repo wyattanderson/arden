@@ -1,15 +1,15 @@
 # arden
 
-Arden is an experimental, binary-first LDAPv3 client for Go. Its initial target
+Arden is an experimental LDAPv3 client for Go. Its initial target
 is RFC 4511 with direct TLS preferred, interoperating with 389 Directory Server
 and FreeIPA.
 
-The project is intentionally narrower than a general LDAP SDK. The core will
-provide BER codecs, a hand-authored RFC 4511 wire package, LDAP message
-transport, concurrent operation routing, contexts, tracing hooks, and
-multiplex-aware pooling. Schema-aware values, DN and filter text APIs, and
-application-specific operations belong in generated or handwritten packages
-above that foundation.
+Arden provides string-first generic LDAP operations, schema-neutral entries,
+safe filter constructors, automatic paging, hand-authored RFC 4511 codecs,
+concurrent operation routing, tracing, and multiplex-aware pooling. Raw BER,
+operation, response, and control contracts remain public for deep extensions.
+Schema-specific values and models belong in generated or handwritten packages
+above the generic client.
 
 The design goal is ordinary, idiomatic Go: small interfaces, explicit resource
 ownership, useful errors, no reflection-heavy object model, and no hidden
@@ -21,12 +21,13 @@ Phases 1 through 6 are implemented. Phase 7 is currently deferred, and the
 optional Phase 8 GSSAPI implementation is available pending an external
 FreeIPA smoke check. The evidence index, RFC 4511 protocol
 inventory, transport-independent contracts, error taxonomy, and
-compile-checked API shapes are frozen. The `ber` package provides bounded
+compile-checked protocol contracts are implemented. The `ber` package provides bounded
 definite-length BER parsing and encoding, strict LDAP primitive handling, and
-incremental owned frame acquisition. The RFC 4511 package provides common
-values, controls, filters, results, every standard operation, immutable
-response patterns, and owned LDAP response-envelope parsing. The root package
-provides direct-TLS-by-default dialing, explicit plaintext selection,
+incremental owned frame acquisition. The `protocol` package defines generic
+operation and response contracts, and `rfc4511` provides every standard LDAPv3
+wire operation and immutable response pattern. The root package provides the
+generic client, entries, filters, direct-TLS-by-default dialing,
+explicit plaintext selection,
 concurrent request routing, bounded response delivery, drain and Abandon
 cancellation, unsolicited notifications, and typed lifecycle failures.
 The `auth` package provides anonymous and TLS-only Simple Bind mechanisms.
@@ -56,8 +57,8 @@ not carry credentials or select a mechanism:
 ```go
 simple, err := auth.NewSimpleBind(
 	"service-account-a",            // stable, nonsecret pool identity
-	[]byte("uid=service,dc=example"),
-	passwordBytes,
+	"uid=service,dc=example",
+	password,
 )
 if err != nil {
 	return err
@@ -73,7 +74,14 @@ if err != nil {
 }
 defer conn.Close()
 
-responses, err := conn.Do(ctx, applicationOperation)
+client := arden.NewClient(conn)
+
+entry := arden.NewEntry("uid=alice,ou=people,dc=example")
+entry.Set("objectClass", "top", "person", "inetOrgPerson")
+entry.Set("uid", "alice")
+entry.Set("cn", "Alice Example")
+entry.Set("sn", "Example")
+err = client.Add(ctx, entry)
 ```
 
 Use `auth.Anonymous{}` for an ordinary anonymous Bind, or leave
@@ -106,6 +114,53 @@ subsequent LDAP operations. See [docs/gssapi.md](docs/gssapi.md) for platform
 prerequisites, gssproxy configuration, troubleshooting, and the read-only
 FreeIPA smoke command.
 
+## Generic operations and typed models
+
+Search returns an iterator and follows RFC 2696 cookies when `PageSize` is set:
+
+```go
+client := arden.NewClient(conn)
+rows, err := client.Search(ctx, arden.SearchRequest{
+	BaseDN:     "ou=people,dc=example",
+	Scope:      arden.ScopeSubtree,
+	Filter:     arden.Equal("departmentNumber", "engineering"),
+	Attributes: []string{"uid", "cn", "jpegPhoto"},
+	PageSize:   100,
+})
+if err != nil {
+	return err
+}
+defer rows.Close()
+
+for rows.Next() {
+	entry := rows.Entry()
+	fmt.Println(entry.DN, entry.Value("cn"))
+	photo := entry.RawValue("jpegPhoto") // explicit binary escape hatch
+	_ = photo
+}
+if err := rows.Err(); err != nil {
+	return err
+}
+```
+
+`schema.Attribute[T]` is the reflection-free seam for generated models. A
+generator can publish typed descriptors and ordinary model methods while using
+the same entries, filters, and client underneath:
+
+```go
+var UID = schema.NewAttribute("uid", schema.StringCodec)
+
+filter, err := UID.Equal("alice")
+values, err := UID.Values(entry)
+```
+
+Custom protocol work stays equally direct. The `rfc4532` package is a reference
+extension implemented only against the public `arden.Executor` contract:
+
+```go
+authorizationID, err := rfc4532.WhoAmI(ctx, conn)
+```
+
 ## 389 Directory Server integration smoke test
 
 With Docker running, execute:
@@ -117,9 +172,9 @@ go test -tags=integration -run '^Test389DS' -count=1 ./integration
 The test starts and cleans up an ephemeral 389 Directory Server container with
 Testcontainers on a random localhost LDAPS port, obtains its generated test CA
 certificate, and runs through Arden's public setup API. It performs a verified,
-TLS-only Simple Bind as Directory Manager during `Dial`, then issues an
-authentication-agnostic root DSE search, decodes SearchResultEntry and
-SearchResultDone, and closes the connection with Unbind.
+TLS-only Simple Bind as Directory Manager during `Dial`, then exercises the
+generic root DSE, add, paged search, modify, filtered search, and delete APIs
+before closing the connection with Unbind.
 
 Set `ARDEN_389DS_IMAGE` to test another image reference. The normal
 `go test ./...` suite does not start Docker or include this integration test.
@@ -144,29 +199,29 @@ but it is not a release requirement.
 ```text
 typed or schema-generated application package
               |
- hand-authored RFC 4511 wire types
+ generic LDAP entries, filters, and operations
               |
- request + response pattern + controls
+ hand-authored RFC 4511 codecs + extension contracts
               |
   connection / routing / pool runtime
               |
  network connection (direct TLS by default)
 ```
 
-The core exchanges BER objects, not generic string-based directory operations.
-It assigns message IDs, wraps protocol operations in `LDAPMessage`, dispatches
-responses, and retires an operation when its declarative response pattern says
-the terminal response has arrived.
+The public client uses strings for LDAP text and ordinary values, while binary
+attribute, control, and extension values retain raw byte access. The runtime
+assigns message IDs, wraps protocol operations in `LDAPMessage`, dispatches
+responses, and retires operations through declarative response patterns.
 
 ## Locked design decisions
 
-- Wire values are byte-oriented. Text conversion and syntax interpretation are
-  higher-layer responsibilities.
+- LDAP text is string-first. Arbitrary attribute values and extension payloads
+  retain explicit byte access.
 - LDAP gets a small purpose-built BER runtime, not a general ASN.1 framework.
 - RFC 4511 codecs, constants, and response patterns are hand-authored and
   reviewed against the pinned specification and errata.
-- RFC values and external extensions use the same public codec and operation
-  contracts; the RFC package has no privileged runtime path.
+- Built-in values and external extensions use the same public codec and
+  operation contracts; built-ins have no privileged runtime path.
 - Response classification is declarative and tag-based: continue, complete, or
   invalid. Payload-dependent classification is excluded until a real extension
   proves it necessary.
@@ -187,7 +242,6 @@ the terminal response has arrived.
 
 ## Non-goals
 
-- Generic `Search`, `Add`, `Modify`, `Delete`, or filter-string APIs in core.
 - LDIF, LDAP URLs, schema administration, or a universal DN library.
 - StartTLS, transport inference from LDAP URLs, or automatic TLS downgrade.
 - A complete ASN.1 compiler.

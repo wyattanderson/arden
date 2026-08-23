@@ -1,16 +1,15 @@
 package rfc4511
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"slices"
 
-	"github.com/wyattanderson/arden"
 	"github.com/wyattanderson/arden/ber"
+	"github.com/wyattanderson/arden/protocol"
 )
 
-var addResponsePattern = mustResponsePattern(arden.ResponseSpec{
+var addResponsePattern = mustResponsePattern(protocol.ResponseSpec{
 	Complete: []ber.Identifier{addResponseIdentifier},
 })
 
@@ -56,9 +55,9 @@ func (*AddRequest) ProtocolIdentifier() ber.Identifier { return addRequestIdenti
 func (v *AddRequest) AppendBER(dst []byte) ([]byte, error) {
 	start := len(dst)
 	if v == nil {
-		return dst, errors.New("rfc4511: nil AddRequest")
+		return dst, errors.New("arden: nil AddRequest")
 	}
-	contents, err := ber.AppendOctetString(nil, v.Entry)
+	contents, err := ber.AppendOctetString(nil, []byte(v.Entry))
 	if err != nil {
 		return dst[:start], err
 	}
@@ -66,7 +65,7 @@ func (v *AddRequest) AppendBER(dst []byte) ([]byte, error) {
 	for i := range v.Attributes {
 		attributeList, err = v.Attributes[i].AppendBER(attributeList)
 		if err != nil {
-			return dst[:start], fmt.Errorf("rfc4511: AddRequest attribute %d: %w", i, err)
+			return dst[:start], fmt.Errorf("arden: AddRequest attribute %d: %w", i, err)
 		}
 	}
 	contents, err = ber.AppendSequence(contents, attributeList)
@@ -90,7 +89,7 @@ func (v *AddRequest) AppendBER(dst []byte) ([]byte, error) {
 //revive:disable-next-line:exported
 func (v *AddRequest) UnmarshalBER(r *ber.Reader) error {
 	if v == nil {
-		return errors.New("rfc4511: nil AddRequest receiver")
+		return errors.New("arden: nil AddRequest receiver")
 	}
 	contents, err := r.Constructed(addRequestIdentifier)
 	if err != nil {
@@ -117,7 +116,7 @@ func (v *AddRequest) UnmarshalBER(r *ber.Reader) error {
 		return err
 	}
 	*v = AddRequest{
-		Entry:      LDAPDN(bytes.Clone(entry)),
+		Entry:      LDAPDN(string(entry)),
 		Attributes: attributes,
 		Extensions: extensions,
 	}
@@ -148,7 +147,7 @@ func (v AddResponse) AppendBER(dst []byte) ([]byte, error) {
 //revive:disable-next-line:exported
 func (v *AddResponse) UnmarshalBER(r *ber.Reader) error {
 	if v == nil {
-		return errors.New("rfc4511: nil AddResponse receiver")
+		return errors.New("arden: nil AddResponse receiver")
 	}
 	contents, err := r.Constructed(addResponseIdentifier)
 	if err != nil {
@@ -164,30 +163,30 @@ func (v *AddResponse) UnmarshalBER(r *ber.Reader) error {
 
 // AddResponsePattern returns the immutable standard terminal response pattern
 // for AddRequest. It is safe to reuse concurrently.
-func AddResponsePattern() arden.ResponsePattern { return addResponsePattern }
+func AddResponsePattern() protocol.ResponsePattern { return addResponsePattern }
 
 // NewAddOperation creates the complete request declaration for an Add. It
 // clones the control slice but not the caller-owned request or control values;
 // the connection validates and encodes them before concurrent use.
-func NewAddOperation(request *AddRequest, controls []ber.Marshaler) (arden.Operation, error) {
+func NewAddOperation(request *AddRequest, controls []ber.Marshaler) (protocol.Operation, error) {
 	if request == nil {
-		return arden.Operation{}, errors.New("rfc4511: nil AddRequest")
+		return protocol.Operation{}, errors.New("arden: nil AddRequest")
 	}
-	op := arden.Operation{
+	op := protocol.Operation{
 		Protocol:     request,
 		Controls:     slices.Clone(controls),
 		Responses:    AddResponsePattern(),
-		Cancellation: arden.CancelDrain,
-		Metadata:     arden.OperationMetadata{Label: "ldap.add"},
+		Cancellation: protocol.CancelDrain,
+		Metadata:     protocol.OperationMetadata{Label: "ldap.add"},
 	}
 	if err := op.Validate(); err != nil {
-		return arden.Operation{}, err
+		return protocol.Operation{}, err
 	}
 	return op, nil
 }
 
-func mustResponsePattern(spec arden.ResponseSpec) arden.ResponsePattern {
-	pattern, err := arden.NewResponsePattern(spec)
+func mustResponsePattern(spec protocol.ResponseSpec) protocol.ResponsePattern {
+	pattern, err := protocol.NewResponsePattern(spec)
 	if err != nil {
 		panic(err)
 	}

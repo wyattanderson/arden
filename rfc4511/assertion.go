@@ -51,7 +51,7 @@ func (v AttributeValueAssertion) appendContents(dst []byte) ([]byte, error) {
 		return dst, err
 	}
 	var err error
-	if dst, err = ber.AppendOctetString(dst, v.Type); err != nil {
+	if dst, err = ber.AppendOctetString(dst, []byte(v.Type)); err != nil {
 		return dst[:start], err
 	}
 	if dst, err = ber.AppendOctetString(dst, v.Value); err != nil {
@@ -80,7 +80,7 @@ func decodeAssertionContents(r *ber.Reader) (AttributeValueAssertion, error) {
 		return AttributeValueAssertion{}, err
 	}
 	return AttributeValueAssertion{
-		Type:       AttributeDescription(bytes.Clone(typeValue)),
+		Type:       AttributeDescription(string(typeValue)),
 		Value:      AssertionValue(bytes.Clone(value)),
 		Extensions: extensions,
 	}, nil

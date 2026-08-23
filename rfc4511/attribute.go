@@ -38,7 +38,7 @@ func (a PartialAttribute) AppendBER(dst []byte) ([]byte, error) {
 //revive:disable-next-line:exported
 func (a *PartialAttribute) UnmarshalBER(r *ber.Reader) error {
 	if a == nil {
-		return errors.New("rfc4511: nil PartialAttribute receiver")
+		return errors.New("arden: nil PartialAttribute receiver")
 	}
 	typeValue, values, extensions, err := decodeAttribute(r, false)
 	if err != nil {
@@ -56,7 +56,7 @@ func (a Attribute) AppendBER(dst []byte) ([]byte, error) {
 //revive:disable-next-line:exported
 func (a *Attribute) UnmarshalBER(r *ber.Reader) error {
 	if a == nil {
-		return errors.New("rfc4511: nil Attribute receiver")
+		return errors.New("arden: nil Attribute receiver")
 	}
 	typeValue, values, extensions, err := decodeAttribute(r, true)
 	if err != nil {
@@ -75,13 +75,13 @@ func appendAttribute(
 ) ([]byte, error) {
 	start := len(dst)
 	if len(typeValue) == 0 {
-		return dst, errors.New("rfc4511: attribute type is empty")
+		return dst, errors.New("arden: attribute type is empty")
 	}
 	if requireValue && len(values) == 0 {
-		return dst, errors.New("rfc4511: Attribute requires at least one value")
+		return dst, errors.New("arden: Attribute requires at least one value")
 	}
 
-	contents, err := ber.AppendOctetString(nil, typeValue)
+	contents, err := ber.AppendOctetString(nil, []byte(typeValue))
 	if err != nil {
 		return dst[:start], err
 	}
@@ -89,7 +89,7 @@ func appendAttribute(
 	for i, value := range values {
 		setContents, err = ber.AppendOctetString(setContents, value)
 		if err != nil {
-			return dst[:start], fmt.Errorf("rfc4511: attribute value %d: %w", i, err)
+			return dst[:start], fmt.Errorf("arden: attribute value %d: %w", i, err)
 		}
 	}
 	contents, err = ber.AppendSet(contents, setContents)
@@ -115,33 +115,33 @@ func decodeAttribute(r *ber.Reader, requireValue bool) (
 ) {
 	contents, err := r.Sequence()
 	if err != nil {
-		return nil, nil, nil, err
+		return "", nil, nil, err
 	}
 	typeValue, err := contents.OctetString()
 	if err != nil {
-		return nil, nil, nil, err
+		return "", nil, nil, err
 	}
 	if len(typeValue) == 0 {
-		return nil, nil, nil, errors.New("rfc4511: attribute type is empty")
+		return "", nil, nil, errors.New("arden: attribute type is empty")
 	}
 	valueSet, err := contents.Set()
 	if err != nil {
-		return nil, nil, nil, err
+		return "", nil, nil, err
 	}
 	var values []AttributeValue
 	for !valueSet.Empty() {
 		value, err := valueSet.OctetString()
 		if err != nil {
-			return nil, nil, nil, err
+			return "", nil, nil, err
 		}
 		values = append(values, AttributeValue(bytes.Clone(value)))
 	}
 	if requireValue && len(values) == 0 {
-		return nil, nil, nil, errors.New("rfc4511: Attribute requires at least one value")
+		return "", nil, nil, errors.New("arden: Attribute requires at least one value")
 	}
 	extensions, err := decodeUnknownFields(contents)
 	if err != nil {
-		return nil, nil, nil, err
+		return "", nil, nil, err
 	}
-	return AttributeDescription(bytes.Clone(typeValue)), values, extensions, nil
+	return AttributeDescription(string(typeValue)), values, extensions, nil
 }

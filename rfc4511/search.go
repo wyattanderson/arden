@@ -1,14 +1,13 @@
 package rfc4511
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"math"
 	"slices"
 
-	"github.com/wyattanderson/arden"
 	"github.com/wyattanderson/arden/ber"
+	"github.com/wyattanderson/arden/protocol"
 )
 
 var (
@@ -16,7 +15,7 @@ var (
 	searchEntryIdentifier     = applicationConstructed(4)
 	searchDoneIdentifier      = applicationConstructed(5)
 	searchReferenceIdentifier = applicationConstructed(19)
-	searchResponsePattern     = mustResponsePattern(arden.ResponseSpec{
+	searchResponsePattern     = mustResponsePattern(protocol.ResponseSpec{
 		Continue: []ber.Identifier{searchEntryIdentifier, searchReferenceIdentifier},
 		Complete: []ber.Identifier{searchDoneIdentifier},
 	})
@@ -45,6 +44,10 @@ const (
 	ScopeBaseObject   SearchScope = 0
 	ScopeSingleLevel  SearchScope = 1
 	ScopeWholeSubtree SearchScope = 2
+	// ScopeBase, ScopeChildren, and ScopeSubtree are concise application-facing aliases.
+	ScopeBase     = ScopeBaseObject
+	ScopeChildren = ScopeSingleLevel
+	ScopeSubtree  = ScopeWholeSubtree
 )
 
 // DerefAliases controls when aliases are dereferenced during Search. Unlike
@@ -83,18 +86,18 @@ func (*SearchRequest) ProtocolIdentifier() ber.Identifier { return searchRequest
 func (v *SearchRequest) AppendBER(dst []byte) ([]byte, error) {
 	start := len(dst)
 	if v == nil {
-		return dst, errors.New("rfc4511: nil SearchRequest")
+		return dst, errors.New("arden: nil SearchRequest")
 	}
 	if err := validateDerefAliases(v.DerefAliases); err != nil {
 		return dst, err
 	}
 	if v.SizeLimit > math.MaxInt32 || v.TimeLimitSeconds > math.MaxInt32 {
-		return dst, errors.New("rfc4511: search size or time limit exceeds maxInt")
+		return dst, errors.New("arden: search size or time limit exceeds maxInt")
 	}
 	if v.Filter == nil {
-		return dst, errors.New("rfc4511: SearchRequest has no filter")
+		return dst, errors.New("arden: SearchRequest has no filter")
 	}
-	contents, err := ber.AppendOctetString(nil, v.BaseObject)
+	contents, err := ber.AppendOctetString(nil, []byte(v.BaseObject))
 	if err != nil {
 		return dst[:start], err
 	}
@@ -118,9 +121,9 @@ func (v *SearchRequest) AppendBER(dst []byte) ([]byte, error) {
 	}
 	attributeList := make([]byte, 0)
 	for i, attribute := range v.Attributes {
-		attributeList, err = ber.AppendOctetString(attributeList, attribute)
+		attributeList, err = ber.AppendOctetString(attributeList, []byte(attribute))
 		if err != nil {
-			return dst[:start], fmt.Errorf("rfc4511: search attribute selector %d: %w", i, err)
+			return dst[:start], fmt.Errorf("arden: search attribute selector %d: %w", i, err)
 		}
 	}
 	if contents, err = ber.AppendSequence(contents, attributeList); err != nil {
@@ -169,7 +172,7 @@ func (v *SearchRequest) UnmarshalBER(r *ber.Reader) error {
 		return err
 	}
 	if sizeLimit < 0 || sizeLimit > math.MaxInt32 || timeLimit < 0 || timeLimit > math.MaxInt32 {
-		return errors.New("rfc4511: search size or time limit is outside maxInt")
+		return errors.New("arden: search size or time limit is outside maxInt")
 	}
 	typesOnly, err := contents.Boolean()
 	if err != nil {
@@ -189,14 +192,14 @@ func (v *SearchRequest) UnmarshalBER(r *ber.Reader) error {
 		if err != nil {
 			return err
 		}
-		attributes = append(attributes, AttributeSelector(bytes.Clone(attribute)))
+		attributes = append(attributes, AttributeSelector(string(attribute)))
 	}
 	extensions, err := decodeUnknownFields(contents)
 	if err != nil {
 		return err
 	}
 	*v = SearchRequest{
-		BaseObject:       LDAPDN(bytes.Clone(baseObject)),
+		BaseObject:       LDAPDN(string(baseObject)),
 		Scope:            SearchScope(scope),
 		DerefAliases:     DerefAliases(derefAliases),
 		SizeLimit:        uint32(sizeLimit),
@@ -211,7 +214,7 @@ func (v *SearchRequest) UnmarshalBER(r *ber.Reader) error {
 
 func validateDerefAliases(value DerefAliases) error {
 	if value < DerefNever || value > DerefAlways {
-		return fmt.Errorf("rfc4511: invalid derefAliases value %d", value)
+		return fmt.Errorf("arden: invalid derefAliases value %d", value)
 	}
 	return nil
 }
@@ -226,7 +229,7 @@ type SearchResultEntry struct {
 //revive:disable-next-line:exported
 func (v SearchResultEntry) AppendBER(dst []byte) ([]byte, error) {
 	start := len(dst)
-	contents, err := ber.AppendOctetString(nil, v.ObjectName)
+	contents, err := ber.AppendOctetString(nil, []byte(v.ObjectName))
 	if err != nil {
 		return dst[:start], err
 	}
@@ -234,7 +237,7 @@ func (v SearchResultEntry) AppendBER(dst []byte) ([]byte, error) {
 	for i := range v.Attributes {
 		attributeList, err = v.Attributes[i].AppendBER(attributeList)
 		if err != nil {
-			return dst[:start], fmt.Errorf("rfc4511: search result attribute %d: %w", i, err)
+			return dst[:start], fmt.Errorf("arden: search result attribute %d: %w", i, err)
 		}
 	}
 	if contents, err = ber.AppendSequence(contents, attributeList); err != nil {
@@ -279,7 +282,7 @@ func (v *SearchResultEntry) UnmarshalBER(r *ber.Reader) error {
 	if err != nil {
 		return err
 	}
-	*v = SearchResultEntry{ObjectName: LDAPDN(bytes.Clone(objectName)), Attributes: attributes, Extensions: extensions}
+	*v = SearchResultEntry{ObjectName: LDAPDN(string(objectName)), Attributes: attributes, Extensions: extensions}
 	return nil
 }
 
@@ -294,14 +297,14 @@ type SearchResultReference struct {
 func (v SearchResultReference) AppendBER(dst []byte) ([]byte, error) {
 	start := len(dst)
 	if len(v.URIs) == 0 {
-		return dst, errors.New("rfc4511: search result reference requires at least one URI")
+		return dst, errors.New("arden: search result reference requires at least one URI")
 	}
 	contents := make([]byte, 0)
 	var err error
 	for i, uri := range v.URIs {
-		contents, err = ber.AppendOctetString(contents, uri)
+		contents, err = ber.AppendOctetString(contents, []byte(uri))
 		if err != nil {
-			return dst[:start], fmt.Errorf("rfc4511: search result reference URI %d: %w", i, err)
+			return dst[:start], fmt.Errorf("arden: search result reference URI %d: %w", i, err)
 		}
 	}
 	if contents, err = appendUnknownFields(contents, v.Extensions); err != nil {
@@ -340,10 +343,10 @@ func (v *SearchResultReference) UnmarshalBER(r *ber.Reader) error {
 		if err != nil {
 			return err
 		}
-		decoded.URIs = append(decoded.URIs, URI(bytes.Clone(uri)))
+		decoded.URIs = append(decoded.URIs, URI(string(uri)))
 	}
 	if len(decoded.URIs) == 0 {
-		return errors.New("rfc4511: search result reference requires at least one URI")
+		return errors.New("arden: search result reference requires at least one URI")
 	}
 	*v = decoded
 	return nil
@@ -372,24 +375,24 @@ func (v *SearchResultDone) UnmarshalBER(r *ber.Reader) error {
 
 // SearchResponsePattern returns the immutable standard streaming response
 // pattern for SearchRequest.
-func SearchResponsePattern() arden.ResponsePattern { return searchResponsePattern }
+func SearchResponsePattern() protocol.ResponsePattern { return searchResponsePattern }
 
 // NewSearchOperation creates the complete request declaration for a Search.
 // Search defaults to Abandon-style cancellation because it may stream for a
 // long time; the connection runtime owns the tombstone lifecycle.
-func NewSearchOperation(request *SearchRequest, controls []ber.Marshaler) (arden.Operation, error) {
+func NewSearchOperation(request *SearchRequest, controls []ber.Marshaler) (protocol.Operation, error) {
 	if request == nil {
-		return arden.Operation{}, errors.New("rfc4511: nil SearchRequest")
+		return protocol.Operation{}, errors.New("arden: nil SearchRequest")
 	}
-	op := arden.Operation{
+	op := protocol.Operation{
 		Protocol:     request,
 		Controls:     slices.Clone(controls),
 		Responses:    SearchResponsePattern(),
-		Cancellation: arden.CancelAbandon,
-		Metadata:     arden.OperationMetadata{Label: "ldap.search"},
+		Cancellation: protocol.CancelAbandon,
+		Metadata:     protocol.OperationMetadata{Label: "ldap.search"},
 	}
 	if err := op.Validate(); err != nil {
-		return arden.Operation{}, err
+		return protocol.Operation{}, err
 	}
 	return op, nil
 }

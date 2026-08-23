@@ -14,18 +14,6 @@ var controlsIdentifier = ber.Identifier{
 	Number:      0,
 }
 
-// ResponseHeader is the routing information in an LDAP response envelope.
-// It deliberately contains no decoded protocol payload.
-type ResponseHeader struct {
-	MessageID  MessageID
-	ProtocolID ber.Identifier
-}
-
-// Header returns the response's routing information.
-func (r Response) Header() ResponseHeader {
-	return ResponseHeader{MessageID: r.MessageID, ProtocolID: r.ProtocolID}
-}
-
 // ParseResponse validates one complete LDAPMessage and returns an owned
 // response envelope. Protocol, Controls, and Extensions are views into Bytes.
 // It intentionally does not select or invoke a typed protocol decoder; that

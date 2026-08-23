@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/wyattanderson/arden"
 	"github.com/wyattanderson/arden/ber"
+	"github.com/wyattanderson/arden/protocol"
 )
 
 var (
@@ -19,7 +19,7 @@ var (
 	extendedResponseValueIdentifier     = contextPrimitive(11)
 	intermediateResponseNameIdentifier  = contextPrimitive(0)
 	intermediateResponseValueIdentifier = contextPrimitive(1)
-	extendedResponsePattern             = mustResponsePattern(arden.ResponseSpec{
+	extendedResponsePattern             = mustResponsePattern(protocol.ResponseSpec{
 		Continue: []ber.Identifier{intermediateResponseIdentifier},
 		Complete: []ber.Identifier{extendedResponseIdentifier},
 	})
@@ -49,7 +49,7 @@ func (*ExtendedRequest) ProtocolIdentifier() ber.Identifier { return extendedReq
 func (v *ExtendedRequest) AppendBER(dst []byte) ([]byte, error) {
 	start := len(dst)
 	if v == nil {
-		return dst, errors.New("rfc4511: nil ExtendedRequest")
+		return dst, errors.New("arden: nil ExtendedRequest")
 	}
 	if err := requireNonEmpty("extended request name", v.Name); err != nil {
 		return dst, err
@@ -117,7 +117,7 @@ func (v *ExtendedRequest) UnmarshalBER(r *ber.Reader) error {
 			return err
 		}
 		if id == extendedRequestNameIdentifier || id == extendedRequestValueIdentifier {
-			return fmt.Errorf("rfc4511: duplicate or out-of-order ExtendedRequest field %s", id)
+			return fmt.Errorf("arden: duplicate or out-of-order ExtendedRequest field %s", id)
 		}
 		decoded.Extensions, err = decodeUnknownFields(contents)
 		if err != nil {
@@ -144,7 +144,7 @@ type ExtendedResponse struct {
 func (v ExtendedResponse) AppendBER(dst []byte) ([]byte, error) {
 	start := len(dst)
 	if len(v.Result.Extensions) != 0 {
-		return dst, errors.New("rfc4511: ExtendedResponse result extensions must be response extensions")
+		return dst, errors.New("arden: ExtendedResponse result extensions must be response extensions")
 	}
 	if v.HasResponseName {
 		if err := requireNonEmpty("extended response name", v.ResponseName); err != nil {
@@ -233,7 +233,7 @@ func (v *ExtendedResponse) UnmarshalBER(r *ber.Reader) error {
 			return err
 		}
 		if id == referralIdentifier || id == extendedResponseNameIdentifier || id == extendedResponseValueIdentifier {
-			return fmt.Errorf("rfc4511: duplicate or out-of-order ExtendedResponse field %s", id)
+			return fmt.Errorf("arden: duplicate or out-of-order ExtendedResponse field %s", id)
 		}
 		decoded.Extensions, err = decodeUnknownFields(contents)
 		if err != nil {
@@ -337,7 +337,7 @@ func (v *IntermediateResponse) UnmarshalBER(r *ber.Reader) error {
 			return err
 		}
 		if id == intermediateResponseNameIdentifier || id == intermediateResponseValueIdentifier {
-			return fmt.Errorf("rfc4511: duplicate or out-of-order IntermediateResponse field %s", id)
+			return fmt.Errorf("arden: duplicate or out-of-order IntermediateResponse field %s", id)
 		}
 		decoded.Extensions, err = decodeUnknownFields(contents)
 		if err != nil {
@@ -349,16 +349,16 @@ func (v *IntermediateResponse) UnmarshalBER(r *ber.Reader) error {
 }
 
 // ExtendedResponsePattern returns the continuing and terminal response pattern for ExtendedRequest.
-func ExtendedResponsePattern() arden.ResponsePattern { return extendedResponsePattern }
+func ExtendedResponsePattern() protocol.ResponsePattern { return extendedResponsePattern }
 
 // NewExtendedOperation creates a complete Extended request declaration.
-func NewExtendedOperation(request *ExtendedRequest, controls []ber.Marshaler) (arden.Operation, error) {
+func NewExtendedOperation(request *ExtendedRequest, controls []ber.Marshaler) (protocol.Operation, error) {
 	if request == nil {
-		return arden.Operation{}, errors.New("rfc4511: nil ExtendedRequest")
+		return protocol.Operation{}, errors.New("arden: nil ExtendedRequest")
 	}
-	op := arden.Operation{Protocol: request, Controls: slices.Clone(controls), Responses: ExtendedResponsePattern(), Cancellation: arden.CancelDrain, Metadata: arden.OperationMetadata{Label: "ldap.extended"}}
+	op := protocol.Operation{Protocol: request, Controls: slices.Clone(controls), Responses: ExtendedResponsePattern(), Cancellation: protocol.CancelDrain, Metadata: protocol.OperationMetadata{Label: "ldap.extended"}}
 	if err := op.Validate(); err != nil {
-		return arden.Operation{}, err
+		return protocol.Operation{}, err
 	}
 	return op, nil
 }

@@ -1,20 +1,19 @@
 package rfc4511
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"slices"
 
-	"github.com/wyattanderson/arden"
 	"github.com/wyattanderson/arden/ber"
+	"github.com/wyattanderson/arden/protocol"
 )
 
 var (
 	modifyDNRequestIdentifier     = applicationConstructed(12)
 	modifyDNResponseIdentifier    = applicationConstructed(13)
 	modifyDNNewSuperiorIdentifier = contextPrimitive(0)
-	modifyDNResponsePattern       = mustResponsePattern(arden.ResponseSpec{Complete: []ber.Identifier{modifyDNResponseIdentifier}})
+	modifyDNResponsePattern       = mustResponsePattern(protocol.ResponseSpec{Complete: []ber.Identifier{modifyDNResponseIdentifier}})
 )
 
 // ModifyDNRequestIdentifier returns the application identifier for ModifyDNRequest.
@@ -39,13 +38,13 @@ func (*ModifyDNRequest) ProtocolIdentifier() ber.Identifier { return modifyDNReq
 func (v *ModifyDNRequest) AppendBER(dst []byte) ([]byte, error) {
 	start := len(dst)
 	if v == nil {
-		return dst, errors.New("rfc4511: nil ModifyDNRequest")
+		return dst, errors.New("arden: nil ModifyDNRequest")
 	}
-	contents, err := ber.AppendOctetString(nil, v.Entry)
+	contents, err := ber.AppendOctetString(nil, []byte(v.Entry))
 	if err != nil {
 		return dst[:start], err
 	}
-	if contents, err = ber.AppendOctetString(contents, v.NewRDN); err != nil {
+	if contents, err = ber.AppendOctetString(contents, []byte(v.NewRDN)); err != nil {
 		return dst[:start], err
 	}
 	if contents, err = ber.AppendBoolean(contents, v.DeleteOldRDN); err != nil {
@@ -88,7 +87,7 @@ func (v *ModifyDNRequest) UnmarshalBER(r *ber.Reader) error {
 	if err != nil {
 		return err
 	}
-	decoded := ModifyDNRequest{Entry: LDAPDN(bytes.Clone(entry)), NewRDN: RelativeLDAPDN(bytes.Clone(newRDN)), DeleteOldRDN: deleteOldRDN}
+	decoded := ModifyDNRequest{Entry: LDAPDN(string(entry)), NewRDN: RelativeLDAPDN(string(newRDN)), DeleteOldRDN: deleteOldRDN}
 	if !contents.Empty() {
 		id, err := contents.PeekIdentifier()
 		if err != nil {
@@ -109,7 +108,7 @@ func (v *ModifyDNRequest) UnmarshalBER(r *ber.Reader) error {
 			return err
 		}
 		if id == modifyDNNewSuperiorIdentifier {
-			return fmt.Errorf("rfc4511: duplicate ModifyDN newSuperior field %s", id)
+			return fmt.Errorf("arden: duplicate ModifyDN newSuperior field %s", id)
 		}
 		decoded.Extensions, err = decodeUnknownFields(contents)
 		if err != nil {
@@ -142,16 +141,16 @@ func (v *ModifyDNResponse) UnmarshalBER(r *ber.Reader) error {
 }
 
 // ModifyDNResponsePattern returns the terminal response pattern for ModifyDNRequest.
-func ModifyDNResponsePattern() arden.ResponsePattern { return modifyDNResponsePattern }
+func ModifyDNResponsePattern() protocol.ResponsePattern { return modifyDNResponsePattern }
 
 // NewModifyDNOperation creates a complete Modify DN request declaration.
-func NewModifyDNOperation(request *ModifyDNRequest, controls []ber.Marshaler) (arden.Operation, error) {
+func NewModifyDNOperation(request *ModifyDNRequest, controls []ber.Marshaler) (protocol.Operation, error) {
 	if request == nil {
-		return arden.Operation{}, errors.New("rfc4511: nil ModifyDNRequest")
+		return protocol.Operation{}, errors.New("arden: nil ModifyDNRequest")
 	}
-	op := arden.Operation{Protocol: request, Controls: slices.Clone(controls), Responses: ModifyDNResponsePattern(), Cancellation: arden.CancelDrain, Metadata: arden.OperationMetadata{Label: "ldap.modify-dn"}}
+	op := protocol.Operation{Protocol: request, Controls: slices.Clone(controls), Responses: ModifyDNResponsePattern(), Cancellation: protocol.CancelDrain, Metadata: protocol.OperationMetadata{Label: "ldap.modify-dn"}}
 	if err := op.Validate(); err != nil {
-		return arden.Operation{}, err
+		return protocol.Operation{}, err
 	}
 	return op, nil
 }

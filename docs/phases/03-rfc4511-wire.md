@@ -1,4 +1,9 @@
-# Phase 3: hand-authored RFC 4511 wire layer
+# Phase 3: hand-authored RFC 4511 codecs and generic API
+
+> Implementation note: the original plan placed these codecs in a separate
+> package. Before the first external consumer, they were folded into the root
+> package and given a string-first generic client API. Raw BER and operation
+> contracts remain available as the extension escape hatch.
 
 ## Goal
 
@@ -6,10 +11,10 @@ Implement RFC 4511 values, constants, codecs, filters, results, and standard
 operation declarations directly in Go. The protocol is small and stable; Arden
 will not build an ASN.1 parser or RFC codec generator.
 
-The primary architectural test is that the `rfc4511` package is an ordinary
-consumer of the same public APIs available to an external LDAP extension. It
-gets no privileged reader, registration table, concrete-type dispatch, marker
-method, reflection descriptor, or internal constructor.
+The primary architectural test is that built-in operations travel through the
+same public contracts available to an external LDAP extension. They get no
+privileged reader, registration table, concrete-type dispatch, marker method,
+or reflection descriptor.
 
 Code generation remains a possible later tool for FreeIPA or application
 schema APIs. Such code should construct public RFC 4511 values or implement the
@@ -29,26 +34,27 @@ is no checked-in normalized ASN.1 input, annotation IR, or regeneration step.
 
 ## Package boundary
 
-The provisional dependency direction is:
+The dependency direction is:
 
 ```text
 ber
- └── arden
+ └── protocol
       └── rfc4511
+           └── arden
+                └── schema packages
 ```
 
-`rfc4511` may import `ber` and the root package. The root connection runtime
-must not import `rfc4511`; it understands only the generic LDAP envelope,
-message IDs, BER identifiers, raw controls, and operation contracts. This
-prevents RFC values from acquiring a dispatch privilege unavailable to another
-package.
+The `protocol` package owns transport-neutral operation and response contracts.
+The `rfc4511` package composes those contracts with LDAPv3 wire values. The root
+package adds the generic client and connection runtime. An extension can import
+only `protocol` and `rfc4511`; a schema package normally targets the root client.
 
-The package should be split by protocol concepts rather than one file per ASN.1
-production. A likely starting layout is:
+The RFC package is split by protocol concepts rather than one file per ASN.1
+production:
 
 ```text
-rfc4511/
-    types.go       byte-oriented common types
+package rfc4511
+    types.go       string-first LDAP text and raw value types
     attribute.go   Attribute and PartialAttribute
     result.go      ResultCode, LDAPResult, Referral
     control.go     Control wire value
@@ -136,14 +142,14 @@ The following is a release requirement:
 - RFC and extension values implement the same `ber.Marshaler` and
   `ber.Unmarshaler` interfaces.
 - RFC requests and extension requests implement the same
-  `arden.ProtocolOperation` interface.
+  `protocol.ProtocolOperation` interface.
 - Filter is an unsealed public interface because its ASN.1 CHOICE is
   extensible.
 - The connection runtime never switches on an RFC concrete Go type.
 - No global codec, request-tag, response-tag, or filter registry exists.
 - A third-party package can define a custom application operation, context
   filter alternative, control, or extended-operation payload without changing
-  core or `rfc4511`.
+  Arden.
 
 ## Request and operation contract
 
@@ -254,7 +260,7 @@ insufficient.
 
 ### Pattern publication and configuration
 
-`rfc4511` publishes functions such as `AddResponsePattern()` and
+The `rfc4511` package publishes functions such as `AddResponsePattern()` and
 `SearchResponsePattern()`. They return immutable values backed by
 package-private, prevalidated data. The package does not export mutable tag
 slices and does not register patterns from `init`.
@@ -519,23 +525,24 @@ beside the regression.
 
 ## Completion notes
 
-Phase 3 is implemented with hand-authored codecs. The root package parses and
-owns generic response envelopes, while `rfc4511` supplies ordinary public BER
-values for every RFC 4511 application operation. Search filter dispatch is
-local to typed decoding; the root reader only routes by `Response.ProtocolID`
+Phase 3 is implemented with hand-authored codecs. Package `rfc4511` supplies
+public BER values for every LDAPv3 application operation, while `protocol`
+owns generic response envelopes. Search filter dispatch is local to typed
+decoding; the root reader only routes by `Response.ProtocolID`
 and the immutable `ResponsePattern` declared on the submitted operation.
 
 External controls, filter alternatives, and protocol operations use the same
-`ber.Marshaler`, `ber.Unmarshaler`, `Filter`, and `arden.ProtocolOperation`
-contracts as RFC values. There is no registration path. Unknown extensible
+`ber.Marshaler`, `ber.Unmarshaler`, `rfc4511.Filter`, and
+`protocol.ProtocolOperation` contracts as RFC values. There is no registration path. Unknown extensible
 enum values, CHOICE alternatives, and trailing fields are retained as typed
 raw values where their schemas permit preservation.
 
 ## Exit criteria
 
 All RFC 4511 application operations can be represented, encoded, decoded, and
-paired with immutable response patterns without generated RFC code or generic
-string operations. Add and Search pass unary, streaming, cancellation, unknown
+paired with immutable response patterns without generated RFC code. The
+string-first generic layer drives those values without hiding them. Add and
+Search pass unary, streaming, cancellation, unknown
 extension, ownership, and malformed-input tests. The root runtime contains no
 RFC concrete-type switch or registry, and an external extension uses the same
-codec, response, classifier, and dispatch APIs as `rfc4511`.
+codec, response, classifier, and dispatch APIs as the built-in operations.

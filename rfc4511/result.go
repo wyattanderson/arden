@@ -1,7 +1,6 @@
 package rfc4511
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 
@@ -93,7 +92,7 @@ func (v LDAPResult) AppendBER(dst []byte) ([]byte, error) {
 //revive:disable-next-line:exported
 func (v *LDAPResult) UnmarshalBER(r *ber.Reader) error {
 	if v == nil {
-		return errors.New("rfc4511: nil LDAPResult receiver")
+		return errors.New("arden: nil LDAPResult receiver")
 	}
 	contents, err := r.Sequence()
 	if err != nil {
@@ -130,18 +129,18 @@ func (v LDAPResult) appendPrefix(dst []byte) ([]byte, error) {
 	if dst, err = ber.AppendEnumerated(dst, int64(v.ResultCode)); err != nil {
 		return dst[:start], err
 	}
-	if dst, err = ber.AppendOctetString(dst, v.MatchedDN); err != nil {
+	if dst, err = ber.AppendOctetString(dst, []byte(v.MatchedDN)); err != nil {
 		return dst[:start], err
 	}
-	if dst, err = ber.AppendOctetString(dst, v.DiagnosticMessage); err != nil {
+	if dst, err = ber.AppendOctetString(dst, []byte(v.DiagnosticMessage)); err != nil {
 		return dst[:start], err
 	}
 	if len(v.Referrals) > 0 {
 		referrals := make([]byte, 0)
 		for i, uri := range v.Referrals {
-			referrals, err = ber.AppendOctetString(referrals, uri)
+			referrals, err = ber.AppendOctetString(referrals, []byte(uri))
 			if err != nil {
-				return dst[:start], fmt.Errorf("rfc4511: referral URI %d: %w", i, err)
+				return dst[:start], fmt.Errorf("arden: referral URI %d: %w", i, err)
 			}
 		}
 		if dst, err = ber.AppendConstructed(dst, referralIdentifier, referrals); err != nil {
@@ -153,10 +152,10 @@ func (v LDAPResult) appendPrefix(dst []byte) ([]byte, error) {
 
 func (v LDAPResult) validateReferral() error {
 	if v.ResultCode == ResultReferral && len(v.Referrals) == 0 {
-		return errors.New("rfc4511: referral result requires at least one referral URI")
+		return errors.New("arden: referral result requires at least one referral URI")
 	}
 	if v.ResultCode != ResultReferral && len(v.Referrals) != 0 {
-		return errors.New("rfc4511: referral URIs require the referral result code")
+		return errors.New("arden: referral URIs require the referral result code")
 	}
 	return nil
 }
@@ -190,8 +189,8 @@ func decodeLDAPResultPrefix(r *ber.Reader) (LDAPResult, error) {
 	}
 	decoded := LDAPResult{
 		ResultCode:        ResultCode(code),
-		MatchedDN:         LDAPDN(bytes.Clone(matchedDN)),
-		DiagnosticMessage: LDAPString(bytes.Clone(diagnostic)),
+		MatchedDN:         LDAPDN(string(matchedDN)),
+		DiagnosticMessage: LDAPString(string(diagnostic)),
 	}
 
 	if !r.Empty() {
@@ -209,7 +208,7 @@ func decodeLDAPResultPrefix(r *ber.Reader) (LDAPResult, error) {
 				if err != nil {
 					return LDAPResult{}, err
 				}
-				decoded.Referrals = append(decoded.Referrals, URI(bytes.Clone(uri)))
+				decoded.Referrals = append(decoded.Referrals, URI(string(uri)))
 			}
 		}
 	}
@@ -226,7 +225,7 @@ func decodeLDAPResultExtensions(r *ber.Reader, decoded *LDAPResult) error {
 			return err
 		}
 		if id == referralIdentifier {
-			return errors.New("rfc4511: duplicate referral field")
+			return errors.New("arden: duplicate referral field")
 		}
 		fields, err := decodeUnknownFields(r)
 		if err != nil {

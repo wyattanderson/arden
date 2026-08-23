@@ -601,9 +601,7 @@ func cloneBindOperation(operation arden.Operation) arden.Operation {
 		return operation
 	}
 	clone := *request
-	clone.Name = bytes.Clone(request.Name)
 	if sasl, ok := request.Authentication.(rfc4511.SASLAuthentication); ok {
-		sasl.Mechanism = bytes.Clone(sasl.Mechanism)
 		sasl.Credentials = bytes.Clone(sasl.Credentials)
 		clone.Authentication = sasl
 	}
@@ -636,7 +634,7 @@ func bindResponse(t *testing.T, code rfc4511.ResultCode, hasCredentials bool, cr
 	protocol, err := (rfc4511.BindResponse{
 		Result: rfc4511.LDAPResult{
 			ResultCode:        code,
-			DiagnosticMessage: bytes.Clone(diagnostic),
+			DiagnosticMessage: rfc4511.LDAPString(string(diagnostic)),
 		},
 		HasServerSASLCredentials: hasCredentials,
 		ServerSASLCredentials:    bytes.Clone(credentials),

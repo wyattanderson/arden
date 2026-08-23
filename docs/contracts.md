@@ -4,19 +4,22 @@
 
 ```text
 ber
- └── root package (operations, setup/auth seams, errors, tracing metadata)
-      ├── rfc4511 (hand-authored codecs, values, filters, and patterns)
-      ├── auth (anonymous, Simple Bind, mechanism providers)
-      │    └── auth/gssapi (optional cgo implementation)
-      ├── pool (endpoint routing, leases, admission)
-      └── otelldap (optional tracing adapter)
+ └── protocol (operations, responses, streams, executor)
+      └── rfc4511 (LDAPv3 wire values, codecs, response patterns)
+           └── root package (generic client, connection runtime, setup seams, errors, tracing)
+                ├── auth (anonymous, Simple Bind, mechanism providers)
+                │    └── auth/gssapi (optional cgo implementation)
+                ├── pool (endpoint routing, leases, admission)
+                └── otelldap (optional tracing adapter)
 ```
 
-`ber` has no Arden dependency. The root package imports only `ber`. `rfc4511`,
-`auth`, and `pool` may import the root package; the root never imports them.
-Hand-authored RFC 4511 and external extension values implement the same
-`ber.Marshaler`, `ber.Unmarshaler`, and `arden.ProtocolOperation` contracts.
-The RFC package has no internal runtime access or registration privilege.
+`ber` has no Arden dependency. `protocol` imports only `ber`; `rfc4511`
+imports `ber` and `protocol`. The root generic client and connection runtime
+compose those packages. Extensions may use `protocol` and `rfc4511` directly,
+without importing the root client.
+Hand-authored built-ins and external extension values implement the same
+`ber.Marshaler`, `ber.Unmarshaler`, and `protocol.ProtocolOperation` contracts.
+Built-ins have no internal runtime access or registration privilege.
 Optional adapters may add dependencies; the runtime remains
 standard-library-only.
 
@@ -55,7 +58,7 @@ The Phase 1 compile-checked definitions live in `ber/identifier.go`,
   routing; exact routing never degrades silently. A Phase 6 lease will bind one
   connection inside the selected endpoint.
 - `Authentication.Begin` creates a per-connection `Authenticator`.
-  `InitializationSession` offers exclusive binary operations without exposing a
+  `InitializationSession` offers exclusive LDAP operations without exposing a
   raw socket. `Authenticator.Close` runs on every outcome. Generic
   `Initializer[P]` returns a typed higher-layer profile and a small core policy,
   both frozen for the pool lifetime.
@@ -133,8 +136,9 @@ required to receive an explicit validated limit set.
 - Authentication mechanisms declare or enforce their confidentiality needs.
   Simple Bind and the planned authentication-only GSSAPI mode require direct
   TLS; plaintext is not a way to bypass those checks.
-- Simple Bind credentials and SASL tokens are caller-supplied bytes, used only
-  by an authenticator, and absent from profiles, errors, and traces.
+- Simple Bind credentials use the string-first configuration API and become
+  temporary per-connection bytes only inside an authenticator. SASL tokens
+  remain bytes. Neither appears in profiles, errors, or traces.
 - Owned response bytes can contain sensitive directory data. Ownership prevents
   races, not disclosure; applications control retention and logging.
 - No request is replayed after any request byte may have reached a server.

@@ -8,6 +8,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -45,6 +46,7 @@ func Run(ctx context.Context, image string, opts ...testcontainers.ContainerCust
 		return nil, fmt.Errorf("generate directory manager password: %w", err)
 	}
 
+	//nolint:prealloc // Keep the fixed container setup readable as a literal.
 	containerOptions := []testcontainers.ContainerCustomizer{
 		testcontainers.WithConfigModifier(func(config *container.Config) {
 			config.Hostname = defaultServerName
@@ -70,7 +72,7 @@ func Run(ctx context.Context, image string, opts ...testcontainers.ContainerCust
 	ctr, err := testcontainers.Run(ctx, image, containerOptions...)
 	if ctr == nil {
 		if err == nil {
-			return nil, fmt.Errorf("start 389ds container: no container returned")
+			return nil, errors.New("start 389ds container: no container returned")
 		}
 		return nil, fmt.Errorf("start 389ds container: %w", err)
 	}
@@ -116,7 +118,7 @@ func (c *Container) configureClient(ctx context.Context) error {
 
 	roots := x509.NewCertPool()
 	if !roots.AppendCertsFromPEM(caCertificate) {
-		return fmt.Errorf("read 389ds CA certificate: invalid PEM")
+		return errors.New("read 389ds CA certificate: invalid PEM")
 	}
 	c.tlsConfig = &tls.Config{RootCAs: roots}
 
@@ -138,6 +140,7 @@ func (c *Container) copyCACertificate(ctx context.Context) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("copy 389ds CA certificate: %w", err)
 	}
+	//nolint:errcheck // ReadAll reports the meaningful result for this read-only stream.
 	defer reader.Close()
 
 	certificate, err := io.ReadAll(reader)

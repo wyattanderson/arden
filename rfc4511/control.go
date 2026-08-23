@@ -29,7 +29,7 @@ func (v Control) AppendBER(dst []byte) ([]byte, error) {
 	if err := validateLDAPOID(v.Type); err != nil {
 		return dst, err
 	}
-	contents, err := ber.AppendOctetString(nil, v.Type)
+	contents, err := ber.AppendOctetString(nil, []byte(v.Type))
 	if err != nil {
 		return dst[:start], err
 	}
@@ -75,7 +75,7 @@ func (v *Control) UnmarshalBER(r *ber.Reader) error {
 	if err := validateLDAPOID(typeValue); err != nil {
 		return err
 	}
-	decoded := Control{Type: LDAPOID(bytes.Clone(typeValue))}
+	decoded := Control{Type: LDAPOID(string(typeValue))}
 	if !contents.Empty() {
 		id, err := contents.PeekIdentifier()
 		if err != nil {
@@ -107,7 +107,7 @@ func (v *Control) UnmarshalBER(r *ber.Reader) error {
 			return err
 		}
 		if id == ber.BooleanIdentifier || id == ber.OctetStringIdentifier {
-			return fmt.Errorf("rfc4511: duplicate or out-of-order Control field %s", id)
+			return fmt.Errorf("arden: duplicate or out-of-order Control field %s", id)
 		}
 		decoded.Extensions, err = decodeUnknownFields(contents)
 		if err != nil {

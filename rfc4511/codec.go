@@ -33,8 +33,8 @@ func validationLimits() ber.Limits {
 	return limits
 }
 
-func appendImplicitOctets(dst []byte, id ber.Identifier, value []byte) ([]byte, error) {
-	return ber.AppendPrimitive(dst, id, value)
+func appendImplicitOctets[T ~string | ~[]byte](dst []byte, id ber.Identifier, value T) ([]byte, error) {
+	return ber.AppendPrimitive(dst, id, []byte(value))
 }
 
 func readImplicitOctets(r *ber.Reader, id ber.Identifier) ([]byte, error) {
@@ -59,7 +59,7 @@ func readImplicitBoolean(r *ber.Reader, id ber.Identifier) (bool, error) {
 		return false, err
 	}
 	if len(value) != 1 || (value[0] != 0 && value[0] != 0xff) {
-		return false, fmt.Errorf("rfc4511: invalid implicit BOOLEAN %s", id)
+		return false, fmt.Errorf("arden: invalid implicit BOOLEAN %s", id)
 	}
 	return value[0] == 0xff, nil
 }
@@ -85,11 +85,19 @@ func decodeResultResponse(r *ber.Reader, id ber.Identifier) (LDAPResult, error) 
 	return decodeLDAPResultContents(contents)
 }
 
-func requireNonEmpty(name string, value []byte) error {
+func requireNonEmpty[T ~string | ~[]byte](name string, value T) error {
 	if len(value) == 0 {
-		return fmt.Errorf("rfc4511: %s is empty", name)
+		return fmt.Errorf("arden: %s is empty", name)
 	}
 	return nil
 }
 
-func nilReceiver(name string) error { return errors.New("rfc4511: nil " + name + " receiver") }
+func cloneAttributeValues[T ~[]byte](values []T) []AttributeValue {
+	cloned := make([]AttributeValue, len(values))
+	for i := range values {
+		cloned[i] = bytes.Clone(values[i])
+	}
+	return cloned
+}
+
+func nilReceiver(name string) error { return errors.New("arden: nil " + name + " receiver") }

@@ -1,19 +1,18 @@
 package rfc4511
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"slices"
 
-	"github.com/wyattanderson/arden"
 	"github.com/wyattanderson/arden/ber"
+	"github.com/wyattanderson/arden/protocol"
 )
 
 var (
 	modifyRequestIdentifier  = applicationConstructed(6)
 	modifyResponseIdentifier = applicationConstructed(7)
-	modifyResponsePattern    = mustResponsePattern(arden.ResponseSpec{Complete: []ber.Identifier{modifyResponseIdentifier}})
+	modifyResponsePattern    = mustResponsePattern(protocol.ResponseSpec{Complete: []ber.Identifier{modifyResponseIdentifier}})
 )
 
 // ModifyRequestIdentifier returns the application identifier for ModifyRequest.
@@ -31,6 +30,53 @@ const (
 	ModifyDelete  ModifyOperation = 1
 	ModifyReplace ModifyOperation = 2
 )
+
+// Replace constructs a text-valued replace change.
+func Replace(attribute string, values ...string) Change {
+	return changeText(ModifyReplace, attribute, values)
+}
+
+// AddValues constructs a text-valued add change.
+func AddValues(attribute string, values ...string) Change {
+	return changeText(ModifyAdd, attribute, values)
+}
+
+// DeleteValues constructs a text-valued delete change. With no values it
+// removes the entire attribute.
+func DeleteValues(attribute string, values ...string) Change {
+	return changeText(ModifyDelete, attribute, values)
+}
+
+// ReplaceBytes constructs a binary-valued replace change.
+func ReplaceBytes(attribute string, values ...[]byte) Change {
+	return changeBytes(ModifyReplace, attribute, values)
+}
+
+// AddBytes constructs a binary-valued add change.
+func AddBytes(attribute string, values ...[]byte) Change {
+	return changeBytes(ModifyAdd, attribute, values)
+}
+
+// DeleteBytes constructs a binary-valued delete change.
+func DeleteBytes(attribute string, values ...[]byte) Change {
+	return changeBytes(ModifyDelete, attribute, values)
+}
+
+func changeText(operation ModifyOperation, attribute string, values []string) Change {
+	raw := make([]AttributeValue, len(values))
+	for i, value := range values {
+		raw[i] = AttributeValue(value)
+	}
+	return Change{Operation: operation, Modification: PartialAttribute{
+		Type: AttributeDescription(attribute), Values: raw,
+	}}
+}
+
+func changeBytes(operation ModifyOperation, attribute string, values [][]byte) Change {
+	return Change{Operation: operation, Modification: PartialAttribute{
+		Type: AttributeDescription(attribute), Values: cloneAttributeValues(values),
+	}}
+}
 
 // Change is one ModifyRequest change record.
 type Change struct {
@@ -98,9 +144,9 @@ func (*ModifyRequest) ProtocolIdentifier() ber.Identifier { return modifyRequest
 func (v *ModifyRequest) AppendBER(dst []byte) ([]byte, error) {
 	start := len(dst)
 	if v == nil {
-		return dst, errors.New("rfc4511: nil ModifyRequest")
+		return dst, errors.New("arden: nil ModifyRequest")
 	}
-	contents, err := ber.AppendOctetString(nil, v.Object)
+	contents, err := ber.AppendOctetString(nil, []byte(v.Object))
 	if err != nil {
 		return dst[:start], err
 	}
@@ -108,7 +154,7 @@ func (v *ModifyRequest) AppendBER(dst []byte) ([]byte, error) {
 	for i := range v.Changes {
 		changes, err = v.Changes[i].AppendBER(changes)
 		if err != nil {
-			return dst[:start], fmt.Errorf("rfc4511: ModifyRequest change %d: %w", i, err)
+			return dst[:start], fmt.Errorf("arden: ModifyRequest change %d: %w", i, err)
 		}
 	}
 	if contents, err = ber.AppendSequence(contents, changes); err != nil {
@@ -153,7 +199,7 @@ func (v *ModifyRequest) UnmarshalBER(r *ber.Reader) error {
 	if err != nil {
 		return err
 	}
-	*v = ModifyRequest{Object: LDAPDN(bytes.Clone(object)), Changes: changes, Extensions: extensions}
+	*v = ModifyRequest{Object: LDAPDN(string(object)), Changes: changes, Extensions: extensions}
 	return nil
 }
 
@@ -179,16 +225,16 @@ func (v *ModifyResponse) UnmarshalBER(r *ber.Reader) error {
 }
 
 // ModifyResponsePattern returns the terminal response pattern for ModifyRequest.
-func ModifyResponsePattern() arden.ResponsePattern { return modifyResponsePattern }
+func ModifyResponsePattern() protocol.ResponsePattern { return modifyResponsePattern }
 
 // NewModifyOperation creates a complete Modify request declaration.
-func NewModifyOperation(request *ModifyRequest, controls []ber.Marshaler) (arden.Operation, error) {
+func NewModifyOperation(request *ModifyRequest, controls []ber.Marshaler) (protocol.Operation, error) {
 	if request == nil {
-		return arden.Operation{}, errors.New("rfc4511: nil ModifyRequest")
+		return protocol.Operation{}, errors.New("arden: nil ModifyRequest")
 	}
-	op := arden.Operation{Protocol: request, Controls: slices.Clone(controls), Responses: ModifyResponsePattern(), Cancellation: arden.CancelDrain, Metadata: arden.OperationMetadata{Label: "ldap.modify"}}
+	op := protocol.Operation{Protocol: request, Controls: slices.Clone(controls), Responses: ModifyResponsePattern(), Cancellation: protocol.CancelDrain, Metadata: protocol.OperationMetadata{Label: "ldap.modify"}}
 	if err := op.Validate(); err != nil {
-		return arden.Operation{}, err
+		return protocol.Operation{}, err
 	}
 	return op, nil
 }

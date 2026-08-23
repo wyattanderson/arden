@@ -2,7 +2,7 @@
 
 ## Objective
 
-Build a small, modern Go foundation for binary LDAPv3 operations against 389
+Build a small, modern Go client for practical LDAPv3 operations against 389
 Directory Server and FreeIPA. The first usable milestone ends with a tested RFC
 4511 wire layer, concurrent LDAP connections with direct TLS preferred, a
 multiplex-aware pool, and the extension points required for handwritten LDAP
@@ -16,7 +16,8 @@ without allowing native authentication concerns to dominate the core.
 
 - Keep the core cgo-free and dependency-light.
 - Prefer data and small interfaces over frameworks and registries.
-- Preserve bytes at the wire boundary.
+- Use strings for textual RFC 4511 values and keep bytes for genuinely binary
+  values and extension payloads.
 - Make concurrency, cancellation, ownership, and failure semantics explicit.
 - Hand-author the small, stable RFC 4511 wire layer; reserve code generation
   for application/schema APIs where it removes meaningful repetition.
@@ -33,15 +34,19 @@ Names are provisional; responsibilities are not.
 | Package | Responsibility |
 | --- | --- |
 | `ber` | Bounded LDAP BER identifiers, lengths, readers, and append encoders |
-| `rfc4511` | Hand-authored RFC 4511 values, filters, results, tags, constants, codecs, and standard operation helpers |
-| root package | LDAP dialing with direct TLS by default, message envelopes, operations, routing, lifecycle |
+| `protocol` | Transport-neutral operations, responses, streams, and executor contracts |
+| `rfc4511` | Hand-authored LDAPv3 wire values, codecs, filters, and operation patterns |
+| root package | Generic LDAP client, entries, filters, dialing, message envelopes, routing, and lifecycle errors |
 | `pool` | Endpoint-aware multiplexed connections, leases, and shutdown |
 | `auth` | Authentication and connection-initialization contracts |
 | `otelldap` | Optional OpenTelemetry adapter |
 | `auth/gssapi` | Late optional native GSSAPI mechanism |
+| `rfc4532` | Reference Who Am I? extension implemented only through public contracts |
+| `schema` | Reflection-free value codec and typed attribute contracts for generated models |
 
-Avoid splitting packages until a dependency boundary or build constraint makes
-the split useful.
+The dependency direction is `ber -> protocol -> rfc4511 -> arden`; extension
+packages may stop at `protocol` and `rfc4511` when they do not need the generic
+client.
 
 ## Core operation contract
 
@@ -83,7 +88,7 @@ extensions, vendor/version information, and eventual RFC 3909 Cancel support.
 The setup model will be:
 
 1. Dial and authenticate a connection to each configured endpoint.
-2. Run an optional higher-layer initializer using ordinary binary operations.
+2. Run an optional higher-layer initializer using ordinary LDAP operations.
 3. Produce a typed endpoint profile and core connection policy.
 4. Freeze those results for the pool's lifetime.
 5. Rebuild or explicitly refresh the pool to change the assumptions.
@@ -118,7 +123,7 @@ mutation to a replica.
 | --- | --- | --- |
 | 1 | Evidence base and frozen contracts | [01](docs/phases/01-research-and-contracts.md) |
 | 2 | Safe LDAP BER runtime | [02](docs/phases/02-ber-runtime.md) |
-| 3 | Hand-authored RFC 4511 wire layer | [03](docs/phases/03-rfc4511-wire.md) |
+| 3 | Hand-authored RFC 4511 codecs and generic API | [03](docs/phases/03-rfc4511-wire.md) |
 | 4 | Concurrent LDAP connection runtime | [04](docs/phases/04-connection-runtime.md) |
 | 5 | Authentication and setup seam | [05](docs/phases/05-authentication-and-bootstrap.md) |
 | 6 | Endpoint-aware pool and observability | [06](docs/phases/06-pooling-routing-observability.md) |
@@ -163,9 +168,10 @@ model. Do not introduce a service locator, dependency injection framework, or
 global codec registry.
 
 The base authentication package may provide anonymous and Simple Bind support
-for testing and non-Kerberos deployments. Simple Bind credentials are supplied
-by the caller as bytes, used only during initialization over direct TLS, and
-never retained in endpoint profiles, errors, or observability data.
+for testing and non-Kerberos deployments. Simple Bind credentials use the
+ordinary string API, are converted to temporary bytes only by each connection
+authenticator, and never enter endpoint profiles, errors, or observability
+data.
 
 ## Reference implementation policy
 

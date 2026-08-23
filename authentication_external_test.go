@@ -136,7 +136,7 @@ func TestSimpleBindCompletesDuringDirectTLSDial(t *testing.T) {
 			return
 		}
 		credentials, ok := request.Authentication.(rfc4511.SimpleAuthentication)
-		if !ok || !bytes.Equal(request.Name, []byte("uid=service,dc=example")) || !bytes.Equal(credentials, []byte{0x00, 0xff, 0x01}) {
+		if !ok || request.Name != "uid=service,dc=example" || string(credentials) != "credential-secret" {
 			serverErr <- errors.New("server received unexpected Simple Bind values")
 			return
 		}
@@ -155,8 +155,8 @@ func TestSimpleBindCompletesDuringDirectTLSDial(t *testing.T) {
 
 	configuration, err := auth.NewSimpleBind(
 		"service-account-a",
-		[]byte("uid=service,dc=example"),
-		[]byte{0x00, 0xff, 0x01},
+		"uid=service,dc=example",
+		"credential-secret",
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -231,7 +231,7 @@ func TestFailedSimpleBindNeverPublishesConnectionAndRedactsValues(t *testing.T) 
 		closed <- err
 	}()
 
-	configuration, err := auth.NewSimpleBind("service-account-a", []byte("uid=service"), []byte("credential-secret-value"))
+	configuration, err := auth.NewSimpleBind("service-account-a", "uid=service", "credential-secret-value")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -256,7 +256,7 @@ func TestFailedSimpleBindNeverPublishesConnectionAndRedactsValues(t *testing.T) 
 }
 
 func TestSimpleBindPlaintextPreflightRunsBeforeDial(t *testing.T) {
-	configuration, err := auth.NewSimpleBind("service-account-a", []byte("uid=service"), []byte("credential"))
+	configuration, err := auth.NewSimpleBind("service-account-a", "uid=service", "credential")
 	if err != nil {
 		t.Fatal(err)
 	}

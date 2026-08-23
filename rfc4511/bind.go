@@ -6,18 +6,18 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/wyattanderson/arden"
 	"github.com/wyattanderson/arden/ber"
+	"github.com/wyattanderson/arden/protocol"
 )
 
 var (
 	bindRequestIdentifier   = applicationConstructed(0)
 	bindResponseIdentifier  = applicationConstructed(1)
 	unbindRequestIdentifier = applicationPrimitive(2)
-	bindResponsePattern     = mustResponsePattern(arden.ResponseSpec{
+	bindResponsePattern     = mustResponsePattern(protocol.ResponseSpec{
 		Complete: []ber.Identifier{bindResponseIdentifier},
 	})
-	unbindResponsePattern           = mustResponsePattern(arden.ResponseSpec{NoResponse: true})
+	unbindResponsePattern           = mustResponsePattern(protocol.ResponseSpec{NoResponse: true})
 	simpleAuthenticationIdentifier  = contextPrimitive(0)
 	saslAuthenticationIdentifier    = contextConstructed(3)
 	serverSASLCredentialsIdentifier = contextPrimitive(7)
@@ -85,7 +85,7 @@ func (v SASLAuthentication) AppendBER(dst []byte) ([]byte, error) {
 	if err := requireNonEmpty("SASL mechanism", v.Mechanism); err != nil {
 		return dst, err
 	}
-	contents, err := ber.AppendOctetString(nil, v.Mechanism)
+	contents, err := ber.AppendOctetString(nil, []byte(v.Mechanism))
 	if err != nil {
 		return dst[:start], err
 	}
@@ -122,7 +122,7 @@ func (v *SASLAuthentication) UnmarshalBER(r *ber.Reader) error {
 	if err := requireNonEmpty("SASL mechanism", mechanism); err != nil {
 		return err
 	}
-	decoded := SASLAuthentication{Mechanism: LDAPString(bytes.Clone(mechanism))}
+	decoded := SASLAuthentication{Mechanism: LDAPString(string(mechanism))}
 	if !contents.Empty() {
 		id, err := contents.PeekIdentifier()
 		if err != nil {
@@ -142,7 +142,7 @@ func (v *SASLAuthentication) UnmarshalBER(r *ber.Reader) error {
 			return err
 		}
 		if id == ber.OctetStringIdentifier {
-			return fmt.Errorf("rfc4511: duplicate SASL credentials field %s", id)
+			return fmt.Errorf("arden: duplicate SASL credentials field %s", id)
 		}
 		decoded.Extensions, err = decodeUnknownFields(contents)
 		if err != nil {
@@ -166,7 +166,7 @@ func (v UnknownAuthentication) AuthenticationIdentifier() ber.Identifier { retur
 //revive:disable-next-line:exported
 func (v UnknownAuthentication) AppendBER(dst []byte) ([]byte, error) {
 	if len(v.raw) == 0 {
-		return dst, errors.New("rfc4511: unknown authentication was not decoded")
+		return dst, errors.New("arden: unknown authentication was not decoded")
 	}
 	return append(dst, v.raw...), nil
 }
@@ -189,19 +189,19 @@ func (*BindRequest) ProtocolIdentifier() ber.Identifier { return bindRequestIden
 func (v *BindRequest) AppendBER(dst []byte) ([]byte, error) {
 	start := len(dst)
 	if v == nil {
-		return dst, errors.New("rfc4511: nil BindRequest")
+		return dst, errors.New("arden: nil BindRequest")
 	}
 	if v.Version < 1 || v.Version > 127 {
-		return dst, fmt.Errorf("rfc4511: BindRequest version %d is outside [1, 127]", v.Version)
+		return dst, fmt.Errorf("arden: BindRequest version %d is outside [1, 127]", v.Version)
 	}
 	if v.Authentication == nil {
-		return dst, errors.New("rfc4511: BindRequest has no authentication choice")
+		return dst, errors.New("arden: BindRequest has no authentication choice")
 	}
 	contents, err := ber.AppendInteger(nil, v.Version)
 	if err != nil {
 		return dst[:start], err
 	}
-	if contents, err = ber.AppendOctetString(contents, v.Name); err != nil {
+	if contents, err = ber.AppendOctetString(contents, []byte(v.Name)); err != nil {
 		return dst[:start], err
 	}
 	if contents, err = appendAuthentication(contents, v.Authentication); err != nil {
@@ -231,7 +231,7 @@ func (v *BindRequest) UnmarshalBER(r *ber.Reader) error {
 		return err
 	}
 	if version < 1 || version > 127 {
-		return fmt.Errorf("rfc4511: BindRequest version %d is outside [1, 127]", version)
+		return fmt.Errorf("arden: BindRequest version %d is outside [1, 127]", version)
 	}
 	name, err := contents.OctetString()
 	if err != nil {
@@ -245,7 +245,7 @@ func (v *BindRequest) UnmarshalBER(r *ber.Reader) error {
 	if err != nil {
 		return err
 	}
-	*v = BindRequest{Version: version, Name: LDAPDN(bytes.Clone(name)), Authentication: authentication, Extensions: extensions}
+	*v = BindRequest{Version: version, Name: LDAPDN(string(name)), Authentication: authentication, Extensions: extensions}
 	return nil
 }
 
@@ -261,7 +261,7 @@ type BindResponse struct {
 func (v BindResponse) AppendBER(dst []byte) ([]byte, error) {
 	start := len(dst)
 	if len(v.Result.Extensions) != 0 {
-		return dst, errors.New("rfc4511: BindResponse result extensions must be response extensions")
+		return dst, errors.New("arden: BindResponse result extensions must be response extensions")
 	}
 	contents, err := v.Result.appendPrefix(nil)
 	if err != nil {
@@ -317,7 +317,7 @@ func (v *BindResponse) UnmarshalBER(r *ber.Reader) error {
 			return err
 		}
 		if id == referralIdentifier || id == serverSASLCredentialsIdentifier {
-			return fmt.Errorf("rfc4511: duplicate or out-of-order BindResponse field %s", id)
+			return fmt.Errorf("arden: duplicate or out-of-order BindResponse field %s", id)
 		}
 		decoded.Extensions, err = decodeUnknownFields(contents)
 		if err != nil {
@@ -349,50 +349,50 @@ func (v *UnbindRequest) UnmarshalBER(r *ber.Reader) error {
 		return err
 	}
 	if len(value) != 0 {
-		return errors.New("rfc4511: UnbindRequest has nonempty contents")
+		return errors.New("arden: UnbindRequest has nonempty contents")
 	}
 	*v = UnbindRequest{}
 	return nil
 }
 
 // BindResponsePattern returns the terminal response pattern for BindRequest.
-func BindResponsePattern() arden.ResponsePattern { return bindResponsePattern }
+func BindResponsePattern() protocol.ResponsePattern { return bindResponsePattern }
 
 // UnbindResponsePattern returns the no-response pattern for UnbindRequest.
-func UnbindResponsePattern() arden.ResponsePattern { return unbindResponsePattern }
+func UnbindResponsePattern() protocol.ResponsePattern { return unbindResponsePattern }
 
 // NewBindOperation creates a complete Bind request declaration.
-func NewBindOperation(request *BindRequest, controls []ber.Marshaler) (arden.Operation, error) {
+func NewBindOperation(request *BindRequest, controls []ber.Marshaler) (protocol.Operation, error) {
 	if request == nil {
-		return arden.Operation{}, errors.New("rfc4511: nil BindRequest")
+		return protocol.Operation{}, errors.New("arden: nil BindRequest")
 	}
-	op := arden.Operation{
+	op := protocol.Operation{
 		Protocol:     request,
 		Controls:     slices.Clone(controls),
 		Responses:    BindResponsePattern(),
-		Cancellation: arden.CancelClose,
-		Metadata:     arden.OperationMetadata{Label: "ldap.bind"},
+		Cancellation: protocol.CancelClose,
+		Metadata:     protocol.OperationMetadata{Label: "ldap.bind"},
 	}
 	if err := op.Validate(); err != nil {
-		return arden.Operation{}, err
+		return protocol.Operation{}, err
 	}
 	return op, nil
 }
 
 // NewUnbindOperation creates a complete Unbind request declaration.
-func NewUnbindOperation(request *UnbindRequest, controls []ber.Marshaler) (arden.Operation, error) {
+func NewUnbindOperation(request *UnbindRequest, controls []ber.Marshaler) (protocol.Operation, error) {
 	if request == nil {
-		return arden.Operation{}, errors.New("rfc4511: nil UnbindRequest")
+		return protocol.Operation{}, errors.New("arden: nil UnbindRequest")
 	}
-	op := arden.Operation{
+	op := protocol.Operation{
 		Protocol:     request,
 		Controls:     slices.Clone(controls),
 		Responses:    UnbindResponsePattern(),
-		Cancellation: arden.CancelClose,
-		Metadata:     arden.OperationMetadata{Label: "ldap.unbind"},
+		Cancellation: protocol.CancelClose,
+		Metadata:     protocol.OperationMetadata{Label: "ldap.unbind"},
 	}
 	if err := op.Validate(); err != nil {
-		return arden.Operation{}, err
+		return protocol.Operation{}, err
 	}
 	return op, nil
 }
@@ -400,11 +400,11 @@ func NewUnbindOperation(request *UnbindRequest, controls []ber.Marshaler) (arden
 func appendAuthentication(dst []byte, value AuthenticationChoice) ([]byte, error) {
 	start := len(dst)
 	if value == nil {
-		return dst, errors.New("rfc4511: nil authentication choice")
+		return dst, errors.New("arden: nil authentication choice")
 	}
 	id := value.AuthenticationIdentifier()
 	if !id.Valid() || id.Class != ber.ClassContextSpecific {
-		return dst, fmt.Errorf("rfc4511: authentication identifier %s is not context-specific", id)
+		return dst, fmt.Errorf("arden: authentication identifier %s is not context-specific", id)
 	}
 	encoded, err := value.AppendBER(dst)
 	if err != nil {
@@ -415,7 +415,7 @@ func appendAuthentication(dst []byte, value AuthenticationChoice) ([]byte, error
 		return dst[:start], err
 	}
 	if e.Identifier != id {
-		return dst[:start], fmt.Errorf("rfc4511: authentication encoded %s, declared %s", e.Identifier, id)
+		return dst[:start], fmt.Errorf("arden: authentication encoded %s, declared %s", e.Identifier, id)
 	}
 	return encoded, nil
 }
@@ -440,7 +440,7 @@ func decodeAuthentication(r *ber.Reader) (AuthenticationChoice, error) {
 		return value, nil
 	default:
 		if id.Class != ber.ClassContextSpecific {
-			return nil, fmt.Errorf("rfc4511: authentication identifier %s is not context-specific", id)
+			return nil, fmt.Errorf("arden: authentication identifier %s is not context-specific", id)
 		}
 		e, err := r.SkipElement()
 		if err != nil {

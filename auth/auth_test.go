@@ -69,14 +69,13 @@ func TestAnonymousUsesMinimalOrdinaryBind(t *testing.T) {
 	}
 }
 
-func TestSimpleBindPreservesBinaryValuesAndClearsPerConnectionCopies(t *testing.T) {
-	bindDN := []byte{'c', 'n', '=', 0xff}
-	credential := []byte{0x00, 0xff, 0x01}
+func TestSimpleBindUsesStringValuesAndClearsPerConnectionCopies(t *testing.T) {
+	const bindDN = "cn=user"
+	const credential = "password"
 	configuration, err := NewSimpleBind("service-account-a", bindDN, credential)
 	if err != nil {
 		t.Fatal(err)
 	}
-	bindDN[0], credential[0] = 'X', 'X'
 
 	authenticatorValue, err := configuration.Begin(context.Background(), arden.Endpoint{
 		ID: "tls", Address: "unused", ServerName: "ldap.test",
@@ -94,22 +93,22 @@ func TestSimpleBindPreservesBinaryValuesAndClearsPerConnectionCopies(t *testing.
 		t.Fatalf("Simple identity = %q", identity.StableID)
 	}
 	request := session.operations[0].Protocol.(*rfc4511.BindRequest)
-	if !bytes.Equal(request.Name, []byte{'c', 'n', '=', 0xff}) {
+	if request.Name != "cn=user" {
 		t.Fatalf("Bind DN = %x", request.Name)
 	}
-	if got := []byte(request.Authentication.(rfc4511.SimpleAuthentication)); !bytes.Equal(got, []byte{0x00, 0xff, 0x01}) {
-		t.Fatalf("Bind credentials = %x", got)
+	if got := string(request.Authentication.(rfc4511.SimpleAuthentication)); got != credential {
+		t.Fatalf("Bind credentials = %q", got)
 	}
 	if err := authenticator.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if authenticator.name != nil || authenticator.credentials != nil {
+	if authenticator.name != "" || authenticator.credentials != nil {
 		t.Fatal("per-connection authentication material was retained after Close")
 	}
 }
 
 func TestSimpleBindRejectsPlaintextBeforeBegin(t *testing.T) {
-	configuration, err := NewSimpleBind("service-account-a", []byte("uid=user"), []byte("password"))
+	configuration, err := NewSimpleBind("service-account-a", "uid=user", "password")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,10 +139,10 @@ func TestBindFailureReportsOnlyResultCode(t *testing.T) {
 }
 
 func TestSimpleBindRejectsAmbiguousEmptyAuthentication(t *testing.T) {
-	if _, err := NewSimpleBind("identity", nil, []byte("password")); err == nil {
+	if _, err := NewSimpleBind("identity", "", "password"); err == nil {
 		t.Fatal("Simple Bind accepted an empty DN")
 	}
-	if _, err := NewSimpleBind("identity", []byte("uid=user"), nil); err == nil {
+	if _, err := NewSimpleBind("identity", "uid=user", ""); err == nil {
 		t.Fatal("Simple Bind accepted empty credentials")
 	}
 }
