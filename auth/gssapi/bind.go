@@ -49,8 +49,8 @@ func exchangeBind(ctx context.Context, session arden.InitializationSession, toke
 	}
 	defer clear(response.Bytes)
 
-	var decoded rfc4511.BindResponse
-	if err := response.UnmarshalProtocol(&decoded, ber.DefaultLimits()); err != nil {
+	decoded, err := operation.Responses.Decode(response, ber.DefaultLimits())
+	if err != nil {
 		return bindResult{}, err
 	}
 	if _, err := stream.Next(ctx); !errors.Is(err, io.EOF) {

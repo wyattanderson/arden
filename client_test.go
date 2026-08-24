@@ -44,6 +44,74 @@ func TestClientAddReturnsTypedLDAPResultError(t *testing.T) {
 	assert.Equal(t, entry.DN, request.Entry)
 }
 
+func TestClientExecuteReturnsTypedPointerAndControls(t *testing.T) {
+	control := rfc4511.Control{Type: "1.2.3"}
+	executor := &scriptedExecutor{pages: [][]Response{
+		{protocolResponseWithControls(
+			t,
+			rfc4511.AddResponseIdentifier(),
+			rfc4511.AddResponse{Result: rfc4511.LDAPResult{ResultCode: rfc4511.ResultSuccess}},
+			control,
+		)},
+	}}
+	operation, err := rfc4511.NewAddOperation(&rfc4511.AddRequest{Entry: "uid=alice,dc=example"}, nil)
+	require.NoError(t, err)
+
+	response, controls, err := NewClient(executor).Execute(context.Background(), operation)
+	require.NoError(t, err)
+	require.NotNil(t, response)
+	assert.Equal(t, rfc4511.ResultSuccess, response.Result.ResultCode)
+	assert.Equal(t, []rfc4511.Control{control}, controls)
+}
+
+func TestClientExecuteErrorReturnValues(t *testing.T) {
+	operation, err := rfc4511.NewAddOperation(&rfc4511.AddRequest{Entry: "uid=alice,dc=example"}, nil)
+	require.NoError(t, err)
+
+	t.Run("LDAP result", func(t *testing.T) {
+		executor := &scriptedExecutor{pages: [][]Response{{protocolResponse(t, rfc4511.AddResponseIdentifier(), rfc4511.AddResponse{
+			Result: rfc4511.LDAPResult{ResultCode: rfc4511.ResultBusy},
+		})}}}
+		response, controls, err := NewClient(executor).Execute(context.Background(), operation)
+		require.NotNil(t, response)
+		assert.Equal(t, rfc4511.ResultBusy, response.Result.ResultCode)
+		assert.Empty(t, controls)
+		var resultErr *ResultError
+		require.ErrorAs(t, err, &resultErr)
+		assert.Equal(t, rfc4511.ResultBusy, resultErr.ResultCode())
+	})
+
+	t.Run("decode", func(t *testing.T) {
+		executor := &scriptedExecutor{pages: [][]Response{
+			{{
+				ProtocolID: rfc4511.AddResponseIdentifier(),
+				Protocol:   []byte{0x01, 0x01, 0xff},
+			}},
+		}}
+		response, controls, err := NewClient(executor).Execute(context.Background(), operation)
+		assert.Nil(t, response)
+		assert.Nil(t, controls)
+		assert.Error(t, err)
+	})
+}
+
+func TestClientExecuteAcceptResultCodesReplacesSuccessDefault(t *testing.T) {
+	executor := &scriptedExecutor{pages: [][]Response{{protocolResponse(t, rfc4511.AddResponseIdentifier(), rfc4511.AddResponse{
+		Result: rfc4511.LDAPResult{ResultCode: rfc4511.ResultEntryAlreadyExists},
+	})}}}
+	operation, err := rfc4511.NewAddOperation(&rfc4511.AddRequest{Entry: "uid=alice,dc=example"}, nil)
+	require.NoError(t, err)
+
+	response, _, err := NewClient(executor).Execute(
+		context.Background(),
+		operation,
+		AcceptResultCodes(rfc4511.ResultEntryAlreadyExists),
+	)
+	require.NoError(t, err)
+	require.NotNil(t, response)
+	assert.Equal(t, rfc4511.ResultEntryAlreadyExists, response.Result.ResultCode)
+}
+
 func TestClientSearchFollowsPagedResultsCookies(t *testing.T) {
 	firstControl, err := newPagedResultsControl(2, []byte("next"))
 	require.NoError(t, err)
@@ -100,12 +168,12 @@ func TestClientGetRequiresOneEntry(t *testing.T) {
 
 type scriptedExecutor struct {
 	pages      [][]Response
-	operations []Operation
+	operations []UntypedOperation
 	streams    []*scriptedResponseStream
 }
 
-func (e *scriptedExecutor) Do(_ context.Context, operation Operation) (ResponseStream, error) {
-	e.operations = append(e.operations, operation)
+func (e *scriptedExecutor) Do(_ context.Context, operation AnyOperation) (ResponseStream, error) {
+	e.operations = append(e.operations, operation.Untyped())
 	index := len(e.operations) - 1
 	if index >= len(e.pages) {
 		return nil, errors.New("unexpected operation")
@@ -156,7 +224,7 @@ func protocolResponseWithControls(t *testing.T, identifier ber.Identifier, value
 	return response
 }
 
-func requestPageCookie(t *testing.T, operation Operation) []byte {
+func requestPageCookie(t *testing.T, operation UntypedOperation) []byte {
 	t.Helper()
 	for _, marshaler := range operation.Controls {
 		control, ok := marshaler.(rfc4511.Control)

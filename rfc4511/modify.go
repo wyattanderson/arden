@@ -12,7 +12,7 @@ import (
 var (
 	modifyRequestIdentifier  = applicationConstructed(6)
 	modifyResponseIdentifier = applicationConstructed(7)
-	modifyResponsePattern    = mustResponsePattern(protocol.ResponseSpec{Complete: []ber.Identifier{modifyResponseIdentifier}})
+	modifyResponsePattern    = mustResponsePattern[ModifyResponse](protocol.ResponseSpec{Complete: []ber.Identifier{modifyResponseIdentifier}})
 )
 
 // ModifyRequestIdentifier returns the application identifier for ModifyRequest.
@@ -206,6 +206,9 @@ func (v *ModifyRequest) UnmarshalBER(r *ber.Reader) error {
 // ModifyResponse is the terminal LDAPResult for ModifyRequest.
 type ModifyResponse struct{ Result LDAPResult }
 
+// LDAPResult returns the operation result carried by v.
+func (v ModifyResponse) LDAPResult() LDAPResult { return v.Result }
+
 //revive:disable-next-line:exported
 func (v ModifyResponse) AppendBER(dst []byte) ([]byte, error) {
 	return appendResultResponse(dst, modifyResponseIdentifier, v.Result)
@@ -225,16 +228,16 @@ func (v *ModifyResponse) UnmarshalBER(r *ber.Reader) error {
 }
 
 // ModifyResponsePattern returns the terminal response pattern for ModifyRequest.
-func ModifyResponsePattern() protocol.ResponsePattern { return modifyResponsePattern }
+func ModifyResponsePattern() protocol.ResponsePattern[ModifyResponse] { return modifyResponsePattern }
 
 // NewModifyOperation creates a complete Modify request declaration.
-func NewModifyOperation(request *ModifyRequest, controls []ber.Marshaler) (protocol.Operation, error) {
+func NewModifyOperation(request *ModifyRequest, controls []ber.Marshaler) (protocol.Operation[ModifyResponse], error) {
 	if request == nil {
-		return protocol.Operation{}, errors.New("arden: nil ModifyRequest")
+		return protocol.Operation[ModifyResponse]{}, errors.New("arden: nil ModifyRequest")
 	}
-	op := protocol.Operation{Protocol: request, Controls: slices.Clone(controls), Responses: ModifyResponsePattern(), Cancellation: protocol.CancelDrain, Metadata: protocol.OperationMetadata{Label: "ldap.modify"}}
+	op := protocol.Operation[ModifyResponse]{Protocol: request, Controls: slices.Clone(controls), Responses: ModifyResponsePattern(), Cancellation: protocol.CancelDrain, Metadata: protocol.OperationMetadata{Label: "ldap.modify"}}
 	if err := op.Validate(); err != nil {
-		return protocol.Operation{}, err
+		return protocol.Operation[ModifyResponse]{}, err
 	}
 	return op, nil
 }

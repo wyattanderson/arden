@@ -12,7 +12,7 @@ import (
 )
 
 func TestOperationConstructors(t *testing.T) {
-	type constructor func([]ber.Marshaler) (protocol.Operation, error)
+	type constructor func([]ber.Marshaler) (protocol.AnyOperation, error)
 	tests := []struct {
 		name         string
 		construct    constructor
@@ -23,43 +23,44 @@ func TestOperationConstructors(t *testing.T) {
 		cancellation protocol.CancellationMode
 		label        string
 	}{
-		{"bind", func(c []ber.Marshaler) (protocol.Operation, error) {
-			return NewBindOperation(&BindRequest{}, c)
+		{"bind", func(c []ber.Marshaler) (protocol.AnyOperation, error) {
+			return anyOperation(NewBindOperation(&BindRequest{}, c))
 		}, BindRequestIdentifier(), new(BindResponseIdentifier()), nil, false, protocol.CancelClose, "ldap.bind"},
-		{"unbind", func(c []ber.Marshaler) (protocol.Operation, error) {
-			return NewUnbindOperation(&UnbindRequest{}, c)
+		{"unbind", func(c []ber.Marshaler) (protocol.AnyOperation, error) {
+			return anyOperation(NewUnbindOperation(&UnbindRequest{}, c))
 		}, UnbindRequestIdentifier(), nil, nil, true, protocol.CancelClose, "ldap.unbind"},
-		{"search", func(c []ber.Marshaler) (protocol.Operation, error) {
-			return NewSearchOperation(&SearchRequest{}, c)
+		{"search", func(c []ber.Marshaler) (protocol.AnyOperation, error) {
+			return anyOperation(NewSearchOperation(&SearchRequest{}, c))
 		}, SearchRequestIdentifier(), new(SearchResultDoneIdentifier()), []ber.Identifier{SearchResultEntryIdentifier(), SearchResultReferenceIdentifier()}, false, protocol.CancelAbandon, "ldap.search"},
-		{"modify", func(c []ber.Marshaler) (protocol.Operation, error) {
-			return NewModifyOperation(&ModifyRequest{}, c)
+		{"modify", func(c []ber.Marshaler) (protocol.AnyOperation, error) {
+			return anyOperation(NewModifyOperation(&ModifyRequest{}, c))
 		}, ModifyRequestIdentifier(), new(ModifyResponseIdentifier()), nil, false, protocol.CancelDrain, "ldap.modify"},
-		{"add", func(c []ber.Marshaler) (protocol.Operation, error) {
-			return NewAddOperation(&AddRequest{}, c)
+		{"add", func(c []ber.Marshaler) (protocol.AnyOperation, error) {
+			return anyOperation(NewAddOperation(&AddRequest{}, c))
 		}, AddRequestIdentifier(), new(AddResponseIdentifier()), nil, false, protocol.CancelDrain, "ldap.add"},
-		{"delete", func(c []ber.Marshaler) (protocol.Operation, error) {
-			return NewDeleteOperation(&DeleteRequest{}, c)
+		{"delete", func(c []ber.Marshaler) (protocol.AnyOperation, error) {
+			return anyOperation(NewDeleteOperation(&DeleteRequest{}, c))
 		}, DeleteRequestIdentifier(), new(DeleteResponseIdentifier()), nil, false, protocol.CancelDrain, "ldap.delete"},
-		{"modify DN", func(c []ber.Marshaler) (protocol.Operation, error) {
-			return NewModifyDNOperation(&ModifyDNRequest{}, c)
+		{"modify DN", func(c []ber.Marshaler) (protocol.AnyOperation, error) {
+			return anyOperation(NewModifyDNOperation(&ModifyDNRequest{}, c))
 		}, ModifyDNRequestIdentifier(), new(ModifyDNResponseIdentifier()), nil, false, protocol.CancelDrain, "ldap.modify-dn"},
-		{"compare", func(c []ber.Marshaler) (protocol.Operation, error) {
-			return NewCompareOperation(&CompareRequest{}, c)
+		{"compare", func(c []ber.Marshaler) (protocol.AnyOperation, error) {
+			return anyOperation(NewCompareOperation(&CompareRequest{}, c))
 		}, CompareRequestIdentifier(), new(CompareResponseIdentifier()), nil, false, protocol.CancelDrain, "ldap.compare"},
-		{"abandon", func(c []ber.Marshaler) (protocol.Operation, error) {
-			return NewAbandonOperation(&AbandonRequest{}, c)
+		{"abandon", func(c []ber.Marshaler) (protocol.AnyOperation, error) {
+			return anyOperation(NewAbandonOperation(&AbandonRequest{}, c))
 		}, AbandonRequestIdentifier(), nil, nil, true, protocol.CancelNone, "ldap.abandon"},
-		{"extended", func(c []ber.Marshaler) (protocol.Operation, error) {
-			return NewExtendedOperation(&ExtendedRequest{}, c)
+		{"extended", func(c []ber.Marshaler) (protocol.AnyOperation, error) {
+			return anyOperation(NewExtendedOperation(&ExtendedRequest{}, c))
 		}, ExtendedRequestIdentifier(), new(ExtendedResponseIdentifier()), []ber.Identifier{IntermediateResponseIdentifier()}, false, protocol.CancelDrain, "ldap.extended"},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			controls := []ber.Marshaler{rawControl{}}
-			op, err := test.construct(controls)
+			typed, err := test.construct(controls)
 			require.NoError(t, err)
+			op := typed.Untyped()
 			controls[0] = nil
 
 			assert.Equal(t, test.requestID, op.Protocol.ProtocolIdentifier())
@@ -78,6 +79,10 @@ func TestOperationConstructors(t *testing.T) {
 			}
 		})
 	}
+}
+
+func anyOperation[T any](operation protocol.Operation[T], err error) (protocol.AnyOperation, error) {
+	return operation, err
 }
 
 func TestOperationConstructorsRejectNilRequests(t *testing.T) {

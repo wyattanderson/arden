@@ -14,10 +14,10 @@ var (
 	bindRequestIdentifier   = applicationConstructed(0)
 	bindResponseIdentifier  = applicationConstructed(1)
 	unbindRequestIdentifier = applicationPrimitive(2)
-	bindResponsePattern     = mustResponsePattern(protocol.ResponseSpec{
+	bindResponsePattern     = mustResponsePattern[BindResponse](protocol.ResponseSpec{
 		Complete: []ber.Identifier{bindResponseIdentifier},
 	})
-	unbindResponsePattern           = mustResponsePattern(protocol.ResponseSpec{NoResponse: true})
+	unbindResponsePattern           = protocol.NewNoResponsePattern()
 	simpleAuthenticationIdentifier  = contextPrimitive(0)
 	saslAuthenticationIdentifier    = contextConstructed(3)
 	serverSASLCredentialsIdentifier = contextPrimitive(7)
@@ -257,6 +257,9 @@ type BindResponse struct {
 	Extensions               []UnknownField
 }
 
+// LDAPResult returns the operation result carried by v.
+func (v BindResponse) LDAPResult() LDAPResult { return v.Result }
+
 //revive:disable-next-line:exported
 func (v BindResponse) AppendBER(dst []byte) ([]byte, error) {
 	start := len(dst)
@@ -356,17 +359,19 @@ func (v *UnbindRequest) UnmarshalBER(r *ber.Reader) error {
 }
 
 // BindResponsePattern returns the terminal response pattern for BindRequest.
-func BindResponsePattern() protocol.ResponsePattern { return bindResponsePattern }
+func BindResponsePattern() protocol.ResponsePattern[BindResponse] { return bindResponsePattern }
 
 // UnbindResponsePattern returns the no-response pattern for UnbindRequest.
-func UnbindResponsePattern() protocol.ResponsePattern { return unbindResponsePattern }
+func UnbindResponsePattern() protocol.ResponsePattern[protocol.NoResponse] {
+	return unbindResponsePattern
+}
 
 // NewBindOperation creates a complete Bind request declaration.
-func NewBindOperation(request *BindRequest, controls []ber.Marshaler) (protocol.Operation, error) {
+func NewBindOperation(request *BindRequest, controls []ber.Marshaler) (protocol.Operation[BindResponse], error) {
 	if request == nil {
-		return protocol.Operation{}, errors.New("arden: nil BindRequest")
+		return protocol.Operation[BindResponse]{}, errors.New("arden: nil BindRequest")
 	}
-	op := protocol.Operation{
+	op := protocol.Operation[BindResponse]{
 		Protocol:     request,
 		Controls:     slices.Clone(controls),
 		Responses:    BindResponsePattern(),
@@ -374,17 +379,17 @@ func NewBindOperation(request *BindRequest, controls []ber.Marshaler) (protocol.
 		Metadata:     protocol.OperationMetadata{Label: "ldap.bind"},
 	}
 	if err := op.Validate(); err != nil {
-		return protocol.Operation{}, err
+		return protocol.Operation[BindResponse]{}, err
 	}
 	return op, nil
 }
 
 // NewUnbindOperation creates a complete Unbind request declaration.
-func NewUnbindOperation(request *UnbindRequest, controls []ber.Marshaler) (protocol.Operation, error) {
+func NewUnbindOperation(request *UnbindRequest, controls []ber.Marshaler) (protocol.Operation[protocol.NoResponse], error) {
 	if request == nil {
-		return protocol.Operation{}, errors.New("arden: nil UnbindRequest")
+		return protocol.Operation[protocol.NoResponse]{}, errors.New("arden: nil UnbindRequest")
 	}
-	op := protocol.Operation{
+	op := protocol.Operation[protocol.NoResponse]{
 		Protocol:     request,
 		Controls:     slices.Clone(controls),
 		Responses:    UnbindResponsePattern(),
@@ -392,7 +397,7 @@ func NewUnbindOperation(request *UnbindRequest, controls []ber.Marshaler) (proto
 		Metadata:     protocol.OperationMetadata{Label: "ldap.unbind"},
 	}
 	if err := op.Validate(); err != nil {
-		return protocol.Operation{}, err
+		return protocol.Operation[protocol.NoResponse]{}, err
 	}
 	return op, nil
 }

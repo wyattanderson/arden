@@ -19,6 +19,7 @@ var (
 	searchDone    = ber.Identifier{Class: ber.ClassApplication, Constructed: true, Number: 5}
 	searchRef     = ber.Identifier{Class: ber.ClassApplication, Constructed: true, Number: 19}
 	modifyDone    = ber.Identifier{Class: ber.ClassApplication, Constructed: true, Number: 7}
+	typedResponse = ber.Identifier{Class: ber.ClassApplication, Number: 30}
 )
 
 type rawOperation struct {
@@ -29,6 +30,17 @@ type rawOperation struct {
 type rawUnmarshaler struct {
 	id    ber.Identifier
 	value []byte
+}
+
+type typedRawResponse struct{ value []byte }
+
+func (r *typedRawResponse) UnmarshalBER(reader *ber.Reader) error {
+	value, err := reader.Primitive(typedResponse)
+	if err != nil {
+		return err
+	}
+	r.value = append([]byte(nil), value...)
+	return nil
 }
 
 func (u *rawUnmarshaler) UnmarshalBER(r *ber.Reader) error {
@@ -48,7 +60,7 @@ func (o rawOperation) AppendBER(dst []byte) ([]byte, error) {
 func TestResponsePatternIsImmutableAndTagOnly(t *testing.T) {
 	continuing := []ber.Identifier{searchEntry, searchRef}
 	terminal := []ber.Identifier{searchDone}
-	pattern, err := arden.NewResponsePattern(arden.ResponseSpec{
+	pattern, err := arden.NewResponsePattern[rawUnmarshaler](arden.ResponseSpec{
 		Continue: continuing,
 		Complete: terminal,
 	})
@@ -76,15 +88,55 @@ func TestPatternRejectsOverlapAndNonApplicationIdentifiers(t *testing.T) {
 		{Complete: []ber.Identifier{{Class: ber.ClassUniversal, Constructed: true, Number: 5}}},
 		{NoResponse: true, Complete: []ber.Identifier{searchDone}},
 	} {
-		_, err := arden.NewResponsePattern(spec)
+		_, err := arden.NewResponsePattern[rawUnmarshaler](spec)
 		assert.Error(t, err)
 	}
 }
 
-func TestCompileOnlyContracts(t *testing.T) {
-	pattern, err := arden.NewResponsePattern(arden.ResponseSpec{Complete: []ber.Identifier{searchDone}})
+func TestResponsePatternDecodesToNewTypedPointer(t *testing.T) {
+	pattern, err := arden.NewResponsePattern[typedRawResponse](arden.ResponseSpec{
+		Complete: []ber.Identifier{typedResponse},
+	})
 	require.NoError(t, err)
-	op := arden.Operation{
+	encoded, err := ber.AppendPrimitive(nil, typedResponse, []byte("decoded"))
+	require.NoError(t, err)
+
+	decoded, err := pattern.Decode(arden.Response{ProtocolID: typedResponse, Protocol: encoded}, ber.DefaultLimits())
+	require.NoError(t, err)
+	require.NotNil(t, decoded)
+	assert.Equal(t, []byte("decoded"), decoded.value)
+
+	decoded, err = pattern.Decode(arden.Response{ProtocolID: typedResponse, Protocol: []byte{0x01}}, ber.DefaultLimits())
+	assert.Nil(t, decoded)
+	require.Error(t, err)
+
+	decoded, err = pattern.Decode(arden.Response{ProtocolID: modifyDone, Protocol: encoded}, ber.DefaultLimits())
+	assert.Nil(t, decoded)
+	require.Error(t, err)
+}
+
+func TestNoResponsePatternUsesDefaultNoResponseType(t *testing.T) {
+	pattern := arden.NewNoResponsePattern()
+	assert.True(t, pattern.Valid())
+	assert.True(t, pattern.NoResponse())
+	assert.Equal(t, arden.ClassificationInvalid, pattern.Classify(typedResponse))
+	decoded, err := pattern.Decode(arden.Response{}, ber.DefaultLimits())
+	assert.Nil(t, decoded)
+	require.Error(t, err)
+
+	op := arden.Operation[arden.NoResponse]{
+		Protocol:     rawOperation{id: searchRequest, value: []byte{0x63, 0x00}},
+		Responses:    pattern,
+		Cancellation: arden.CancelNone,
+	}
+	require.NoError(t, op.Validate())
+	assert.True(t, op.Untyped().Responses.NoResponse())
+}
+
+func TestCompileOnlyContracts(t *testing.T) {
+	pattern, err := arden.NewResponsePattern[rawUnmarshaler](arden.ResponseSpec{Complete: []ber.Identifier{searchDone}})
+	require.NoError(t, err)
+	op := arden.Operation[rawUnmarshaler]{
 		Protocol:     rawOperation{id: searchRequest, value: []byte{0x63, 0x00}},
 		Responses:    pattern,
 		Cancellation: arden.CancelDrain,

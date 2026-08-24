@@ -488,11 +488,11 @@ func (c *fakeSecurityContext) Delete() ([]byte, error) {
 
 type scriptedSession struct {
 	responses     []arden.Response
-	operations    []arden.Operation
+	operations    []arden.Operation[rfc4511.BindResponse]
 	afterResponse func(int)
 }
 
-func (s *scriptedSession) Do(ctx context.Context, operation arden.Operation) (arden.ResponseStream, error) {
+func (s *scriptedSession) Do(ctx context.Context, operation arden.AnyOperation) (arden.ResponseStream, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -500,11 +500,15 @@ func (s *scriptedSession) Do(ctx context.Context, operation arden.Operation) (ar
 	if index >= len(s.responses) {
 		return nil, errors.New("unexpected Bind operation")
 	}
-	s.operations = append(s.operations, cloneBindOperation(operation))
+	typed, ok := operation.(arden.Operation[rfc4511.BindResponse])
+	if !ok {
+		return nil, errors.New("unexpected non-Bind operation")
+	}
+	s.operations = append(s.operations, cloneBindOperation(typed))
 	return &scriptedStream{response: s.responses[index], index: index, afterResponse: s.afterResponse}, nil
 }
 
-func cloneBindOperation(operation arden.Operation) arden.Operation {
+func cloneBindOperation(operation arden.Operation[rfc4511.BindResponse]) arden.Operation[rfc4511.BindResponse] {
 	request, ok := operation.Protocol.(*rfc4511.BindRequest)
 	if !ok {
 		return operation

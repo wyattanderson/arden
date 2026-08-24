@@ -11,7 +11,7 @@ import (
 var (
 	compareRequestIdentifier  = applicationConstructed(14)
 	compareResponseIdentifier = applicationConstructed(15)
-	compareResponsePattern    = mustResponsePattern(protocol.ResponseSpec{Complete: []ber.Identifier{compareResponseIdentifier}})
+	compareResponsePattern    = mustResponsePattern[CompareResponse](protocol.ResponseSpec{Complete: []ber.Identifier{compareResponseIdentifier}})
 )
 
 // CompareRequestIdentifier returns the application identifier for CompareRequest.
@@ -82,6 +82,9 @@ func (v *CompareRequest) UnmarshalBER(r *ber.Reader) error {
 // ResultCode may be ResultCompareTrue or ResultCompareFalse as well as errors.
 type CompareResponse struct{ Result LDAPResult }
 
+// LDAPResult returns the operation result carried by v.
+func (v CompareResponse) LDAPResult() LDAPResult { return v.Result }
+
 //revive:disable-next-line:exported
 func (v CompareResponse) AppendBER(dst []byte) ([]byte, error) {
 	return appendResultResponse(dst, compareResponseIdentifier, v.Result)
@@ -101,16 +104,18 @@ func (v *CompareResponse) UnmarshalBER(r *ber.Reader) error {
 }
 
 // CompareResponsePattern returns the terminal response pattern for CompareRequest.
-func CompareResponsePattern() protocol.ResponsePattern { return compareResponsePattern }
+func CompareResponsePattern() protocol.ResponsePattern[CompareResponse] {
+	return compareResponsePattern
+}
 
 // NewCompareOperation creates a complete Compare request declaration.
-func NewCompareOperation(request *CompareRequest, controls []ber.Marshaler) (protocol.Operation, error) {
+func NewCompareOperation(request *CompareRequest, controls []ber.Marshaler) (protocol.Operation[CompareResponse], error) {
 	if request == nil {
-		return protocol.Operation{}, errors.New("arden: nil CompareRequest")
+		return protocol.Operation[CompareResponse]{}, errors.New("arden: nil CompareRequest")
 	}
-	op := protocol.Operation{Protocol: request, Controls: slices.Clone(controls), Responses: CompareResponsePattern(), Cancellation: protocol.CancelDrain, Metadata: protocol.OperationMetadata{Label: "ldap.compare"}}
+	op := protocol.Operation[CompareResponse]{Protocol: request, Controls: slices.Clone(controls), Responses: CompareResponsePattern(), Cancellation: protocol.CancelDrain, Metadata: protocol.OperationMetadata{Label: "ldap.compare"}}
 	if err := op.Validate(); err != nil {
-		return protocol.Operation{}, err
+		return protocol.Operation[CompareResponse]{}, err
 	}
 	return op, nil
 }

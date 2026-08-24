@@ -1,6 +1,9 @@
 package arden
 
-import "github.com/wyattanderson/arden/protocol"
+import (
+	"github.com/wyattanderson/arden/ber"
+	"github.com/wyattanderson/arden/protocol"
+)
 
 // MessageID is an LDAP message identifier.
 type MessageID = protocol.MessageID
@@ -14,8 +17,14 @@ type Classification = protocol.Classification
 // ResponseSpec describes a response pattern before validation.
 type ResponseSpec = protocol.ResponseSpec
 
-// ResponsePattern is an immutable response contract.
-type ResponsePattern = protocol.ResponsePattern
+// FramingPattern is the type-erased immutable response framing contract.
+type FramingPattern = protocol.FramingPattern
+
+// NoResponse is the response type of operations which receive no message.
+type NoResponse = protocol.NoResponse
+
+// ResponsePattern is an immutable typed response contract.
+type ResponsePattern[T any] = protocol.ResponsePattern[T]
 
 // CancellationMode declares how a connection may stop an operation.
 type CancellationMode = protocol.CancellationMode
@@ -23,8 +32,14 @@ type CancellationMode = protocol.CancellationMode
 // OperationMetadata is safe routing and observability metadata.
 type OperationMetadata = protocol.OperationMetadata
 
-// Operation is a fully declared request.
-type Operation = protocol.Operation
+// UntypedOperation is the erased runtime view of an operation.
+type UntypedOperation = protocol.UntypedOperation
+
+// AnyOperation is the type-erasure seam accepted by executors.
+type AnyOperation = protocol.AnyOperation
+
+// Operation is a fully declared request whose response type is T.
+type Operation[T any] = protocol.Operation[T]
 
 // Response owns one decoded LDAP message envelope.
 type Response = protocol.Response
@@ -56,5 +71,15 @@ const (
 	CancelNone     = protocol.CancelNone
 )
 
-// NewResponsePattern validates and freezes a response contract.
-var NewResponsePattern = protocol.NewResponsePattern
+// NewResponsePattern validates and freezes a typed response contract.
+func NewResponsePattern[T any, P interface {
+	*T
+	ber.Unmarshaler
+}](spec ResponseSpec) (ResponsePattern[T], error) {
+	return protocol.NewResponsePattern[T, P](spec)
+}
+
+// NewNoResponsePattern returns the standard typed no-response contract.
+func NewNoResponsePattern() ResponsePattern[NoResponse] {
+	return protocol.NewNoResponsePattern()
+}

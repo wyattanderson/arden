@@ -28,16 +28,20 @@ var (
 
 type testProtocol struct{}
 
+type testResponse struct{}
+
+func (*testResponse) UnmarshalBER(*ber.Reader) error { return nil }
+
 func (testProtocol) ProtocolIdentifier() ber.Identifier { return requestID }
 func (testProtocol) AppendBER(dst []byte) ([]byte, error) {
 	return ber.AppendConstructed(dst, requestID, nil)
 }
 
-func testOperation(t testing.TB) arden.Operation {
+func testOperation(t testing.TB) arden.Operation[testResponse] {
 	t.Helper()
-	pattern, err := arden.NewResponsePattern(arden.ResponseSpec{Complete: []ber.Identifier{responseID}})
+	pattern, err := arden.NewResponsePattern[testResponse](arden.ResponseSpec{Complete: []ber.Identifier{responseID}})
 	assert.NoError(t, err)
-	return arden.Operation{
+	return arden.Operation[testResponse]{
 		Protocol:     testProtocol{},
 		Responses:    pattern,
 		Cancellation: arden.CancelDrain,
@@ -45,13 +49,13 @@ func testOperation(t testing.TB) arden.Operation {
 	}
 }
 
-func streamingOperation(t testing.TB) arden.Operation {
+func streamingOperation(t testing.TB) arden.Operation[testResponse] {
 	t.Helper()
-	pattern, err := arden.NewResponsePattern(arden.ResponseSpec{
+	pattern, err := arden.NewResponsePattern[testResponse](arden.ResponseSpec{
 		Continue: []ber.Identifier{continueID}, Complete: []ber.Identifier{responseID},
 	})
 	require.NoError(t, err)
-	return arden.Operation{
+	return arden.Operation[testResponse]{
 		Protocol:     testProtocol{},
 		Responses:    pattern,
 		Cancellation: arden.CancelDrain,
@@ -484,7 +488,7 @@ func BenchmarkPoolMultiplexedOperations(b *testing.B) {
 	benchmarkPoolWorkload(b, "streaming", 4, streamingOperation)
 }
 
-func benchmarkPoolWorkload(b *testing.B, name string, responses int, operation func(testing.TB) arden.Operation) {
+func benchmarkPoolWorkload(b *testing.B, name string, responses int, operation func(testing.TB) arden.Operation[testResponse]) {
 	b.Run(name, func(b *testing.B) {
 		for _, inFlight := range []int{1, 4, 8, 16} {
 			b.Run("in_flight_"+strconv.Itoa(inFlight), func(b *testing.B) {

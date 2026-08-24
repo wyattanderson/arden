@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"slices"
+	"strings"
 
 	"github.com/wyattanderson/arden/ber"
 	"github.com/wyattanderson/arden/protocol"
@@ -50,6 +51,28 @@ type ResultError struct {
 	Controls  []rfc4511.Control
 }
 
+// ExecuteOption changes typed single-response result handling.
+type ExecuteOption interface{ applyExecute(*executeOptions) }
+
+type executeOptions struct {
+	accepted map[rfc4511.ResultCode]struct{}
+}
+
+type acceptResultCodesOption []rfc4511.ResultCode
+
+func (o acceptResultCodesOption) applyExecute(options *executeOptions) {
+	options.accepted = make(map[rfc4511.ResultCode]struct{}, len(o))
+	for _, code := range o {
+		options.accepted[code] = struct{}{}
+	}
+}
+
+// AcceptResultCodes replaces the default accepted result set, which contains
+// only ResultSuccess.
+func AcceptResultCodes(codes ...rfc4511.ResultCode) ExecuteOption {
+	return acceptResultCodesOption(slices.Clone(codes))
+}
+
 func (e *ResultError) Error() string {
 	if e == nil {
 		return "arden: <nil LDAP result error>"
@@ -80,15 +103,8 @@ func (c *Client) Add(ctx context.Context, entry *Entry, options ...RequestOption
 	if err != nil {
 		return err
 	}
-	response, controls, err := executeSingle(ctx, c.executor, operation, rfc4511.AddResponseIdentifier(), c.limits)
-	if err != nil {
-		return err
-	}
-	var decoded rfc4511.AddResponse
-	if err := response.UnmarshalProtocol(&decoded, c.limits); err != nil {
-		return err
-	}
-	return requireSuccess("add", decoded.Result, controls)
+	_, _, err = c.Execute(ctx, operation)
+	return err
 }
 
 // Modify applies changes to dn in order.
@@ -106,15 +122,8 @@ func (c *Client) ModifyWithOptions(ctx context.Context, dn LDAPDN, changes []Cha
 	if err != nil {
 		return err
 	}
-	response, controls, err := executeSingle(ctx, c.executor, operation, rfc4511.ModifyResponseIdentifier(), c.limits)
-	if err != nil {
-		return err
-	}
-	var decoded rfc4511.ModifyResponse
-	if err := response.UnmarshalProtocol(&decoded, c.limits); err != nil {
-		return err
-	}
-	return requireSuccess("modify", decoded.Result, controls)
+	_, _, err = c.Execute(ctx, operation)
+	return err
 }
 
 // Delete removes dn.
@@ -123,15 +132,8 @@ func (c *Client) Delete(ctx context.Context, dn LDAPDN, options ...RequestOption
 	if err != nil {
 		return err
 	}
-	response, controls, err := executeSingle(ctx, c.executor, operation, rfc4511.DeleteResponseIdentifier(), c.limits)
-	if err != nil {
-		return err
-	}
-	var decoded rfc4511.DeleteResponse
-	if err := response.UnmarshalProtocol(&decoded, c.limits); err != nil {
-		return err
-	}
-	return requireSuccess("delete", decoded.Result, controls)
+	_, _, err = c.Execute(ctx, operation)
+	return err
 }
 
 // Compare tests a text assertion. Compare false is a successful false result.
@@ -152,21 +154,17 @@ func (c *Client) compare(ctx context.Context, dn LDAPDN, attribute string, value
 	if err != nil {
 		return false, err
 	}
-	response, controls, err := executeSingle(ctx, c.executor, operation, rfc4511.CompareResponseIdentifier(), c.limits)
+	response, _, err := c.Execute(ctx, operation, AcceptResultCodes(rfc4511.ResultCompareFalse, rfc4511.ResultCompareTrue))
 	if err != nil {
 		return false, err
 	}
-	var decoded rfc4511.CompareResponse
-	if err := response.UnmarshalProtocol(&decoded, c.limits); err != nil {
-		return false, err
-	}
-	switch decoded.Result.ResultCode {
+	switch response.Result.ResultCode {
 	case rfc4511.ResultCompareTrue:
 		return true, nil
 	case rfc4511.ResultCompareFalse:
 		return false, nil
 	default:
-		return false, requireSuccess("compare", decoded.Result, controls)
+		return false, errors.New("arden: Compare returned an accepted non-Compare result code")
 	}
 }
 
@@ -184,15 +182,8 @@ func (c *Client) ModifyDN(ctx context.Context, dn LDAPDN, newRDN RelativeLDAPDN,
 	if err != nil {
 		return err
 	}
-	response, controls, err := executeSingle(ctx, c.executor, operation, rfc4511.ModifyDNResponseIdentifier(), c.limits)
-	if err != nil {
-		return err
-	}
-	var decoded rfc4511.ModifyDNResponse
-	if err := response.UnmarshalProtocol(&decoded, c.limits); err != nil {
-		return err
-	}
-	return requireSuccess("modify-dn", decoded.Result, controls)
+	_, _, err = c.Execute(ctx, operation)
+	return err
 }
 
 // SearchRequest describes a generic LDAP search. PageSize is client behavior,
@@ -306,37 +297,27 @@ func (r *Entries) Next() bool {
 			r.err = err
 			return false
 		}
-		switch response.ProtocolID {
-		case rfc4511.SearchResultEntryIdentifier():
-			var decoded rfc4511.SearchResultEntry
-			if err := response.UnmarshalProtocol(&decoded, r.limits); err != nil {
-				r.err = err
-				return false
-			}
-			r.entry = entryFromSearchResult(decoded)
+		decoded, err := rfc4511.SearchResponsePattern().Decode(response, r.limits)
+		if err != nil {
+			r.err = err
+			return false
+		}
+		switch value := decoded.Value().(type) {
+		case rfc4511.SearchResultEntry:
+			r.entry = entryFromSearchResult(value)
 			return true
-		case rfc4511.SearchResultReferenceIdentifier():
-			var decoded rfc4511.SearchResultReference
-			if err := response.UnmarshalProtocol(&decoded, r.limits); err != nil {
-				r.err = err
-				return false
-			}
-			for _, uri := range decoded.URIs {
+		case rfc4511.SearchResultReference:
+			for _, uri := range value.URIs {
 				r.referrals = append(r.referrals, string(uri))
 			}
-		case rfc4511.SearchResultDoneIdentifier():
-			var done rfc4511.SearchResultDone
-			if err := response.UnmarshalProtocol(&done, r.limits); err != nil {
-				r.err = err
-				return false
-			}
+		case rfc4511.SearchResultDone:
 			controls, err := decodeControls(response.Controls, r.limits)
 			if err != nil {
 				r.err = err
 				return false
 			}
 			r.controls = controls
-			if err := requireSuccess("search", done.Result, controls); err != nil {
+			if err := requireSuccess("search", value.Result, controls); err != nil {
 				r.err = err
 				return false
 			}
@@ -369,7 +350,7 @@ func (r *Entries) Next() bool {
 				return false
 			}
 		default:
-			r.err = fmt.Errorf("arden: Search returned unexpected protocol identifier %s", response.ProtocolID)
+			r.err = fmt.Errorf("arden: Search decoded unexpected response type %T", value)
 			return false
 		}
 	}
@@ -442,28 +423,51 @@ func requestControls(options []RequestOption) []ber.Marshaler {
 	return applied.controls
 }
 
-func executeSingle(ctx context.Context, executor Executor, operation protocol.Operation, expected ber.Identifier, limits ber.Limits) (protocol.Response, []rfc4511.Control, error) {
-	stream, err := executor.Do(ctx, operation)
+// Execute runs one typed, terminal LDAP-result operation. It decodes the
+// response and controls, then requires ResultSuccess unless options replace
+// the accepted result-code set. Transport, stream, BER, and control-decoding
+// errors return a nil response. A rejected LDAP result returns the decoded
+// response and controls together with *ResultError.
+func (c *Client) Execute[T rfc4511.ResultResponse](ctx context.Context, operation protocol.Operation[T], options ...ExecuteOption) (*T, []rfc4511.Control, error) {
+	stream, err := c.executor.Do(ctx, operation)
 	if err != nil {
-		return protocol.Response{}, nil, err
+		return nil, nil, err
 	}
 	//nolint:errcheck // The terminal response determines the operation result.
 	defer stream.Close()
 	response, err := stream.Next(ctx)
 	if err != nil {
-		return protocol.Response{}, nil, err
-	}
-	if response.ProtocolID != expected {
-		return protocol.Response{}, nil, fmt.Errorf("arden: operation returned unexpected protocol identifier %s", response.ProtocolID)
+		return nil, nil, err
 	}
 	if _, err := stream.Next(ctx); !errors.Is(err, io.EOF) {
 		if err == nil {
 			err = errors.New("arden: single-response operation returned more than one response")
 		}
-		return protocol.Response{}, nil, err
+		return nil, nil, err
 	}
-	controls, err := decodeControls(response.Controls, limits)
-	return response, controls, err
+	decoded, err := operation.Responses.Decode(response, c.limits)
+	if err != nil {
+		return nil, nil, err
+	}
+	controls, err := decodeControls(response.Controls, c.limits)
+	if err != nil {
+		return nil, nil, err
+	}
+	applied := executeOptions{accepted: map[rfc4511.ResultCode]struct{}{rfc4511.ResultSuccess: {}}}
+	for _, option := range options {
+		if option != nil {
+			option.applyExecute(&applied)
+		}
+	}
+	result := (*decoded).LDAPResult()
+	if _, accepted := applied.accepted[result.ResultCode]; !accepted {
+		operationName := operation.Metadata.Label
+		if after, ok := strings.CutPrefix(operationName, "ldap."); ok {
+			operationName = after
+		}
+		return decoded, controls, &ResultError{Operation: operationName, Result: result, Controls: controls}
+	}
+	return decoded, controls, nil
 }
 
 func requireSuccess(operation string, result rfc4511.LDAPResult, controls []rfc4511.Control) error {

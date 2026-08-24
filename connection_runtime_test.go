@@ -30,18 +30,22 @@ type testProtocol struct {
 	encoded []byte
 }
 
+type testResponse struct{}
+
+func (*testResponse) UnmarshalBER(*ber.Reader) error { return nil }
+
 func (p testProtocol) ProtocolIdentifier() ber.Identifier { return p.id }
 func (p testProtocol) AppendBER(dst []byte) ([]byte, error) {
 	return append(dst, p.encoded...), nil
 }
 
-func newTestOperation(t *testing.T, request ber.Identifier, pattern ResponseSpec, mode CancellationMode) Operation {
+func newTestOperation(t *testing.T, request ber.Identifier, pattern ResponseSpec, mode CancellationMode) Operation[testResponse] {
 	t.Helper()
 	encoded, err := ber.AppendElement(nil, request, nil)
 	require.NoError(t, err)
-	responses, err := NewResponsePattern(pattern)
+	responses, err := NewResponsePattern[testResponse](pattern)
 	require.NoError(t, err)
-	return Operation{
+	return Operation[testResponse]{
 		Protocol:     testProtocol{id: request, encoded: encoded},
 		Responses:    responses,
 		Cancellation: mode,
@@ -446,7 +450,7 @@ func TestCloseSendsUnbindAndIsIdempotent(t *testing.T) {
 
 func TestWriteFailureOutcomeAtEveryOffset(t *testing.T) {
 	op := newTestOperation(t, testModifyRequest, ResponseSpec{NoResponse: true}, CancelNone)
-	encoded, err := encodeLDAPRequest(1, op, ber.DefaultLimits())
+	encoded, err := encodeLDAPRequest(1, op.Untyped(), ber.DefaultLimits())
 	require.NoError(t, err)
 	for failAt := range len(encoded) {
 		t.Run("offset", func(t *testing.T) {

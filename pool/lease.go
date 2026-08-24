@@ -41,11 +41,14 @@ func (l *Lease[P]) ConnectionID() uint64 { return l.connection.conn.ID() }
 func (l *Lease[P]) Done() <-chan struct{} { return l.connection.conn.Done() }
 
 // Do starts one operation on the retained connection without rerouting.
-func (l *Lease[P]) Do(ctx context.Context, operation arden.Operation) (arden.ResponseStream, error) {
+func (l *Lease[P]) Do(ctx context.Context, operation arden.AnyOperation) (arden.ResponseStream, error) {
 	if ctx == nil {
 		return nil, errors.New("pool: nil lease operation context")
 	}
-	if err := operation.Validate(); err != nil {
+	if operation == nil {
+		return nil, errors.New("pool: nil lease operation")
+	}
+	if err := operation.Untyped().Validate(); err != nil {
 		return nil, err
 	}
 	if err := l.acquireOperation(ctx); err != nil {

@@ -86,7 +86,7 @@ func (i Identity) Validate() error {
 // during authentication and setup. Implementations own message IDs and do not
 // permit the session to escape initialization.
 type InitializationSession interface {
-	Do(context.Context, Operation) (ResponseStream, error)
+	Do(context.Context, AnyOperation) (ResponseStream, error)
 }
 
 // Authentication creates per-connection authentication conversations.

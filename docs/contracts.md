@@ -42,9 +42,12 @@ The Phase 1 compile-checked definitions live in `ber/identifier.go`,
   extension point. The full codec contract—including receiver atomicity,
   retained-byte ownership, and the rule that RFC codecs have no privileged
   runtime access—is specified in [Phase 3](phases/03-rfc4511-wire.md).
-- `Operation` contains a protocol operation, ordered controls, immutable
-  `ResponsePattern`, cancellation mode, and safe metadata. Classification uses
-  one BER application identifier and yields continue, complete, or invalid.
+- `Operation[T]` contains a protocol operation, ordered controls, immutable
+  `ResponsePattern[T]`, cancellation mode, and safe metadata. The pattern
+  couples consumer-side typed decoding to a `FramingPattern` whose
+  classification uses one BER application identifier and yields continue,
+  complete, or invalid. `AnyOperation` erases `T` for executors; the reader
+  retains only the framing pattern and never invokes the decoder.
   Pattern publication, local configuration, pending-record registration, and
   reader dispatch are specified in [Phase 3](phases/03-rfc4511-wire.md);
   there is no global codec or classifier registry.
@@ -67,8 +70,7 @@ The Phase 1 compile-checked definitions live in `ber/identifier.go`,
   DNs, filters, attributes, controls, diagnostics, credentials, and tokens are
   never default fields.
 
-The Phase 6 execution surface is intentionally only a sketch until a real
-connection exists: a pool accepts `(context, Selection, Operation)` and returns
+The pool accepts `(context, Selection, AnyOperation)` and returns
 a `ResponseStream`; acquiring a lease accepts `(context, Selection)` and
 returns an object with the same operation method plus idempotent `Close`.
 `SelectionAny` may balance only at acquisition time. An exact selection and an
@@ -76,9 +78,10 @@ existing lease can fail, but neither can reroute.
 
 ## Ownership and concurrency
 
-- `NewResponsePattern` copies identifier slices. The runtime will validate and
-  encode request values before concurrent use and retain only immutable pattern
-  data and safe metadata.
+- `NewResponsePattern[T]` copies identifier slices and installs the decoder for
+  `*T`; `NewNoResponsePattern` supplies `ResponsePattern[NoResponse]`. The
+  runtime validates and encodes request values before concurrent use and
+  retains only immutable framing data and safe metadata.
 - One goroutine reads a connection; writes are serialized. The reader may frame
   an owned message, parse its envelope, look up the ID, and classify the tag.
   It does not decode response payloads or call user code.

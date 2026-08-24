@@ -148,8 +148,11 @@ func (p *Pool[P]) closeConstructed() {
 
 // Do acquires bounded capacity using selection and starts exactly one
 // operation. It never replays an operation after selecting a connection.
-func (p *Pool[P]) Do(ctx context.Context, selection Selection, operation arden.Operation) (arden.ResponseStream, error) {
-	if err := operation.Validate(); err != nil {
+func (p *Pool[P]) Do(ctx context.Context, selection Selection, operation arden.AnyOperation) (arden.ResponseStream, error) {
+	if operation == nil {
+		return nil, errors.New("pool: nil operation")
+	}
+	if err := operation.Untyped().Validate(); err != nil {
 		return nil, err
 	}
 	connection, err := p.acquire(ctx, selection, false)

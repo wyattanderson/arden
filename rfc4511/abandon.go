@@ -10,7 +10,7 @@ import (
 
 var (
 	abandonRequestIdentifier = applicationPrimitive(16)
-	abandonResponsePattern   = mustResponsePattern(protocol.ResponseSpec{NoResponse: true})
+	abandonResponsePattern   = protocol.NewNoResponsePattern()
 )
 
 // AbandonRequestIdentifier returns the application identifier for AbandonRequest.
@@ -52,16 +52,18 @@ func (v *AbandonRequest) UnmarshalBER(r *ber.Reader) error {
 }
 
 // AbandonResponsePattern returns the no-response pattern for AbandonRequest.
-func AbandonResponsePattern() protocol.ResponsePattern { return abandonResponsePattern }
+func AbandonResponsePattern() protocol.ResponsePattern[protocol.NoResponse] {
+	return abandonResponsePattern
+}
 
 // NewAbandonOperation creates a complete Abandon request declaration.
-func NewAbandonOperation(request *AbandonRequest, controls []ber.Marshaler) (protocol.Operation, error) {
+func NewAbandonOperation(request *AbandonRequest, controls []ber.Marshaler) (protocol.Operation[protocol.NoResponse], error) {
 	if request == nil {
-		return protocol.Operation{}, errors.New("arden: nil AbandonRequest")
+		return protocol.Operation[protocol.NoResponse]{}, errors.New("arden: nil AbandonRequest")
 	}
-	op := protocol.Operation{Protocol: request, Controls: slices.Clone(controls), Responses: AbandonResponsePattern(), Cancellation: protocol.CancelNone, Metadata: protocol.OperationMetadata{Label: "ldap.abandon"}}
+	op := protocol.Operation[protocol.NoResponse]{Protocol: request, Controls: slices.Clone(controls), Responses: AbandonResponsePattern(), Cancellation: protocol.CancelNone, Metadata: protocol.OperationMetadata{Label: "ldap.abandon"}}
 	if err := op.Validate(); err != nil {
-		return protocol.Operation{}, err
+		return protocol.Operation[protocol.NoResponse]{}, err
 	}
 	return op, nil
 }

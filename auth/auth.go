@@ -87,8 +87,8 @@ func (a *bindAuthenticator) Authenticate(ctx context.Context, session arden.Init
 		return arden.Identity{}, err
 	}
 
-	var bindResponse rfc4511.BindResponse
-	if err := response.UnmarshalProtocol(&bindResponse, ber.DefaultLimits()); err != nil {
+	bindResponse, err := operation.Responses.Decode(response, ber.DefaultLimits())
+	if err != nil {
 		return arden.Identity{}, err
 	}
 	if bindResponse.Result.ResultCode != rfc4511.ResultSuccess {

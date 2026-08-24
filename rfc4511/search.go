@@ -15,7 +15,7 @@ var (
 	searchEntryIdentifier     = applicationConstructed(4)
 	searchDoneIdentifier      = applicationConstructed(5)
 	searchReferenceIdentifier = applicationConstructed(19)
-	searchResponsePattern     = mustResponsePattern(protocol.ResponseSpec{
+	searchResponsePattern     = mustResponsePattern[SearchResult](protocol.ResponseSpec{
 		Continue: []ber.Identifier{searchEntryIdentifier, searchReferenceIdentifier},
 		Complete: []ber.Identifier{searchDoneIdentifier},
 	})
@@ -226,6 +226,8 @@ type SearchResultEntry struct {
 	Extensions []UnknownField
 }
 
+func (SearchResultEntry) isSearchResultValue() {}
+
 //revive:disable-next-line:exported
 func (v SearchResultEntry) AppendBER(dst []byte) ([]byte, error) {
 	start := len(dst)
@@ -293,6 +295,8 @@ type SearchResultReference struct {
 	Extensions []UnknownField
 }
 
+func (SearchResultReference) isSearchResultValue() {}
+
 //revive:disable-next-line:exported
 func (v SearchResultReference) AppendBER(dst []byte) ([]byte, error) {
 	start := len(dst)
@@ -355,6 +359,11 @@ func (v *SearchResultReference) UnmarshalBER(r *ber.Reader) error {
 // SearchResultDone is the terminal LDAPResult for a SearchRequest.
 type SearchResultDone struct{ Result LDAPResult }
 
+func (SearchResultDone) isSearchResultValue() {}
+
+// LDAPResult returns the terminal search result carried by v.
+func (v SearchResultDone) LDAPResult() LDAPResult { return v.Result }
+
 //revive:disable-next-line:exported
 func (v SearchResultDone) AppendBER(dst []byte) ([]byte, error) {
 	return appendResultResponse(dst, searchDoneIdentifier, v.Result)
@@ -373,18 +382,73 @@ func (v *SearchResultDone) UnmarshalBER(r *ber.Reader) error {
 	return nil
 }
 
+// SearchResultValue is one of the RFC 4511 SearchResult protocol-operation
+// alternatives. The interface is sealed because the SearchResult CHOICE is
+// fixed by RFC 4511.
+type SearchResultValue interface {
+	isSearchResultValue()
+}
+
+// SearchResult is the typed SearchResult CHOICE returned by a Search
+// operation. Its zero value has no selected alternative.
+type SearchResult struct {
+	value SearchResultValue
+}
+
+// UnmarshalBER decodes one SearchResult alternative based on its application
+// identifier. The receiver is unchanged if decoding fails.
+func (v *SearchResult) UnmarshalBER(r *ber.Reader) error {
+	if v == nil {
+		return nilReceiver("SearchResult")
+	}
+	id, err := r.PeekIdentifier()
+	if err != nil {
+		return err
+	}
+	var decoded SearchResultValue
+	switch id {
+	case searchEntryIdentifier:
+		var entry SearchResultEntry
+		if err := entry.UnmarshalBER(r); err != nil {
+			return err
+		}
+		decoded = entry
+	case searchReferenceIdentifier:
+		var reference SearchResultReference
+		if err := reference.UnmarshalBER(r); err != nil {
+			return err
+		}
+		decoded = reference
+	case searchDoneIdentifier:
+		var done SearchResultDone
+		if err := done.UnmarshalBER(r); err != nil {
+			return err
+		}
+		decoded = done
+	default:
+		return fmt.Errorf("arden: unexpected SearchResult identifier %s", id)
+	}
+	*v = SearchResult{value: decoded}
+	return nil
+}
+
+// Value returns the selected SearchResult alternative, or nil for the zero
+// value. Callers may use a type switch over SearchResultEntry,
+// SearchResultReference, and SearchResultDone.
+func (v SearchResult) Value() SearchResultValue { return v.value }
+
 // SearchResponsePattern returns the immutable standard streaming response
 // pattern for SearchRequest.
-func SearchResponsePattern() protocol.ResponsePattern { return searchResponsePattern }
+func SearchResponsePattern() protocol.ResponsePattern[SearchResult] { return searchResponsePattern }
 
 // NewSearchOperation creates the complete request declaration for a Search.
 // Search defaults to Abandon-style cancellation because it may stream for a
 // long time; the connection runtime owns the tombstone lifecycle.
-func NewSearchOperation(request *SearchRequest, controls []ber.Marshaler) (protocol.Operation, error) {
+func NewSearchOperation(request *SearchRequest, controls []ber.Marshaler) (protocol.Operation[SearchResult], error) {
 	if request == nil {
-		return protocol.Operation{}, errors.New("arden: nil SearchRequest")
+		return protocol.Operation[SearchResult]{}, errors.New("arden: nil SearchRequest")
 	}
-	op := protocol.Operation{
+	op := protocol.Operation[SearchResult]{
 		Protocol:     request,
 		Controls:     slices.Clone(controls),
 		Responses:    SearchResponsePattern(),
@@ -392,7 +456,7 @@ func NewSearchOperation(request *SearchRequest, controls []ber.Marshaler) (proto
 		Metadata:     protocol.OperationMetadata{Label: "ldap.search"},
 	}
 	if err := op.Validate(); err != nil {
-		return protocol.Operation{}, err
+		return protocol.Operation[SearchResult]{}, err
 	}
 	return op, nil
 }

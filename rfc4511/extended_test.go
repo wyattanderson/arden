@@ -54,6 +54,35 @@ func TestExtendedAndIntermediateResponseOptionalFields(t *testing.T) {
 	}
 }
 
+func TestExtendedResultChoiceDecodesAndExposesValue(t *testing.T) {
+	tests := []struct {
+		name  string
+		value ber.Marshaler
+		check func(*testing.T, ExtendedResultValue)
+	}{
+		{"intermediate", IntermediateResponse{HasResponseValue: true, ResponseValue: []byte("continue")}, func(t *testing.T, value ExtendedResultValue) {
+			intermediate, ok := value.(IntermediateResponse)
+			require.True(t, ok)
+			assert.Equal(t, []byte("continue"), intermediate.ResponseValue)
+		}},
+		{"terminal", ExtendedResponse{Result: emptyResult(ResultSuccess), HasResponseValue: true, ResponseValue: []byte("done")}, func(t *testing.T, value ExtendedResultValue) {
+			response, ok := value.(ExtendedResponse)
+			require.True(t, ok)
+			assert.Equal(t, []byte("done"), response.ResponseValue)
+		}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			encoded, err := test.value.AppendBER(nil)
+			require.NoError(t, err)
+			var result ExtendedResult
+			decode(t, encoded, &result)
+			test.check(t, result.Value())
+		})
+	}
+	assert.Nil(t, (ExtendedResult{}).Value())
+}
+
 func TestExtendedTypesValidateNamesAndOrderingAtomically(t *testing.T) {
 	invalidMarshalers := []ber.Marshaler{
 		(*ExtendedRequest)(nil),

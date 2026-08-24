@@ -80,6 +80,54 @@ func TestSearchResultReferenceRequiresURIAndPreservesExtensions(t *testing.T) {
 	assert.Equal(t, encoded, reencoded)
 }
 
+func TestSearchResultChoiceDecodesAndExposesValue(t *testing.T) {
+	tests := []struct {
+		name  string
+		value ber.Marshaler
+		check func(*testing.T, SearchResultValue)
+	}{
+		{"entry", SearchResultEntry{ObjectName: "uid=alice,dc=example"}, func(t *testing.T, value SearchResultValue) {
+			entry, ok := value.(SearchResultEntry)
+			require.True(t, ok)
+			assert.Equal(t, LDAPDN("uid=alice,dc=example"), entry.ObjectName)
+		}},
+		{"reference", SearchResultReference{URIs: []URI{"ldap://example"}}, func(t *testing.T, value SearchResultValue) {
+			reference, ok := value.(SearchResultReference)
+			require.True(t, ok)
+			assert.Equal(t, []URI{"ldap://example"}, reference.URIs)
+		}},
+		{"done", SearchResultDone{Result: emptyResult(ResultSuccess)}, func(t *testing.T, value SearchResultValue) {
+			done, ok := value.(SearchResultDone)
+			require.True(t, ok)
+			assert.Equal(t, ResultSuccess, done.Result.ResultCode)
+		}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			encoded, err := test.value.AppendBER(nil)
+			require.NoError(t, err)
+			var result SearchResult
+			decode(t, encoded, &result)
+			test.check(t, result.Value())
+		})
+	}
+	assert.Nil(t, (SearchResult{}).Value())
+}
+
+func TestSearchResultChoiceRejectsUnknownIdentifierAtomically(t *testing.T) {
+	encoded, err := (SearchResultEntry{ObjectName: "dc=keep"}).AppendBER(nil)
+	require.NoError(t, err)
+	var result SearchResult
+	decode(t, encoded, &result)
+
+	unknown, err := ber.AppendConstructed(nil, applicationConstructed(30), nil)
+	require.NoError(t, err)
+	requireDecodeError(t, unknown, &result)
+	entry, ok := result.Value().(SearchResultEntry)
+	require.True(t, ok)
+	assert.Equal(t, LDAPDN("dc=keep"), entry.ObjectName)
+}
+
 func searchRequestEncoding(t *testing.T, scope, deref, size, timeLimit int64) []byte {
 	t.Helper()
 	contents, err := ber.AppendOctetString(nil, nil)

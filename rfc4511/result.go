@@ -75,6 +75,12 @@ type LDAPResult struct {
 	Extensions        []UnknownField
 }
 
+// ResultResponse is implemented by terminal response values which carry an
+// LDAPResult. It is the constraint used by typed single-response execution.
+type ResultResponse interface {
+	LDAPResult() LDAPResult
+}
+
 //revive:disable-next-line:exported
 func (v LDAPResult) AppendBER(dst []byte) ([]byte, error) {
 	start := len(dst)

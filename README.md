@@ -25,7 +25,7 @@ compile-checked protocol contracts are implemented. The `ber` package provides b
 definite-length BER parsing and encoding, strict LDAP primitive handling, and
 incremental owned frame acquisition. The `protocol` package defines generic
 operation and response contracts, and `rfc4511` provides every standard LDAPv3
-wire operation and immutable response pattern. The root package provides the
+wire operation and immutable typed response pattern. The root package provides the
 generic client, entries, filters, direct-TLS-by-default dialing,
 explicit plaintext selection,
 concurrent request routing, bounded response delivery, drain and Abandon
@@ -115,6 +115,31 @@ prerequisites, gssproxy configuration, troubleshooting, and the read-only
 FreeIPA smoke command.
 
 ## Generic operations and typed models
+
+RFC operation constructors encode their response type. `Client.Execute`
+infers that type, returns a newly allocated response, decodes controls, and
+requires a successful LDAP result by default:
+
+```go
+operation, err := rfc4511.NewAddOperation(&rfc4511.AddRequest{
+	Entry:      "uid=alice,ou=people,dc=example",
+	Attributes: attributes,
+}, nil)
+if err != nil {
+	return err
+}
+
+response, controls, err := client.Execute(ctx, operation)
+// response has type *rfc4511.AddResponse and is nil on transport or decode errors.
+```
+
+`AcceptResultCodes` replaces the default accepted set for operations such as
+Compare. A rejected LDAP result returns the decoded response and controls with
+`*arden.ResultError`; transport and decode failures return a nil response.
+Streaming Search responses decode as `rfc4511.SearchResult`; its
+`Value` method exposes `SearchResultEntry`, `SearchResultReference`, or
+`SearchResultDone` through a type switch. Abandon and Unbind use the standard
+`protocol.NoResponse` response type.
 
 Search returns an iterator and follows RFC 2696 cookies when `PageSize` is set:
 

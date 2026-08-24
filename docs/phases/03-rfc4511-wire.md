@@ -161,12 +161,16 @@ type ProtocolOperation interface {
     ProtocolIdentifier() ber.Identifier
 }
 
-type Operation struct {
+type Operation[T any] struct {
     Protocol     ProtocolOperation
     Controls     []ber.Marshaler
-    Responses    ResponsePattern
+    Responses    ResponsePattern[T]
     Cancellation CancellationMode
     Metadata     OperationMetadata
+}
+
+type AnyOperation interface {
+    Untyped() UntypedOperation
 }
 ```
 
@@ -175,7 +179,7 @@ the message ID and wraps the value and ordered controls in the envelope.
 `ProtocolIdentifier` must agree with the identifier actually encoded by
 `AppendBER`; Phase 4 validates that agreement before writing.
 
-An RFC helper may assemble an `Operation` with the standard response pattern,
+An RFC helper assembles an `Operation[T]` with the standard typed response pattern,
 a conservative cancellation default, cloned controls, and a safe label. It
 must not hide endpoint capabilities, perform I/O, or add generic string-based
 directory behavior.
@@ -212,7 +216,7 @@ unknown trailing LDAPMessage fields in source order. All three are views into
 The consumer may retain the response; typed unmarshaling copies retained value
 bytes.
 
-The public convenience path is:
+The raw public convenience path is:
 
 ```go
 func (r Response) UnmarshalProtocol(
@@ -222,14 +226,16 @@ func (r Response) UnmarshalProtocol(
 ```
 
 It creates a bounded reader over `Protocol`, invokes the caller-selected
-decoder, and rejects trailing bytes. The explicit limits make fake streams and
-external packages testable without a hidden connection-owned decoder. A typed
-wrapper normally stores the client's configured limits and supplies them for
-each response.
+decoder, and rejects trailing bytes. `ResponsePattern[T].Decode` builds on this
+path, returns a newly allocated `*T`, and returns nil on error. The explicit
+limits make fake streams and external packages testable without a hidden
+connection-owned decoder.
 
-The reader/router does not select or invoke a decoder. `UnmarshalProtocol` runs
-only in the consumer goroutine after routing. Custom response types use exactly
-the same method as RFC response types.
+The reader/router does not select or invoke either decoder. `Operation[T]` is
+erased through `AnyOperation`, and the runtime retains only its
+`FramingPattern`. `UnmarshalProtocol` and `ResponsePattern[T].Decode` run only
+in the consumer goroutine after routing. Custom response types use exactly the
+same methods as RFC response types.
 
 ## Declarative response classification
 
@@ -242,8 +248,11 @@ type ResponseSpec struct {
     NoResponse bool
 }
 
-func NewResponsePattern(ResponseSpec) (ResponsePattern, error)
-func (ResponsePattern) Classify(ber.Identifier) Classification
+func NewResponsePattern[T any](ResponseSpec) (ResponsePattern[T], error)
+func NewNoResponsePattern() ResponsePattern[NoResponse]
+func (ResponsePattern[T]) Classify(ber.Identifier) Classification
+func (ResponsePattern[T]) Decode(Response, ber.Limits) (*T, error)
+func (ResponsePattern[T]) Framing() FramingPattern
 ```
 
 Classification returns `continue`, `complete`, or `invalid` using only the
@@ -265,9 +274,11 @@ The `rfc4511` package publishes functions such as `AddResponsePattern()` and
 package-private, prevalidated data. The package does not export mutable tag
 slices and does not register patterns from `init`.
 
-Custom operations call `NewResponsePattern` directly. Two operations with the
+Custom operations call `NewResponsePattern[T]` directly. Two operations with the
 same request tag may carry different patterns if an extension changes the
-legal response tags. Configuration is local to the submitted `Operation`.
+legal response tags. Configuration is local to the submitted `Operation[T]`.
+Abandon, Unbind, and custom no-response operations use the standard
+`NoResponse` type and `NewNoResponsePattern`.
 
 ### Registration and dispatch
 
@@ -467,12 +478,12 @@ type SearchResultDone struct {
 }
 ```
 
-The standard pattern declares application/C/4 and application/C/19 continuing,
-and application/C/5 terminal. Entries and references may interleave. A typed
-Search iterator is ordinary code above `ResponseStream`: it switches on
-`Response.ProtocolID`, calls `UnmarshalProtocol` with the matching concrete RFC
-type, and returns or interprets `SearchResultDone`. The socket reader never
-does this decoding.
+The standard `ResponsePattern[SearchResult]` declares application/C/4 and
+application/C/19 continuing, and application/C/5 terminal. Entries and
+references may interleave. `SearchResult.UnmarshalBER` performs the local RFC
+CHOICE dispatch after routing; `SearchResult.Value` exposes
+`SearchResultEntry`, `SearchResultReference`, or `SearchResultDone` through a
+type switch. The socket reader never does this decoding.
 
 Search defaults to Abandon-style cancellation until an endpoint policy selects
 RFC 3909 Cancel. Queue overflow uses the same cancellation/drain path and never
@@ -527,9 +538,9 @@ beside the regression.
 
 Phase 3 is implemented with hand-authored codecs. Package `rfc4511` supplies
 public BER values for every LDAPv3 application operation, while `protocol`
-owns generic response envelopes. Search filter dispatch is local to typed
-decoding; the root reader only routes by `Response.ProtocolID`
-and the immutable `ResponsePattern` declared on the submitted operation.
+owns generic response envelopes. Search filter and result-CHOICE dispatch are
+local to typed decoding; the root reader only routes by `Response.ProtocolID`
+and the immutable `FramingPattern` erased from the submitted operation.
 
 External controls, filter alternatives, and protocol operations use the same
 `ber.Marshaler`, `ber.Unmarshaler`, `rfc4511.Filter`, and

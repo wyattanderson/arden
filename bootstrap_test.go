@@ -59,20 +59,20 @@ func newSetupPipeConnection(t *testing.T, options ConnectionOptions) (*Conn, net
 	return conn, server
 }
 
-func bindLikeOperation(t *testing.T, token []byte) Operation {
+func bindLikeOperation(t *testing.T, token []byte) Operation[rfc4511.BindResponse] {
 	t.Helper()
 	protocol, err := ber.AppendElement(nil, rfc4511.BindRequestIdentifier(), token)
 	require.NoError(t, err)
-	pattern, err := NewResponsePattern(ResponseSpec{Complete: []ber.Identifier{testBindResponse}})
+	pattern, err := NewResponsePattern[rfc4511.BindResponse](ResponseSpec{Complete: []ber.Identifier{testBindResponse}})
 	require.NoError(t, err)
-	return Operation{
+	return Operation[rfc4511.BindResponse]{
 		Protocol:     testProtocol{id: rfc4511.BindRequestIdentifier(), encoded: protocol},
 		Responses:    pattern,
 		Cancellation: CancelClose,
 	}
 }
 
-func performSetupRoundTrip(ctx context.Context, session InitializationSession, operation Operation) error {
+func performSetupRoundTrip(ctx context.Context, session InitializationSession, operation AnyOperation) error {
 	stream, err := session.Do(ctx, operation)
 	if err != nil {
 		return err

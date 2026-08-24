@@ -49,12 +49,13 @@ func WhoAmI(ctx context.Context, executor protocol.Executor) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if message.ProtocolID != rfc4511.ExtendedResponseIdentifier() {
-		return "", fmt.Errorf("rfc4532: unexpected response identifier %s", message.ProtocolID)
-	}
-	var response rfc4511.ExtendedResponse
-	if err := message.UnmarshalProtocol(&response, ber.DefaultLimits()); err != nil {
+	decoded, err := operation.Responses.Decode(message, ber.DefaultLimits())
+	if err != nil {
 		return "", err
+	}
+	response, ok := decoded.Value().(rfc4511.ExtendedResponse)
+	if !ok {
+		return "", fmt.Errorf("rfc4532: unexpected response type %T", decoded.Value())
 	}
 	if _, err := stream.Next(ctx); !errors.Is(err, io.EOF) {
 		if err == nil {

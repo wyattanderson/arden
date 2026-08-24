@@ -14,13 +14,13 @@ import (
 )
 
 type recordingSession struct {
-	operations []arden.Operation
+	operations []arden.UntypedOperation
 	response   arden.Response
 	err        error
 }
 
-func (s *recordingSession) Do(_ context.Context, operation arden.Operation) (arden.ResponseStream, error) {
-	s.operations = append(s.operations, operation)
+func (s *recordingSession) Do(_ context.Context, operation arden.AnyOperation) (arden.ResponseStream, error) {
+	s.operations = append(s.operations, operation.Untyped())
 	if s.err != nil {
 		return nil, s.err
 	}

@@ -25,17 +25,18 @@ func TestWhoAmI(t *testing.T) {
 	identity, err := WhoAmI(context.Background(), executor)
 	require.NoError(t, err)
 	assert.Equal(t, "dn:uid=alice,dc=example", identity)
-	require.NotNil(t, executor.operation.Protocol)
-	request := executor.operation.Protocol.(*rfc4511.ExtendedRequest)
+	untyped := executor.operation.Untyped()
+	require.NotNil(t, untyped.Protocol)
+	request := untyped.Protocol.(*rfc4511.ExtendedRequest)
 	assert.Equal(t, OID, request.Name)
 }
 
 type executor struct {
-	operation protocol.Operation
+	operation protocol.AnyOperation
 	response  protocol.Response
 }
 
-func (e *executor) Do(_ context.Context, operation protocol.Operation) (protocol.ResponseStream, error) {
+func (e *executor) Do(_ context.Context, operation protocol.AnyOperation) (protocol.ResponseStream, error) {
 	e.operation = operation
 	return &stream{response: e.response}, nil
 }

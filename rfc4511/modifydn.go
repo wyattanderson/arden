@@ -13,7 +13,7 @@ var (
 	modifyDNRequestIdentifier     = applicationConstructed(12)
 	modifyDNResponseIdentifier    = applicationConstructed(13)
 	modifyDNNewSuperiorIdentifier = contextPrimitive(0)
-	modifyDNResponsePattern       = mustResponsePattern(protocol.ResponseSpec{Complete: []ber.Identifier{modifyDNResponseIdentifier}})
+	modifyDNResponsePattern       = mustResponsePattern[ModifyDNResponse](protocol.ResponseSpec{Complete: []ber.Identifier{modifyDNResponseIdentifier}})
 )
 
 // ModifyDNRequestIdentifier returns the application identifier for ModifyDNRequest.
@@ -122,6 +122,9 @@ func (v *ModifyDNRequest) UnmarshalBER(r *ber.Reader) error {
 // ModifyDNResponse is the terminal LDAPResult for ModifyDNRequest.
 type ModifyDNResponse struct{ Result LDAPResult }
 
+// LDAPResult returns the operation result carried by v.
+func (v ModifyDNResponse) LDAPResult() LDAPResult { return v.Result }
+
 //revive:disable-next-line:exported
 func (v ModifyDNResponse) AppendBER(dst []byte) ([]byte, error) {
 	return appendResultResponse(dst, modifyDNResponseIdentifier, v.Result)
@@ -141,16 +144,18 @@ func (v *ModifyDNResponse) UnmarshalBER(r *ber.Reader) error {
 }
 
 // ModifyDNResponsePattern returns the terminal response pattern for ModifyDNRequest.
-func ModifyDNResponsePattern() protocol.ResponsePattern { return modifyDNResponsePattern }
+func ModifyDNResponsePattern() protocol.ResponsePattern[ModifyDNResponse] {
+	return modifyDNResponsePattern
+}
 
 // NewModifyDNOperation creates a complete Modify DN request declaration.
-func NewModifyDNOperation(request *ModifyDNRequest, controls []ber.Marshaler) (protocol.Operation, error) {
+func NewModifyDNOperation(request *ModifyDNRequest, controls []ber.Marshaler) (protocol.Operation[ModifyDNResponse], error) {
 	if request == nil {
-		return protocol.Operation{}, errors.New("arden: nil ModifyDNRequest")
+		return protocol.Operation[ModifyDNResponse]{}, errors.New("arden: nil ModifyDNRequest")
 	}
-	op := protocol.Operation{Protocol: request, Controls: slices.Clone(controls), Responses: ModifyDNResponsePattern(), Cancellation: protocol.CancelDrain, Metadata: protocol.OperationMetadata{Label: "ldap.modify-dn"}}
+	op := protocol.Operation[ModifyDNResponse]{Protocol: request, Controls: slices.Clone(controls), Responses: ModifyDNResponsePattern(), Cancellation: protocol.CancelDrain, Metadata: protocol.OperationMetadata{Label: "ldap.modify-dn"}}
 	if err := op.Validate(); err != nil {
-		return protocol.Operation{}, err
+		return protocol.Operation[ModifyDNResponse]{}, err
 	}
 	return op, nil
 }

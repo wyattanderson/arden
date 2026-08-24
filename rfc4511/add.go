@@ -9,7 +9,7 @@ import (
 	"github.com/wyattanderson/arden/protocol"
 )
 
-var addResponsePattern = mustResponsePattern(protocol.ResponseSpec{
+var addResponsePattern = mustResponsePattern[AddResponse](protocol.ResponseSpec{
 	Complete: []ber.Identifier{addResponseIdentifier},
 })
 
@@ -130,6 +130,9 @@ type AddResponse struct {
 	Result LDAPResult
 }
 
+// LDAPResult returns the operation result carried by v.
+func (v AddResponse) LDAPResult() LDAPResult { return v.Result }
+
 //revive:disable-next-line:exported
 func (v AddResponse) AppendBER(dst []byte) ([]byte, error) {
 	start := len(dst)
@@ -163,16 +166,16 @@ func (v *AddResponse) UnmarshalBER(r *ber.Reader) error {
 
 // AddResponsePattern returns the immutable standard terminal response pattern
 // for AddRequest. It is safe to reuse concurrently.
-func AddResponsePattern() protocol.ResponsePattern { return addResponsePattern }
+func AddResponsePattern() protocol.ResponsePattern[AddResponse] { return addResponsePattern }
 
 // NewAddOperation creates the complete request declaration for an Add. It
 // clones the control slice but not the caller-owned request or control values;
 // the connection validates and encodes them before concurrent use.
-func NewAddOperation(request *AddRequest, controls []ber.Marshaler) (protocol.Operation, error) {
+func NewAddOperation(request *AddRequest, controls []ber.Marshaler) (protocol.Operation[AddResponse], error) {
 	if request == nil {
-		return protocol.Operation{}, errors.New("arden: nil AddRequest")
+		return protocol.Operation[AddResponse]{}, errors.New("arden: nil AddRequest")
 	}
-	op := protocol.Operation{
+	op := protocol.Operation[AddResponse]{
 		Protocol:     request,
 		Controls:     slices.Clone(controls),
 		Responses:    AddResponsePattern(),
@@ -180,13 +183,16 @@ func NewAddOperation(request *AddRequest, controls []ber.Marshaler) (protocol.Op
 		Metadata:     protocol.OperationMetadata{Label: "ldap.add"},
 	}
 	if err := op.Validate(); err != nil {
-		return protocol.Operation{}, err
+		return protocol.Operation[AddResponse]{}, err
 	}
 	return op, nil
 }
 
-func mustResponsePattern(spec protocol.ResponseSpec) protocol.ResponsePattern {
-	pattern, err := protocol.NewResponsePattern(spec)
+func mustResponsePattern[T any, P interface {
+	*T
+	ber.Unmarshaler
+}](spec protocol.ResponseSpec) protocol.ResponsePattern[T] {
+	pattern, err := protocol.NewResponsePattern[T, P](spec)
 	if err != nil {
 		panic(err)
 	}

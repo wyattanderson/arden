@@ -244,10 +244,14 @@ func newInitializationSession(ctx context.Context, conn *Conn, maxOps int) *init
 	}
 }
 
-func (s *initializationSession) Do(ctx context.Context, op Operation) (ResponseStream, error) {
+func (s *initializationSession) Do(ctx context.Context, operation AnyOperation) (ResponseStream, error) {
 	if ctx == nil {
 		return nil, errors.New("arden: nil initialization operation context")
 	}
+	if operation == nil {
+		return nil, errors.New("arden: nil initialization operation")
+	}
+	op := operation.Untyped()
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -268,7 +272,7 @@ func (s *initializationSession) Do(ctx context.Context, op Operation) (ResponseS
 
 	operationCtx, cancel := context.WithCancel(ctx)
 	stopSetupCancel := context.AfterFunc(s.setupCtx, cancel)
-	stream, err := s.conn.do(operationCtx, op, operationInitialization)
+	stream, err := s.conn.do(operationCtx, operation, operationInitialization)
 	if err != nil {
 		stopSetupCancel()
 		cancel()
@@ -311,7 +315,7 @@ func (s *initializationSession) deactivate() {
 type initializationStream struct {
 	session         *initializationSession
 	stream          ResponseStream
-	pattern         ResponsePattern
+	pattern         FramingPattern
 	cancel          context.CancelFunc
 	stopSetupCancel func() bool
 	once            sync.Once

@@ -9,6 +9,17 @@ import (
 	"github.com/wyattanderson/arden/ber"
 )
 
+var (
+	_ ResultResponse = AddResponse{}
+	_ ResultResponse = BindResponse{}
+	_ ResultResponse = CompareResponse{}
+	_ ResultResponse = DeleteResponse{}
+	_ ResultResponse = ExtendedResponse{}
+	_ ResultResponse = ModifyResponse{}
+	_ ResultResponse = ModifyDNResponse{}
+	_ ResultResponse = SearchResultDone{}
+)
+
 func TestLDAPResultRoundTripsSemanticVariants(t *testing.T) {
 	tests := []struct {
 		name string

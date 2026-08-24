@@ -80,11 +80,11 @@ func TestWhoAmIRejectsResponsesThatDoNotVerifyAuthentication(t *testing.T) {
 
 type scriptedExecutor struct {
 	response  arden.Response
-	operation arden.Operation
+	operation arden.AnyOperation
 	stream    *singleResponseStream
 }
 
-func (e *scriptedExecutor) Do(_ context.Context, operation arden.Operation) (arden.ResponseStream, error) {
+func (e *scriptedExecutor) Do(_ context.Context, operation arden.AnyOperation) (arden.ResponseStream, error) {
 	e.operation = operation
 	e.stream = &singleResponseStream{response: e.response}
 	return e.stream, nil

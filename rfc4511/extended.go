@@ -19,7 +19,7 @@ var (
 	extendedResponseValueIdentifier     = contextPrimitive(11)
 	intermediateResponseNameIdentifier  = contextPrimitive(0)
 	intermediateResponseValueIdentifier = contextPrimitive(1)
-	extendedResponsePattern             = mustResponsePattern(protocol.ResponseSpec{
+	extendedResponsePattern             = mustResponsePattern[ExtendedResult](protocol.ResponseSpec{
 		Continue: []ber.Identifier{intermediateResponseIdentifier},
 		Complete: []ber.Identifier{extendedResponseIdentifier},
 	})
@@ -140,6 +140,11 @@ type ExtendedResponse struct {
 	Extensions       []UnknownField
 }
 
+func (ExtendedResponse) isExtendedResultValue() {}
+
+// LDAPResult returns the operation result carried by v.
+func (v ExtendedResponse) LDAPResult() LDAPResult { return v.Result }
+
 //revive:disable-next-line:exported
 func (v ExtendedResponse) AppendBER(dst []byte) ([]byte, error) {
 	start := len(dst)
@@ -253,6 +258,8 @@ type IntermediateResponse struct {
 	Extensions       []UnknownField
 }
 
+func (IntermediateResponse) isExtendedResultValue() {}
+
 //revive:disable-next-line:exported
 func (v IntermediateResponse) AppendBER(dst []byte) ([]byte, error) {
 	start := len(dst)
@@ -348,17 +355,66 @@ func (v *IntermediateResponse) UnmarshalBER(r *ber.Reader) error {
 	return nil
 }
 
+// ExtendedResultValue is one of the RFC 4511 response alternatives accepted
+// for an ExtendedRequest.
+type ExtendedResultValue interface {
+	isExtendedResultValue()
+}
+
+// ExtendedResult is the typed response CHOICE for an Extended operation. Its
+// zero value has no selected alternative.
+type ExtendedResult struct {
+	value ExtendedResultValue
+}
+
+// UnmarshalBER decodes an IntermediateResponse or terminal ExtendedResponse.
+// The receiver is unchanged if decoding fails.
+func (v *ExtendedResult) UnmarshalBER(r *ber.Reader) error {
+	if v == nil {
+		return nilReceiver("ExtendedResult")
+	}
+	id, err := r.PeekIdentifier()
+	if err != nil {
+		return err
+	}
+	var decoded ExtendedResultValue
+	switch id {
+	case intermediateResponseIdentifier:
+		var intermediate IntermediateResponse
+		if err := intermediate.UnmarshalBER(r); err != nil {
+			return err
+		}
+		decoded = intermediate
+	case extendedResponseIdentifier:
+		var response ExtendedResponse
+		if err := response.UnmarshalBER(r); err != nil {
+			return err
+		}
+		decoded = response
+	default:
+		return fmt.Errorf("arden: unexpected ExtendedResult identifier %s", id)
+	}
+	*v = ExtendedResult{value: decoded}
+	return nil
+}
+
+// Value returns the selected ExtendedResult alternative, or nil for the zero
+// value.
+func (v ExtendedResult) Value() ExtendedResultValue { return v.value }
+
 // ExtendedResponsePattern returns the continuing and terminal response pattern for ExtendedRequest.
-func ExtendedResponsePattern() protocol.ResponsePattern { return extendedResponsePattern }
+func ExtendedResponsePattern() protocol.ResponsePattern[ExtendedResult] {
+	return extendedResponsePattern
+}
 
 // NewExtendedOperation creates a complete Extended request declaration.
-func NewExtendedOperation(request *ExtendedRequest, controls []ber.Marshaler) (protocol.Operation, error) {
+func NewExtendedOperation(request *ExtendedRequest, controls []ber.Marshaler) (protocol.Operation[ExtendedResult], error) {
 	if request == nil {
-		return protocol.Operation{}, errors.New("arden: nil ExtendedRequest")
+		return protocol.Operation[ExtendedResult]{}, errors.New("arden: nil ExtendedRequest")
 	}
-	op := protocol.Operation{Protocol: request, Controls: slices.Clone(controls), Responses: ExtendedResponsePattern(), Cancellation: protocol.CancelDrain, Metadata: protocol.OperationMetadata{Label: "ldap.extended"}}
+	op := protocol.Operation[ExtendedResult]{Protocol: request, Controls: slices.Clone(controls), Responses: ExtendedResponsePattern(), Cancellation: protocol.CancelDrain, Metadata: protocol.OperationMetadata{Label: "ldap.extended"}}
 	if err := op.Validate(); err != nil {
-		return protocol.Operation{}, err
+		return protocol.Operation[ExtendedResult]{}, err
 	}
 	return op, nil
 }

@@ -50,11 +50,12 @@ client.
 
 ## Core operation contract
 
-An operation consists of an encoded protocol operation, optional controls, a
-declarative response pattern, cancellation policy, and safe observability
-metadata.
+An `Operation[T]` consists of an encoded protocol operation, optional controls,
+a declarative typed `ResponsePattern[T]`, cancellation policy, and safe
+observability metadata. Executors accept `AnyOperation`; erasure removes `T`
+and retains only the framing contract used by the runtime.
 
-A response pattern declares:
+A response pattern carries a consumer-side decoder for `T` and declares:
 
 - Tags that are valid and nonterminal.
 - Tags that are valid and terminal.
@@ -71,7 +72,8 @@ framing is still expressed by SearchResultDone, ExtendedResponse, or another
 declared protocol-operation tag. Persistent and synchronization searches may
 remain open for a long time; they do not require inspecting an entry to decide
 that the eventual SearchResultDone is terminal. Payload semantics belong to the
-typed consumer after routing.
+typed consumer after routing. The connection reader sees only the erased
+`FramingPattern` and never invokes the decoder.
 
 This contract is used even after the consumer cancels: the connection can
 discard responses until the terminal tag arrives and then safely reuse the

@@ -43,24 +43,67 @@ type ResponseSpec struct {
 	NoResponse bool
 }
 
-// ResponsePattern is an immutable response contract. Its zero value is invalid.
-type ResponsePattern struct {
+// FramingPattern is the type-erased, immutable framing portion of a response
+// contract. Its zero value is invalid. The connection runtime retains only
+// this value and never invokes typed response decoding.
+type FramingPattern struct {
 	continueIDs []ber.Identifier
 	completeIDs []ber.Identifier
 	noResponse  bool
 	valid       bool
 }
 
-// NewResponsePattern validates and freezes a response contract.
-func NewResponsePattern(spec ResponseSpec) (ResponsePattern, error) {
+// NoResponse is the response type for operations such as Abandon and Unbind
+// which complete without a response message.
+type NoResponse struct{}
+
+// ResponsePattern couples immutable framing metadata to consumer-side typed
+// decoding. Its zero value is invalid. The decoder is never invoked by the
+// connection reader or routing runtime.
+type ResponsePattern[T any] struct {
+	framing FramingPattern
+	decode  func(Response, ber.Limits) (*T, error)
+}
+
+// NewResponsePattern validates and freezes a typed response contract. P is
+// inferred as *T when *T implements ber.Unmarshaler.
+func NewResponsePattern[T any, P interface {
+	*T
+	ber.Unmarshaler
+}](spec ResponseSpec) (ResponsePattern[T], error) {
+	framing, err := newFramingPattern(spec)
+	if err != nil {
+		return ResponsePattern[T]{}, err
+	}
+	return ResponsePattern[T]{
+		framing: framing,
+		decode: func(response Response, limits ber.Limits) (*T, error) {
+			if framing.noResponse {
+				return nil, errors.New("arden: a no-response pattern cannot decode a response")
+			}
+			decoded := new(T)
+			if err := response.UnmarshalProtocol(P(decoded), limits); err != nil {
+				return nil, err
+			}
+			return decoded, nil
+		},
+	}, nil
+}
+
+// NewNoResponsePattern returns the standard typed no-response contract.
+func NewNoResponsePattern() ResponsePattern[NoResponse] {
+	return ResponsePattern[NoResponse]{framing: FramingPattern{noResponse: true, valid: true}}
+}
+
+func newFramingPattern(spec ResponseSpec) (FramingPattern, error) {
 	if spec.NoResponse {
 		if len(spec.Continue) != 0 || len(spec.Complete) != 0 {
-			return ResponsePattern{}, errors.New("arden: a no-response pattern cannot contain response identifiers")
+			return FramingPattern{}, errors.New("arden: a no-response pattern cannot contain response identifiers")
 		}
-		return ResponsePattern{noResponse: true, valid: true}, nil
+		return FramingPattern{noResponse: true, valid: true}, nil
 	}
 	if len(spec.Complete) == 0 {
-		return ResponsePattern{}, errors.New("arden: a response pattern needs at least one terminal identifier")
+		return FramingPattern{}, errors.New("arden: a response pattern needs at least one terminal identifier")
 	}
 
 	seen := make(map[ber.Identifier]struct{}, len(spec.Continue)+len(spec.Complete))
@@ -77,13 +120,13 @@ func NewResponsePattern(spec ResponseSpec) (ResponsePattern, error) {
 		return nil
 	}
 	if err := validate("continuing", spec.Continue); err != nil {
-		return ResponsePattern{}, err
+		return FramingPattern{}, err
 	}
 	if err := validate("terminal", spec.Complete); err != nil {
-		return ResponsePattern{}, err
+		return FramingPattern{}, err
 	}
 
-	return ResponsePattern{
+	return FramingPattern{
 		continueIDs: slices.Clone(spec.Continue),
 		completeIDs: slices.Clone(spec.Complete),
 		valid:       true,
@@ -91,7 +134,7 @@ func NewResponsePattern(spec ResponseSpec) (ResponsePattern, error) {
 }
 
 // Classify uses only the protocol-operation identifier.
-func (p ResponsePattern) Classify(id ber.Identifier) Classification {
+func (p FramingPattern) Classify(id ber.Identifier) Classification {
 	if !p.valid || p.noResponse {
 		return ClassificationInvalid
 	}
@@ -105,10 +148,43 @@ func (p ResponsePattern) Classify(id ber.Identifier) Classification {
 }
 
 // Valid reports whether the response pattern was successfully constructed.
-func (p ResponsePattern) Valid() bool { return p.valid }
+func (p FramingPattern) Valid() bool { return p.valid }
 
 // NoResponse reports whether the valid pattern expects no response messages.
-func (p ResponsePattern) NoResponse() bool { return p.valid && p.noResponse }
+func (p FramingPattern) NoResponse() bool { return p.valid && p.noResponse }
+
+// Framing returns the type-erased framing contract used by the runtime.
+func (p ResponsePattern[T]) Framing() FramingPattern { return p.framing }
+
+// Classify uses only the protocol-operation identifier.
+func (p ResponsePattern[T]) Classify(id ber.Identifier) Classification {
+	return p.framing.Classify(id)
+}
+
+// Valid reports whether the response pattern was successfully constructed.
+func (p ResponsePattern[T]) Valid() bool { return p.framing.Valid() }
+
+// NoResponse reports whether the valid pattern expects no response messages.
+func (p ResponsePattern[T]) NoResponse() bool { return p.framing.NoResponse() }
+
+// Decode unmarshals one response protocolOp into a newly allocated T. It is
+// intended for consumer goroutines after the runtime has routed the response.
+// Decode returns nil on every error.
+func (p ResponsePattern[T]) Decode(response Response, limits ber.Limits) (*T, error) {
+	if !p.Valid() {
+		return nil, errors.New("arden: cannot decode with an invalid response pattern")
+	}
+	if p.NoResponse() {
+		return nil, errors.New("arden: a no-response pattern cannot decode a response")
+	}
+	if p.Classify(response.ProtocolID) == ClassificationInvalid {
+		return nil, fmt.Errorf("arden: response pattern rejected protocol identifier %s", response.ProtocolID)
+	}
+	if p.decode == nil {
+		return nil, errors.New("arden: response pattern has no decoder")
+	}
+	return p.decode(response, limits)
+}
 
 // CancellationMode tells the connection how it may stop an operation.
 type CancellationMode uint8
@@ -131,17 +207,18 @@ type OperationMetadata struct {
 	Label string
 }
 
-// Operation is a fully declared request.
-type Operation struct {
+// UntypedOperation is the type-erased request declaration consumed by the
+// connection runtime. Applications normally construct Operation[T] instead.
+type UntypedOperation struct {
 	Protocol     ProtocolOperation
 	Controls     []ber.Marshaler
-	Responses    ResponsePattern
+	Responses    FramingPattern
 	Cancellation CancellationMode
 	Metadata     OperationMetadata
 }
 
 // Validate checks transport-independent request invariants.
-func (op Operation) Validate() error {
+func (op UntypedOperation) Validate() error {
 	if op.Protocol == nil {
 		return errors.New("arden: operation has no protocol value")
 	}
@@ -162,6 +239,35 @@ func (op Operation) Validate() error {
 	}
 	return nil
 }
+
+// AnyOperation is the type-erasure seam accepted by executors. Every
+// Operation[T] implements it without exposing T to the connection runtime.
+type AnyOperation interface {
+	Untyped() UntypedOperation
+}
+
+// Operation is a fully declared request whose response type is T.
+type Operation[T any] struct {
+	Protocol     ProtocolOperation
+	Controls     []ber.Marshaler
+	Responses    ResponsePattern[T]
+	Cancellation CancellationMode
+	Metadata     OperationMetadata
+}
+
+// Untyped returns the runtime view of op.
+func (op Operation[T]) Untyped() UntypedOperation {
+	return UntypedOperation{
+		Protocol:     op.Protocol,
+		Controls:     op.Controls,
+		Responses:    op.Responses.Framing(),
+		Cancellation: op.Cancellation,
+		Metadata:     op.Metadata,
+	}
+}
+
+// Validate checks transport-independent request invariants.
+func (op Operation[T]) Validate() error { return op.Untyped().Validate() }
 
 // Response owns Bytes; all other byte views refer only to that owned slice.
 type Response struct {
@@ -216,5 +322,5 @@ type ResponseLifecycle interface {
 
 // Executor starts transport-neutral protocol operations.
 type Executor interface {
-	Do(context.Context, Operation) (ResponseStream, error)
+	Do(context.Context, AnyOperation) (ResponseStream, error)
 }

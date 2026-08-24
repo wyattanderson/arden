@@ -300,7 +300,7 @@ type Conn struct {
 	idChanged  chan struct{}
 	reserved   map[MessageID]struct{}
 	pending    map[MessageID]*pendingOperation
-	tombstones map[MessageID]ResponsePattern
+	tombstones map[MessageID]FramingPattern
 
 	unsolicited      []Response
 	unsolicitedBytes int
@@ -314,7 +314,7 @@ type Connection = Conn
 type pendingOperation struct {
 	conn          *Conn
 	id            MessageID
-	pattern       ResponsePattern
+	pattern       FramingPattern
 	mode          CancellationMode
 	ctx           context.Context
 	observer      *operationObserver
@@ -379,7 +379,7 @@ func newObservedConnWithState(transport net.Conn, endpoint Endpoint, options Con
 		idChanged:        make(chan struct{}),
 		reserved:         make(map[MessageID]struct{}),
 		pending:          make(map[MessageID]*pendingOperation),
-		tombstones:       make(map[MessageID]ResponsePattern),
+		tombstones:       make(map[MessageID]FramingPattern),
 		unsolicitedReady: make(chan struct{}, 1),
 	}
 	c.writeToken <- struct{}{}
@@ -422,15 +422,19 @@ func (c *Conn) Err() error {
 }
 
 // Do validates, encodes, registers, and writes one binary LDAP operation.
-func (c *Conn) Do(ctx context.Context, op Operation) (ResponseStream, error) {
+func (c *Conn) Do(ctx context.Context, op AnyOperation) (ResponseStream, error) {
 	return c.do(ctx, op, operationApplication)
 }
 
-func (c *Conn) do(ctx context.Context, op Operation, scope operationScope) (ResponseStream, error) {
+func (c *Conn) do(ctx context.Context, operation AnyOperation, scope operationScope) (ResponseStream, error) {
 	queuedAt := time.Now()
 	if ctx == nil {
 		return nil, errors.New("arden: nil operation context")
 	}
+	if operation == nil {
+		return nil, errors.New("arden: nil operation")
+	}
+	op := operation.Untyped()
 	if err := op.Validate(); err != nil {
 		return nil, err
 	}
@@ -506,7 +510,7 @@ func isAssociationChanging(id ber.Identifier) bool {
 	return id == rfc4511.BindRequestIdentifier() || id == rfc4511.UnbindRequestIdentifier()
 }
 
-func encodeLDAPRequest(id MessageID, op Operation, limits ber.Limits) ([]byte, error) {
+func encodeLDAPRequest(id MessageID, op UntypedOperation, limits ber.Limits) ([]byte, error) {
 	protocol, err := op.Protocol.AppendBER(nil)
 	if err != nil {
 		return nil, err
