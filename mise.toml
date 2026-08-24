@@ -10,5 +10,9 @@ run = "golangci-lint fmt"
 description = "Run Go linters"
 run = "golangci-lint run"
 
+[tasks.test]
+description = "Run Go tests"
+run = "go test ./..."
+
 [tools]
 golangci-lint = "latest"
