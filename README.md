@@ -116,7 +116,7 @@ FreeIPA smoke command.
 
 ## Generic operations and typed models
 
-RFC operation constructors encode their response type. `Client.Execute`
+RFC operation constructors encode their response type. `Client.ExecuteSingle`
 infers that type, returns a newly allocated response, decodes controls, and
 requires a successful LDAP result by default:
 
@@ -129,13 +129,16 @@ if err != nil {
 	return err
 }
 
-response, controls, err := client.Execute(ctx, operation)
+response, controls, err := client.ExecuteSingle(ctx, operation)
 // response has type *rfc4511.AddResponse and is nil on transport or decode errors.
 ```
 
 `AcceptResultCodes` replaces the default accepted set for operations such as
 Compare. A rejected LDAP result returns the decoded response and controls with
 `*arden.ResultError`; transport and decode failures return a nil response.
+`Client.ExecuteStream` uses the same submission, decoding, and control path for
+operations with multiple responses and returns an owned `DecodedStream[T]`.
+`Client.Execute` remains a concise alias for `Client.ExecuteSingle`.
 Streaming Search responses decode as `rfc4511.SearchResult`; its
 `Value` method exposes `SearchResultEntry`, `SearchResultReference`, or
 `SearchResultDone` through a type switch. Abandon and Unbind use the standard

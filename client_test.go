@@ -44,7 +44,7 @@ func TestClientAddReturnsTypedLDAPResultError(t *testing.T) {
 	assert.Equal(t, entry.DN, request.Entry)
 }
 
-func TestClientExecuteReturnsTypedPointerAndControls(t *testing.T) {
+func TestClientExecuteSingleReturnsTypedPointerAndControls(t *testing.T) {
 	control := rfc4511.Control{Type: "1.2.3"}
 	executor := &scriptedExecutor{pages: [][]Response{
 		{protocolResponseWithControls(
@@ -57,14 +57,14 @@ func TestClientExecuteReturnsTypedPointerAndControls(t *testing.T) {
 	operation, err := rfc4511.NewAddOperation(&rfc4511.AddRequest{Entry: "uid=alice,dc=example"}, nil)
 	require.NoError(t, err)
 
-	response, controls, err := NewClient(executor).Execute(context.Background(), operation)
+	response, controls, err := NewClient(executor).ExecuteSingle(context.Background(), operation)
 	require.NoError(t, err)
 	require.NotNil(t, response)
 	assert.Equal(t, rfc4511.ResultSuccess, response.Result.ResultCode)
 	assert.Equal(t, []rfc4511.Control{control}, controls)
 }
 
-func TestClientExecuteErrorReturnValues(t *testing.T) {
+func TestClientExecuteSingleErrorReturnValues(t *testing.T) {
 	operation, err := rfc4511.NewAddOperation(&rfc4511.AddRequest{Entry: "uid=alice,dc=example"}, nil)
 	require.NoError(t, err)
 
@@ -72,7 +72,7 @@ func TestClientExecuteErrorReturnValues(t *testing.T) {
 		executor := &scriptedExecutor{pages: [][]Response{{protocolResponse(t, rfc4511.AddResponseIdentifier(), rfc4511.AddResponse{
 			Result: rfc4511.LDAPResult{ResultCode: rfc4511.ResultBusy},
 		})}}}
-		response, controls, err := NewClient(executor).Execute(context.Background(), operation)
+		response, controls, err := NewClient(executor).ExecuteSingle(context.Background(), operation)
 		require.NotNil(t, response)
 		assert.Equal(t, rfc4511.ResultBusy, response.Result.ResultCode)
 		assert.Empty(t, controls)
@@ -88,21 +88,21 @@ func TestClientExecuteErrorReturnValues(t *testing.T) {
 				Protocol:   []byte{0x01, 0x01, 0xff},
 			}},
 		}}
-		response, controls, err := NewClient(executor).Execute(context.Background(), operation)
+		response, controls, err := NewClient(executor).ExecuteSingle(context.Background(), operation)
 		assert.Nil(t, response)
 		assert.Nil(t, controls)
 		assert.Error(t, err)
 	})
 }
 
-func TestClientExecuteAcceptResultCodesReplacesSuccessDefault(t *testing.T) {
+func TestClientExecuteSingleAcceptResultCodesReplacesSuccessDefault(t *testing.T) {
 	executor := &scriptedExecutor{pages: [][]Response{{protocolResponse(t, rfc4511.AddResponseIdentifier(), rfc4511.AddResponse{
 		Result: rfc4511.LDAPResult{ResultCode: rfc4511.ResultEntryAlreadyExists},
 	})}}}
 	operation, err := rfc4511.NewAddOperation(&rfc4511.AddRequest{Entry: "uid=alice,dc=example"}, nil)
 	require.NoError(t, err)
 
-	response, _, err := NewClient(executor).Execute(
+	response, _, err := NewClient(executor).ExecuteSingle(
 		context.Background(),
 		operation,
 		AcceptResultCodes(rfc4511.ResultEntryAlreadyExists),
@@ -110,6 +110,46 @@ func TestClientExecuteAcceptResultCodesReplacesSuccessDefault(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, response)
 	assert.Equal(t, rfc4511.ResultEntryAlreadyExists, response.Result.ResultCode)
+}
+
+func TestClientExecuteStreamDecodesResponsesAndControls(t *testing.T) {
+	control := rfc4511.Control{Type: "1.2.3"}
+	executor := &scriptedExecutor{pages: [][]Response{{
+		protocolResponseWithControls(t, rfc4511.SearchResultEntryIdentifier(), rfc4511.SearchResultEntry{
+			ObjectName: "uid=alice,dc=example",
+		}, control),
+		protocolResponse(t, rfc4511.SearchResultDoneIdentifier(), rfc4511.SearchResultDone{
+			Result: rfc4511.LDAPResult{ResultCode: rfc4511.ResultSuccess},
+		}),
+	}}}
+	request := SearchRequest{BaseDN: "dc=example", Scope: ScopeSubtree, Filter: Has("uid")}.protocolRequest()
+	operation, err := rfc4511.NewSearchOperation(&request, nil)
+	require.NoError(t, err)
+
+	stream, err := NewClient(executor).ExecuteStream(context.Background(), operation)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, stream.Close()) }()
+
+	response, controls, err := stream.Next(context.Background())
+	require.NoError(t, err)
+	entry, ok := response.Value().(rfc4511.SearchResultEntry)
+	require.True(t, ok)
+	assert.Equal(t, rfc4511.LDAPDN("uid=alice,dc=example"), entry.ObjectName)
+	assert.Equal(t, []rfc4511.Control{control}, controls)
+
+	response, controls, err = stream.Next(context.Background())
+	require.NoError(t, err)
+	done, ok := response.Value().(rfc4511.SearchResultDone)
+	require.True(t, ok)
+	assert.Equal(t, rfc4511.ResultSuccess, done.Result.ResultCode)
+	assert.Empty(t, controls)
+
+	response, controls, err = stream.Next(context.Background())
+	require.ErrorIs(t, err, io.EOF)
+	assert.Nil(t, response)
+	assert.Nil(t, controls)
+	require.NoError(t, stream.Close())
+	assert.True(t, executor.streams[0].closed)
 }
 
 func TestClientSearchFollowsPagedResultsCookies(t *testing.T) {

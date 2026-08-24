@@ -25,6 +25,16 @@ type Client struct {
 	limits   ber.Limits
 }
 
+// DecodedStream owns the response stream for one typed operation. Next
+// decodes both the protocol response and its controls. Callers must close the
+// stream when they finish reading.
+type DecodedStream[T any] struct {
+	stream    protocol.ResponseStream
+	responses protocol.ResponsePattern[T]
+	limits    ber.Limits
+	closed    bool
+}
+
 // NewClient constructs an ordinary LDAP client over executor.
 func NewClient(executor Executor) *Client {
 	return &Client{executor: executor, limits: ber.DefaultLimits()}
@@ -103,7 +113,7 @@ func (c *Client) Add(ctx context.Context, entry *Entry, options ...RequestOption
 	if err != nil {
 		return err
 	}
-	_, _, err = c.Execute(ctx, operation)
+	_, _, err = c.ExecuteSingle(ctx, operation)
 	return err
 }
 
@@ -122,7 +132,7 @@ func (c *Client) ModifyWithOptions(ctx context.Context, dn LDAPDN, changes []Cha
 	if err != nil {
 		return err
 	}
-	_, _, err = c.Execute(ctx, operation)
+	_, _, err = c.ExecuteSingle(ctx, operation)
 	return err
 }
 
@@ -132,7 +142,7 @@ func (c *Client) Delete(ctx context.Context, dn LDAPDN, options ...RequestOption
 	if err != nil {
 		return err
 	}
-	_, _, err = c.Execute(ctx, operation)
+	_, _, err = c.ExecuteSingle(ctx, operation)
 	return err
 }
 
@@ -154,7 +164,7 @@ func (c *Client) compare(ctx context.Context, dn LDAPDN, attribute string, value
 	if err != nil {
 		return false, err
 	}
-	response, _, err := c.Execute(ctx, operation, AcceptResultCodes(rfc4511.ResultCompareFalse, rfc4511.ResultCompareTrue))
+	response, _, err := c.ExecuteSingle(ctx, operation, AcceptResultCodes(rfc4511.ResultCompareFalse, rfc4511.ResultCompareTrue))
 	if err != nil {
 		return false, err
 	}
@@ -182,7 +192,7 @@ func (c *Client) ModifyDN(ctx context.Context, dn LDAPDN, newRDN RelativeLDAPDN,
 	if err != nil {
 		return err
 	}
-	_, _, err = c.Execute(ctx, operation)
+	_, _, err = c.ExecuteSingle(ctx, operation)
 	return err
 }
 
@@ -224,11 +234,10 @@ func (c *Client) Search(ctx context.Context, request SearchRequest, options ...R
 		return nil, errors.New("arden: nil Search context")
 	}
 	rows := &Entries{
-		ctx:      ctx,
-		executor: c.executor,
-		limits:   c.limits,
-		request:  request,
-		options:  requestOptions{controls: requestControls(options)},
+		ctx:     ctx,
+		client:  c,
+		request: request,
+		options: requestOptions{controls: requestControls(options)},
 	}
 	if err := rows.startPage(nil); err != nil {
 		return nil, err
@@ -273,11 +282,10 @@ func (c *Client) RootDSE(ctx context.Context, attributes ...string) (Entry, erro
 // Entries is a streaming sequence of search entries.
 type Entries struct {
 	ctx       context.Context
-	executor  Executor
-	limits    ber.Limits
+	client    *Client
 	request   SearchRequest
 	options   requestOptions
-	stream    protocol.ResponseStream
+	stream    *DecodedStream[rfc4511.SearchResult]
 	entry     Entry
 	err       error
 	done      bool
@@ -292,12 +300,7 @@ func (r *Entries) Next() bool {
 		return false
 	}
 	for {
-		response, err := r.stream.Next(r.ctx)
-		if err != nil {
-			r.err = err
-			return false
-		}
-		decoded, err := rfc4511.SearchResponsePattern().Decode(response, r.limits)
+		decoded, controls, err := r.stream.Next(r.ctx)
 		if err != nil {
 			r.err = err
 			return false
@@ -311,20 +314,12 @@ func (r *Entries) Next() bool {
 				r.referrals = append(r.referrals, string(uri))
 			}
 		case rfc4511.SearchResultDone:
-			controls, err := decodeControls(response.Controls, r.limits)
-			if err != nil {
-				r.err = err
-				return false
-			}
 			r.controls = controls
 			if err := requireSuccess("search", value.Result, controls); err != nil {
 				r.err = err
 				return false
 			}
-			if _, err := r.stream.Next(r.ctx); !errors.Is(err, io.EOF) {
-				if err == nil {
-					err = errors.New("arden: Search returned data after SearchResultDone")
-				}
+			if err := r.stream.requireEnd(r.ctx, "arden: Search returned data after SearchResultDone"); err != nil {
 				r.err = err
 				return false
 			}
@@ -336,7 +331,7 @@ func (r *Entries) Next() bool {
 				r.done = true
 				return false
 			}
-			cookie, err := pagedResultsCookie(controls, r.limits)
+			cookie, err := pagedResultsCookie(controls, r.client.limits)
 			if err != nil {
 				r.err = err
 				return false
@@ -400,7 +395,7 @@ func (r *Entries) startPage(cookie []byte) error {
 	if err != nil {
 		return err
 	}
-	r.stream, err = r.executor.Do(r.ctx, operation)
+	r.stream, err = r.client.ExecuteStream(r.ctx, operation)
 	return err
 }
 
@@ -423,34 +418,81 @@ func requestControls(options []RequestOption) []ber.Marshaler {
 	return applied.controls
 }
 
-// Execute runs one typed, terminal LDAP-result operation. It decodes the
-// response and controls, then requires ResultSuccess unless options replace
-// the accepted result-code set. Transport, stream, BER, and control-decoding
-// errors return a nil response. A rejected LDAP result returns the decoded
-// response and controls together with *ResultError.
-func (c *Client) Execute[T rfc4511.ResultResponse](ctx context.Context, operation protocol.Operation[T], options ...ExecuteOption) (*T, []rfc4511.Control, error) {
+// ExecuteStream starts one typed operation and returns a stream which decodes
+// each protocol response and its controls. The caller owns the returned stream
+// and must close it when it finishes reading.
+func (c *Client) ExecuteStream[T any](ctx context.Context, operation protocol.Operation[T]) (*DecodedStream[T], error) {
 	stream, err := c.executor.Do(ctx, operation)
+	if err != nil {
+		return nil, err
+	}
+	return &DecodedStream[T]{stream: stream, responses: operation.Responses, limits: c.limits}, nil
+}
+
+// Next returns the next typed response and its decoded controls. At the end of
+// the operation it returns io.EOF. Decode errors return a nil response and nil
+// controls.
+func (s *DecodedStream[T]) Next(ctx context.Context) (*T, []rfc4511.Control, error) {
+	if s == nil {
+		return nil, nil, errors.New("arden: nil decoded response stream")
+	}
+	if s.closed {
+		return nil, nil, errors.New("arden: decoded response stream is closed")
+	}
+	response, err := s.stream.Next(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	decoded, err := s.responses.Decode(response, s.limits)
+	if err != nil {
+		return nil, nil, err
+	}
+	controls, err := decodeControls(response.Controls, s.limits)
+	if err != nil {
+		return nil, nil, err
+	}
+	return decoded, controls, nil
+}
+
+func (s *DecodedStream[T]) requireEnd(ctx context.Context, unexpected string) error {
+	_, _, err := s.Next(ctx)
+	if errors.Is(err, io.EOF) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return errors.New(unexpected)
+}
+
+// Close releases the underlying response stream. It is safe to call more than
+// once.
+func (s *DecodedStream[T]) Close() error {
+	if s == nil || s.closed {
+		return nil
+	}
+	s.closed = true
+	return s.stream.Close()
+}
+
+// ExecuteSingle runs one typed, terminal LDAP-result operation. It shares
+// submission, decoding, control handling, and ownership with ExecuteStream,
+// then additionally requires exactly one response and an accepted result code.
+// Transport, stream, BER, and control-decoding errors return a nil response. A
+// rejected LDAP result returns the decoded response and controls together with
+// *ResultError.
+func (c *Client) ExecuteSingle[T rfc4511.ResultResponse](ctx context.Context, operation protocol.Operation[T], options ...ExecuteOption) (*T, []rfc4511.Control, error) {
+	stream, err := c.ExecuteStream(ctx, operation)
 	if err != nil {
 		return nil, nil, err
 	}
 	//nolint:errcheck // The terminal response determines the operation result.
 	defer stream.Close()
-	response, err := stream.Next(ctx)
+	decoded, controls, err := stream.Next(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
-	if _, err := stream.Next(ctx); !errors.Is(err, io.EOF) {
-		if err == nil {
-			err = errors.New("arden: single-response operation returned more than one response")
-		}
-		return nil, nil, err
-	}
-	decoded, err := operation.Responses.Decode(response, c.limits)
-	if err != nil {
-		return nil, nil, err
-	}
-	controls, err := decodeControls(response.Controls, c.limits)
-	if err != nil {
+	if err := stream.requireEnd(ctx, "arden: single-response operation returned more than one response"); err != nil {
 		return nil, nil, err
 	}
 	applied := executeOptions{accepted: map[rfc4511.ResultCode]struct{}{rfc4511.ResultSuccess: {}}}
@@ -468,6 +510,11 @@ func (c *Client) Execute[T rfc4511.ResultResponse](ctx context.Context, operatio
 		return decoded, controls, &ResultError{Operation: operationName, Result: result, Controls: controls}
 	}
 	return decoded, controls, nil
+}
+
+// Execute is retained as the concise form of ExecuteSingle.
+func (c *Client) Execute[T rfc4511.ResultResponse](ctx context.Context, operation protocol.Operation[T], options ...ExecuteOption) (*T, []rfc4511.Control, error) {
+	return c.ExecuteSingle(ctx, operation, options...)
 }
 
 func requireSuccess(operation string, result rfc4511.LDAPResult, controls []rfc4511.Control) error {
