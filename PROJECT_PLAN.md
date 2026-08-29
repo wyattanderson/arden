@@ -43,10 +43,11 @@ Names are provisional; responsibilities are not.
 | `auth/gssapi` | Late optional native GSSAPI mechanism |
 | `rfc4532` | Reference Who Am I? extension implemented only through public contracts |
 | `schema` | Reflection-free value codec and typed attribute contracts for generated models |
+| `ldapmodel` | Generic fluent DAO, result-set lifecycle, cardinality helpers, and typed mutations for schema models |
 
-The dependency direction is `ber -> protocol -> rfc4511 -> arden`; extension
-packages may stop at `protocol` and `rfc4511` when they do not need the generic
-client.
+The main dependency direction is `ber -> protocol -> rfc4511 -> arden ->
+schema -> ldapmodel`; extension packages may stop at `protocol` and `rfc4511`
+when they do not need the generic client.
 
 ## Core operation contract
 

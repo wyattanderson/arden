@@ -1,0 +1,21 @@
+{
+	admin off
+	auto_https off
+}
+
+:80 {
+	reverse_proxy https://ipa.arden.test {
+		header_up Host ipa.arden.test
+		# FreeIPA rejects UI requests whose browser origin does not match its
+		# canonical HTTPS origin. Translate the host-facing loopback origin.
+		header_up Referer "^http://(?:localhost|127[.]0[.]0[.]1):8389(.*)$" "https://ipa.arden.test$1"
+		header_up Origin "^http://(?:localhost|127[.]0[.]0[.]1):8389$" "https://ipa.arden.test"
+		header_down Location https://ipa.arden.test http://localhost:8389
+		header_down -Strict-Transport-Security
+
+		transport http {
+			tls_server_name ipa.arden.test
+			tls_trust_pool file /freeipa-data/etc/ipa/ca.crt
+		}
+	}
+}

@@ -182,6 +182,11 @@ filter, err := UID.Equal("alice")
 values, err := UID.Values(entry)
 ```
 
+`ldapmodel` builds on those descriptors with a reusable generic `DAO[T]`,
+typed criteria and patches, materialized `All`/`One`/`First` result paths, and
+an explicitly closed streaming path. Schema-specific packages provide the
+model projection and decoder without generating a DAO type for every model.
+
 Custom protocol work stays equally direct. The `rfc4532` package is a reference
 extension implemented only against the public `arden.Executor` contract:
 

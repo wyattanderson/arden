@@ -1,0 +1,101 @@
+name: arden-freeipa
+
+services:
+  freeipa:
+    image: quay.io/freeipa/freeipa-server:almalinux-9
+    hostname: ipa.arden.test
+    networks:
+      freeipa-internal:
+        ipv4_address: 172.30.0.10
+    dns:
+      - 127.0.0.1
+    read_only: true
+    cgroup: host
+    environment:
+      PASSWORD: ${FREEIPA_PASSWORD:-ArdenDev123}
+      IPA_SERVER_IP: 172.30.0.10
+    command:
+      - ipa-server-install
+      - --unattended
+      - --realm=ARDEN.TEST
+      - --domain=arden.test
+      - --ip-address=172.30.0.10
+      - --setup-dns
+      - --no-forwarders
+      - --reverse-zone=0.30.172.in-addr.arpa.
+      - --no-ntp
+      - --no-host-dns
+      - --skip-mem-check
+    volumes:
+      - freeipa-data:/data
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    healthcheck:
+      test: ["CMD-SHELL", "ipactl status >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 30s
+      retries: 60
+      start_period: 10m
+    stop_grace_period: 2m
+
+  client:
+    build:
+      context: ..
+      dockerfile: freeipa/Dockerfile
+    networks:
+      - freeipa-internal
+    dns:
+      - 172.30.0.10
+    depends_on:
+      freeipa:
+        condition: service_healthy
+    environment:
+      ARDEN_ADDRESS: ipa.arden.test:636
+      ARDEN_SERVER_NAME: ipa.arden.test
+      ARDEN_CA_FILE: /freeipa-data/etc/ipa/ca.crt
+      ARDEN_IDENTITY: freeipa-compose-admin
+      ARDEN_TIMEOUT: 30s
+      KRB5_CONFIG: /etc/krb5.conf
+      KRB5CCNAME: FILE:/tmp/krb5cc_arden
+      KRB5_PRINCIPAL: admin@ARDEN.TEST
+      KRB5_PASSWORD: ${FREEIPA_PASSWORD:-ArdenDev123}
+    volumes:
+      - freeipa-data:/freeipa-data:ro
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=0700,uid=10001,gid=10001
+    security_opt:
+      - no-new-privileges:true
+
+  edge:
+    image: caddy:2-alpine
+    networks:
+      - freeipa-internal
+      - host-edge
+    dns:
+      - 172.30.0.10
+    depends_on:
+      freeipa:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8389:80"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - freeipa-data:/freeipa-data:ro
+    read_only: true
+    tmpfs:
+      - /config:size=1m,mode=0700
+      - /data:size=1m,mode=0700
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  freeipa-data:
+
+networks:
+  freeipa-internal:
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
+  host-edge:
+    driver: bridge

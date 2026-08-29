@@ -1,0 +1,10 @@
+github.com/golang-auth/go-gssapi-c v0.1.4 h1:R7OL9iw9QJ9PWgmUkrHYl+EI8NwWnwm47HEBdL2cFdY=
+github.com/golang-auth/go-gssapi-c v0.1.4/go.mod h1:3EUnGdNVUf9BDhbGudGWNQi9K0TpVJZz1S4+b78bqeQ=
+github.com/golang-auth/go-gssapi/v3 v3.0.2-beta7 h1:m8Et5OP+bxvdnmbwJwQLK2LBrHxlEzUA/9XhK8roIfw=
+github.com/golang-auth/go-gssapi/v3 v3.0.2-beta7/go.mod h1:2G8ctTHymxcU/f0Z7osi/bzm9oB6skfwxMSJXNipums=
+github.com/stretchr/testify v1.12.1 h1:EuwCh5fleGS7H32xRwO3wRGT7DxrDhLAT6FF8MpWDWE=
+github.com/stretchr/testify v1.12.1/go.mod h1:MDEgiDPPsNp5cuIrHPPCyornHKgEVbtFUmoNlxoYthg=
+github.com/wyattanderson/arden v0.0.0-20260824183149-3cb7d14ebafd h1:hMU1jeN9px5fH7xrSWkfO8+aKWcniSvjEznhhgNpv5w=
+github.com/wyattanderson/arden v0.0.0-20260824183149-3cb7d14ebafd/go.mod h1:IcdciGsd/3zZz8MVnEQj39YOJUa7Av7V0qrcspTrwAI=
+go.yaml.in/yaml/v3 v3.0.5 h1:N6y/pJk8buWs9NY5ERU2HSMfm+IuD/OtfdAnq6kESPw=
+go.yaml.in/yaml/v3 v3.0.5/go.mod h1:HVTZu1O7/Vkt2N+BFy8Zza+lnLsABggaTM2ZpNIGuKg=
