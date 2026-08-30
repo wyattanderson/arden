@@ -33,9 +33,6 @@ func (*CompareRequest) ProtocolIdentifier() ber.Identifier { return compareReque
 //revive:disable-next-line:exported
 func (v *CompareRequest) AppendBER(dst []byte) ([]byte, error) {
 	start := len(dst)
-	if v == nil {
-		return dst, errors.New("arden: nil CompareRequest")
-	}
 	contents, err := ber.AppendOctetString(nil, []byte(v.Entry))
 	if err != nil {
 		return dst[:start], err
@@ -55,9 +52,6 @@ func (v *CompareRequest) AppendBER(dst []byte) ([]byte, error) {
 
 //revive:disable-next-line:exported
 func (v *CompareRequest) UnmarshalBER(r *ber.Reader) error {
-	if v == nil {
-		return nilReceiver("CompareRequest")
-	}
 	contents, err := r.Constructed(compareRequestIdentifier)
 	if err != nil {
 		return err
@@ -92,9 +86,6 @@ func (v CompareResponse) AppendBER(dst []byte) ([]byte, error) {
 
 //revive:disable-next-line:exported
 func (v *CompareResponse) UnmarshalBER(r *ber.Reader) error {
-	if v == nil {
-		return nilReceiver("CompareResponse")
-	}
 	result, err := decodeResultResponse(r, compareResponseIdentifier)
 	if err != nil {
 		return err

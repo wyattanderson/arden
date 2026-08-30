@@ -43,9 +43,6 @@ func NewSimpleBind(stableID, bindDN, credentials string) (*SimpleBind, error) {
 
 // ValidateEndpoint rejects plaintext before Dialer opens a socket.
 func (a *SimpleBind) ValidateEndpoint(endpoint arden.Endpoint) error {
-	if a == nil {
-		return errors.New("arden/auth: nil Simple Bind configuration")
-	}
 	if endpoint.Transport != arden.TransportDirectTLS {
 		return errors.New("arden/auth: Simple Bind requires direct TLS")
 	}

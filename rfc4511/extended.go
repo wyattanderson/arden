@@ -48,9 +48,6 @@ func (*ExtendedRequest) ProtocolIdentifier() ber.Identifier { return extendedReq
 //revive:disable-next-line:exported
 func (v *ExtendedRequest) AppendBER(dst []byte) ([]byte, error) {
 	start := len(dst)
-	if v == nil {
-		return dst, errors.New("arden: nil ExtendedRequest")
-	}
 	if err := requireNonEmpty("extended request name", v.Name); err != nil {
 		return dst, err
 	}
@@ -80,9 +77,6 @@ func (v *ExtendedRequest) AppendBER(dst []byte) ([]byte, error) {
 
 //revive:disable-next-line:exported
 func (v *ExtendedRequest) UnmarshalBER(r *ber.Reader) error {
-	if v == nil {
-		return nilReceiver("ExtendedRequest")
-	}
 	contents, err := r.Constructed(extendedRequestIdentifier)
 	if err != nil {
 		return err
@@ -188,9 +182,6 @@ func (v ExtendedResponse) AppendBER(dst []byte) ([]byte, error) {
 
 //revive:disable-next-line:exported
 func (v *ExtendedResponse) UnmarshalBER(r *ber.Reader) error {
-	if v == nil {
-		return nilReceiver("ExtendedResponse")
-	}
 	contents, err := r.Constructed(extendedResponseIdentifier)
 	if err != nil {
 		return err
@@ -298,9 +289,6 @@ func (v IntermediateResponse) AppendBER(dst []byte) ([]byte, error) {
 
 //revive:disable-next-line:exported
 func (v *IntermediateResponse) UnmarshalBER(r *ber.Reader) error {
-	if v == nil {
-		return nilReceiver("IntermediateResponse")
-	}
 	contents, err := r.Constructed(intermediateResponseIdentifier)
 	if err != nil {
 		return err
@@ -370,9 +358,6 @@ type ExtendedResult struct {
 // UnmarshalBER decodes an IntermediateResponse or terminal ExtendedResponse.
 // The receiver is unchanged if decoding fails.
 func (v *ExtendedResult) UnmarshalBER(r *ber.Reader) error {
-	if v == nil {
-		return nilReceiver("ExtendedResult")
-	}
 	id, err := r.PeekIdentifier()
 	if err != nil {
 		return err

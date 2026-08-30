@@ -28,17 +28,11 @@ func (*DeleteRequest) ProtocolIdentifier() ber.Identifier { return deleteRequest
 
 //revive:disable-next-line:exported
 func (v *DeleteRequest) AppendBER(dst []byte) ([]byte, error) {
-	if v == nil {
-		return dst, errors.New("arden: nil DeleteRequest")
-	}
 	return ber.AppendPrimitive(dst, deleteRequestIdentifier, []byte(v.Entry))
 }
 
 //revive:disable-next-line:exported
 func (v *DeleteRequest) UnmarshalBER(r *ber.Reader) error {
-	if v == nil {
-		return nilReceiver("DeleteRequest")
-	}
 	entry, err := r.Primitive(deleteRequestIdentifier)
 	if err != nil {
 		return err
@@ -60,9 +54,6 @@ func (v DeleteResponse) AppendBER(dst []byte) ([]byte, error) {
 
 //revive:disable-next-line:exported
 func (v *DeleteResponse) UnmarshalBER(r *ber.Reader) error {
-	if v == nil {
-		return nilReceiver("DeleteResponse")
-	}
 	result, err := decodeResultResponse(r, deleteResponseIdentifier)
 	if err != nil {
 		return err

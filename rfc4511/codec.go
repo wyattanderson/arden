@@ -2,7 +2,6 @@ package rfc4511
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 
 	"github.com/wyattanderson/arden/ber"
@@ -99,5 +98,3 @@ func cloneAttributeValues[T ~[]byte](values []T) []AttributeValue {
 	}
 	return cloned
 }
-
-func nilReceiver(name string) error { return errors.New("arden: nil " + name + " receiver") }

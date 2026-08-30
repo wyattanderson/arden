@@ -30,9 +30,6 @@ func (v AttributeValueAssertion) AppendBER(dst []byte) ([]byte, error) {
 
 //revive:disable-next-line:exported
 func (v *AttributeValueAssertion) UnmarshalBER(r *ber.Reader) error {
-	if v == nil {
-		return nilReceiver("AttributeValueAssertion")
-	}
 	contents, err := r.Sequence()
 	if err != nil {
 		return err

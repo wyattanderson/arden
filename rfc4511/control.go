@@ -58,9 +58,6 @@ func (v Control) AppendBER(dst []byte) ([]byte, error) {
 
 //revive:disable-next-line:exported
 func (v *Control) UnmarshalBER(r *ber.Reader) error {
-	if v == nil {
-		return nilReceiver("Control")
-	}
 	contents, err := r.Sequence()
 	if err != nil {
 		return err

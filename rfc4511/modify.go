@@ -107,9 +107,6 @@ func (v Change) AppendBER(dst []byte) ([]byte, error) {
 
 //revive:disable-next-line:exported
 func (v *Change) UnmarshalBER(r *ber.Reader) error {
-	if v == nil {
-		return nilReceiver("Change")
-	}
 	contents, err := r.Sequence()
 	if err != nil {
 		return err
@@ -143,9 +140,6 @@ func (*ModifyRequest) ProtocolIdentifier() ber.Identifier { return modifyRequest
 //revive:disable-next-line:exported
 func (v *ModifyRequest) AppendBER(dst []byte) ([]byte, error) {
 	start := len(dst)
-	if v == nil {
-		return dst, errors.New("arden: nil ModifyRequest")
-	}
 	contents, err := ber.AppendOctetString(nil, []byte(v.Object))
 	if err != nil {
 		return dst[:start], err
@@ -172,9 +166,6 @@ func (v *ModifyRequest) AppendBER(dst []byte) ([]byte, error) {
 
 //revive:disable-next-line:exported
 func (v *ModifyRequest) UnmarshalBER(r *ber.Reader) error {
-	if v == nil {
-		return nilReceiver("ModifyRequest")
-	}
 	contents, err := r.Constructed(modifyRequestIdentifier)
 	if err != nil {
 		return err
@@ -216,9 +207,6 @@ func (v ModifyResponse) AppendBER(dst []byte) ([]byte, error) {
 
 //revive:disable-next-line:exported
 func (v *ModifyResponse) UnmarshalBER(r *ber.Reader) error {
-	if v == nil {
-		return nilReceiver("ModifyResponse")
-	}
 	result, err := decodeResultResponse(r, modifyResponseIdentifier)
 	if err != nil {
 		return err

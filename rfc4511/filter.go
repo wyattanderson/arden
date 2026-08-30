@@ -99,9 +99,6 @@ func (f And) AppendBER(dst []byte) ([]byte, error) {
 
 //revive:disable-next-line:exported
 func (f *And) UnmarshalBER(r *ber.Reader) error {
-	if f == nil {
-		return nilReceiver("And")
-	}
 	filters, err := decodeFilterSet(r, andFilterIdentifier, "AND")
 	if err != nil {
 		return err
@@ -123,9 +120,6 @@ func (f Or) AppendBER(dst []byte) ([]byte, error) {
 
 //revive:disable-next-line:exported
 func (f *Or) UnmarshalBER(r *ber.Reader) error {
-	if f == nil {
-		return nilReceiver("Or")
-	}
 	filters, err := decodeFilterSet(r, orFilterIdentifier, "OR")
 	if err != nil {
 		return err
@@ -159,9 +153,6 @@ func (f Not) AppendBER(dst []byte) ([]byte, error) {
 
 //revive:disable-next-line:exported
 func (f *Not) UnmarshalBER(r *ber.Reader) error {
-	if f == nil {
-		return nilReceiver("Not")
-	}
 	contents, err := r.Constructed(notFilterIdentifier)
 	if err != nil {
 		return err
@@ -190,9 +181,6 @@ func (f EqualityMatch) AppendBER(dst []byte) ([]byte, error) {
 
 //revive:disable-next-line:exported
 func (f *EqualityMatch) UnmarshalBER(r *ber.Reader) error {
-	if f == nil {
-		return nilReceiver("EqualityMatch")
-	}
 	assertion, err := decodeAssertionFilter(r, equalityMatchIdentifier)
 	if err != nil {
 		return err
@@ -214,9 +202,6 @@ func (f GreaterOrEqual) AppendBER(dst []byte) ([]byte, error) {
 
 //revive:disable-next-line:exported
 func (f *GreaterOrEqual) UnmarshalBER(r *ber.Reader) error {
-	if f == nil {
-		return nilReceiver("GreaterOrEqual")
-	}
 	assertion, err := decodeAssertionFilter(r, greaterOrEqualIdentifier)
 	if err != nil {
 		return err
@@ -238,9 +223,6 @@ func (f LessOrEqual) AppendBER(dst []byte) ([]byte, error) {
 
 //revive:disable-next-line:exported
 func (f *LessOrEqual) UnmarshalBER(r *ber.Reader) error {
-	if f == nil {
-		return nilReceiver("LessOrEqual")
-	}
 	assertion, err := decodeAssertionFilter(r, lessOrEqualIdentifier)
 	if err != nil {
 		return err
@@ -262,9 +244,6 @@ func (f ApproximateMatch) AppendBER(dst []byte) ([]byte, error) {
 
 //revive:disable-next-line:exported
 func (f *ApproximateMatch) UnmarshalBER(r *ber.Reader) error {
-	if f == nil {
-		return nilReceiver("ApproximateMatch")
-	}
 	assertion, err := decodeAssertionFilter(r, approximateMatchIdentifier)
 	if err != nil {
 		return err
@@ -289,9 +268,6 @@ func (f Present) AppendBER(dst []byte) ([]byte, error) {
 
 //revive:disable-next-line:exported
 func (f *Present) UnmarshalBER(r *ber.Reader) error {
-	if f == nil {
-		return nilReceiver("Present")
-	}
 	attribute, err := r.Primitive(presentIdentifier)
 	if err != nil {
 		return err
@@ -366,9 +342,6 @@ func (f SubstringFilter) AppendBER(dst []byte) ([]byte, error) {
 
 //revive:disable-next-line:exported
 func (f *SubstringFilter) UnmarshalBER(r *ber.Reader) error {
-	if f == nil {
-		return nilReceiver("SubstringFilter")
-	}
 	contents, err := r.Constructed(substringsIdentifier)
 	if err != nil {
 		return err
@@ -492,9 +465,6 @@ func (f ExtensibleMatch) AppendBER(dst []byte) ([]byte, error) {
 
 //revive:disable-next-line:exported
 func (f *ExtensibleMatch) UnmarshalBER(r *ber.Reader) error {
-	if f == nil {
-		return nilReceiver("ExtensibleMatch")
-	}
 	contents, err := r.Constructed(extensibleMatchIdentifier)
 	if err != nil {
 		return err

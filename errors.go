@@ -72,9 +72,6 @@ type TransportError struct {
 }
 
 func (e *TransportError) Error() string {
-	if e == nil {
-		return "arden: <nil transport error>"
-	}
 	return fmt.Sprintf("arden: %s: %v", e.Stage, e.Err)
 }
 
@@ -107,9 +104,6 @@ type ProtocolError struct {
 }
 
 func (e *ProtocolError) Error() string {
-	if e == nil {
-		return "arden: <nil protocol error>"
-	}
 	if e.Err != nil {
 		return fmt.Sprintf("arden: protocol failure (%d): %v", e.Kind, e.Err)
 	}
@@ -129,9 +123,6 @@ type LimitError struct {
 }
 
 func (e *LimitError) Error() string {
-	if e == nil {
-		return "arden: <nil limit error>"
-	}
 	return fmt.Sprintf("arden: resource limit %q exceeded: %d > %d", e.Limit, e.Value, e.Max)
 }
 
@@ -145,9 +136,6 @@ type RouteError struct {
 }
 
 func (e *RouteError) Error() string {
-	if e == nil {
-		return "arden: <nil route error>"
-	}
 	return fmt.Sprintf("arden: endpoint %q unavailable: %v", e.Endpoint, e.Err)
 }
 
@@ -187,9 +175,6 @@ type SetupError struct {
 }
 
 func (e *SetupError) Error() string {
-	if e == nil {
-		return "arden: <nil setup error>"
-	}
 	// The underlying mechanism or initializer is not trusted to redact
 	// credentials, SASL tokens, directory values, or discovered profile data.
 	// Keep errors.Is/errors.As access through Unwrap, but make ordinary logging
@@ -214,9 +199,6 @@ func (e *ProfileMismatchError) Error() string {
 }
 
 func (e *ProfileMismatchError) Unwrap() error {
-	if e == nil {
-		return nil
-	}
 	return e.Err
 }
 
@@ -234,9 +216,6 @@ type NoticeError struct {
 }
 
 func (e *NoticeError) Error() string {
-	if e == nil {
-		return "arden: <nil notice of disconnection>"
-	}
 	return fmt.Sprintf("arden: notice of disconnection (result code %d)", e.ResultCode)
 }
 

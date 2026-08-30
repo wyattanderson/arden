@@ -103,9 +103,6 @@ func (v LDAPOID) AppendBER(dst []byte) ([]byte, error) {
 
 //revive:disable-next-line:exported
 func (v *LDAPOID) UnmarshalBER(r *ber.Reader) error {
-	if v == nil {
-		return errors.New("arden: nil LDAPOID receiver")
-	}
 	value, err := r.OctetString()
 	if err != nil {
 		return err

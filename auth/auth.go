@@ -24,9 +24,6 @@ type BindError struct {
 }
 
 func (e *BindError) Error() string {
-	if e == nil {
-		return "arden/auth: <nil Bind error>"
-	}
 	return fmt.Sprintf("arden/auth: Bind failed with LDAP result code %d", e.ResultCode)
 }
 
@@ -106,7 +103,7 @@ func (a *bindAuthenticator) Authenticate(ctx context.Context, session arden.Init
 }
 
 func (a *bindAuthenticator) Close() error {
-	if a == nil || a.closed {
+	if a.closed {
 		return nil
 	}
 	a.closed = true

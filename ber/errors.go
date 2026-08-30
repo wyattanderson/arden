@@ -29,9 +29,6 @@ type DecodeError struct {
 }
 
 func (e *DecodeError) Error() string {
-	if e == nil {
-		return "ber: <nil decode error>"
-	}
 	return fmt.Sprintf("ber: decode at byte %d: %v", e.Offset, e.Err)
 }
 
@@ -46,9 +43,6 @@ type LimitError struct {
 }
 
 func (e *LimitError) Error() string {
-	if e == nil {
-		return "ber: <nil limit error>"
-	}
 	return fmt.Sprintf("ber: resource limit %q exceeded: %d > %d", e.Limit, e.Value, e.Max)
 }
 

@@ -108,7 +108,7 @@ func TestOperationConstructorsRejectNilRequests(t *testing.T) {
 	}
 }
 
-func TestRequestMarshalersRejectNilReceiversAtomically(t *testing.T) {
+func TestRequestMarshalersPanicOnNilReceivers(t *testing.T) {
 	requests := []ber.Marshaler{
 		(*BindRequest)(nil),
 		(*SearchRequest)(nil),
@@ -122,10 +122,7 @@ func TestRequestMarshalersRejectNilReceiversAtomically(t *testing.T) {
 	}
 	for _, request := range requests {
 		t.Run(requestTypeName(request), func(t *testing.T) {
-			dst := []byte{0xde, 0xad}
-			got, err := request.AppendBER(dst)
-			require.Error(t, err)
-			assert.Equal(t, dst, got)
+			assert.Panics(t, func() { _, _ = request.AppendBER(nil) })
 		})
 	}
 }

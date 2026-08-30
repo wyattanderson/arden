@@ -85,7 +85,6 @@ func TestExtendedResultChoiceDecodesAndExposesValue(t *testing.T) {
 
 func TestExtendedTypesValidateNamesAndOrderingAtomically(t *testing.T) {
 	invalidMarshalers := []ber.Marshaler{
-		(*ExtendedRequest)(nil),
 		&ExtendedRequest{},
 		&ExtendedRequest{Name: LDAPOID("1")},
 		ExtendedResponse{HasResponseName: true},

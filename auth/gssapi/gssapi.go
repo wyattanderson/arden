@@ -101,9 +101,6 @@ func NewWithProviderFactory(stableID string, factory ProviderFactory, opts ...Op
 
 // ValidateEndpoint rejects plaintext before Dialer opens a socket.
 func (a *Authentication) ValidateEndpoint(endpoint arden.Endpoint) error {
-	if a == nil {
-		return errors.New("arden/auth/gssapi: nil authentication configuration")
-	}
 	if endpoint.Transport != arden.TransportDirectTLS {
 		return errors.New("arden/auth/gssapi: GSSAPI authentication-only mode requires direct TLS")
 	}
@@ -378,9 +375,6 @@ func nilHandle(value any) bool {
 }
 
 func (a *authenticator) Close() error {
-	if a == nil {
-		return nil
-	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.closed {

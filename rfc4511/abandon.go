@@ -26,9 +26,6 @@ func (*AbandonRequest) ProtocolIdentifier() ber.Identifier { return abandonReque
 
 //revive:disable-next-line:exported
 func (v *AbandonRequest) AppendBER(dst []byte) ([]byte, error) {
-	if v == nil {
-		return dst, errors.New("arden: nil AbandonRequest")
-	}
 	if v.Target <= 0 || v.Target > protocol.MaxMessageID {
 		return dst, errors.New("arden: AbandonRequest target is outside [1, MaxMessageID]")
 	}
@@ -37,9 +34,6 @@ func (v *AbandonRequest) AppendBER(dst []byte) ([]byte, error) {
 
 //revive:disable-next-line:exported
 func (v *AbandonRequest) UnmarshalBER(r *ber.Reader) error {
-	if v == nil {
-		return nilReceiver("AbandonRequest")
-	}
 	target, err := r.IntegerWithIdentifier(abandonRequestIdentifier)
 	if err != nil {
 		return err

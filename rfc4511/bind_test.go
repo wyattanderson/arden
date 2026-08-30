@@ -57,7 +57,6 @@ func TestBindRequestValidationBoundariesAreAtomic(t *testing.T) {
 		require.NoError(t, err)
 	}
 	for _, request := range []*BindRequest{
-		nil,
 		{Version: 0, Authentication: SimpleAuthentication{}},
 		{Version: 128, Authentication: SimpleAuthentication{}},
 		{Version: 3},

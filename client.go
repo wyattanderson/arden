@@ -8,6 +8,7 @@ import (
 	"io"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/wyattanderson/arden/ber"
 	"github.com/wyattanderson/arden/protocol"
@@ -84,23 +85,17 @@ func AcceptResultCodes(codes ...rfc4511.ResultCode) ExecuteOption {
 }
 
 func (e *ResultError) Error() string {
-	if e == nil {
-		return "arden: <nil LDAP result error>"
-	}
 	return fmt.Sprintf("arden: %s failed with LDAP result code %d", e.Operation, e.Result.ResultCode)
 }
 
 // ResultCode returns the server's LDAP result code.
 func (e *ResultError) ResultCode() rfc4511.ResultCode {
-	if e == nil {
-		return rfc4511.ResultOther
-	}
 	return e.Result.ResultCode
 }
 
 // Is maps noSuchObject to ErrNotFound while retaining the complete LDAP result.
 func (e *ResultError) Is(target error) bool {
-	return target == ErrNotFound && e != nil && e.Result.ResultCode == rfc4511.ResultNoSuchObject
+	return target == ErrNotFound && e.Result.ResultCode == rfc4511.ResultNoSuchObject
 }
 
 // Add creates entry.
@@ -199,15 +194,15 @@ func (c *Client) ModifyDN(ctx context.Context, dn LDAPDN, newRDN RelativeLDAPDN,
 // SearchRequest describes a generic LDAP search. PageSize is client behavior,
 // not part of the RFC 4511 SearchRequest wire value.
 type SearchRequest struct {
-	BaseDN           LDAPDN
-	Scope            SearchScope
-	DerefAliases     DerefAliases
-	SizeLimit        uint32
-	TimeLimitSeconds uint32
-	TypesOnly        bool
-	Filter           Filter
-	Attributes       []string
-	PageSize         uint32
+	BaseDN       LDAPDN
+	Scope        SearchScope
+	DerefAliases DerefAliases
+	SizeLimit    uint32
+	TimeLimit    time.Duration
+	TypesOnly    bool
+	Filter       Filter
+	Attributes   []string
+	PageSize     uint32
 }
 
 func (r SearchRequest) protocolRequest() rfc4511.SearchRequest {
@@ -216,14 +211,14 @@ func (r SearchRequest) protocolRequest() rfc4511.SearchRequest {
 		attributes[i] = rfc4511.AttributeSelector(attribute)
 	}
 	return rfc4511.SearchRequest{
-		BaseObject:       r.BaseDN,
-		Scope:            r.Scope,
-		DerefAliases:     r.DerefAliases,
-		SizeLimit:        r.SizeLimit,
-		TimeLimitSeconds: r.TimeLimitSeconds,
-		TypesOnly:        r.TypesOnly,
-		Filter:           r.Filter,
-		Attributes:       attributes,
+		BaseObject:   r.BaseDN,
+		Scope:        r.Scope,
+		DerefAliases: r.DerefAliases,
+		SizeLimit:    r.SizeLimit,
+		TimeLimit:    r.TimeLimit,
+		TypesOnly:    r.TypesOnly,
+		Filter:       r.Filter,
+		Attributes:   attributes,
 	}
 }
 
@@ -296,7 +291,7 @@ type Entries struct {
 
 // Next advances to the next entry, transparently crossing page boundaries.
 func (r *Entries) Next() bool {
-	if r == nil || r.done || r.err != nil {
+	if r.done || r.err != nil {
 		return false
 	}
 	for {
@@ -356,9 +351,6 @@ func (r *Entries) Entry() Entry { return r.entry }
 
 // Err returns the first search, decode, paging, or LDAP result error.
 func (r *Entries) Err() error {
-	if r == nil {
-		return errors.New("arden: nil Entries")
-	}
 	return r.err
 }
 
@@ -370,7 +362,7 @@ func (r *Entries) Controls() []rfc4511.Control { return slices.Clone(r.controls)
 
 // Close stops delivery and releases the underlying response stream.
 func (r *Entries) Close() error {
-	if r == nil || r.closed {
+	if r.closed {
 		return nil
 	}
 	r.closed = true
@@ -433,9 +425,6 @@ func (c *Client) ExecuteStream[T any](ctx context.Context, operation protocol.Op
 // the operation it returns io.EOF. Decode errors return a nil response and nil
 // controls.
 func (s *DecodedStream[T]) Next(ctx context.Context) (*T, []rfc4511.Control, error) {
-	if s == nil {
-		return nil, nil, errors.New("arden: nil decoded response stream")
-	}
 	if s.closed {
 		return nil, nil, errors.New("arden: decoded response stream is closed")
 	}
@@ -468,7 +457,7 @@ func (s *DecodedStream[T]) requireEnd(ctx context.Context, unexpected string) er
 // Close releases the underlying response stream. It is safe to call more than
 // once.
 func (s *DecodedStream[T]) Close() error {
-	if s == nil || s.closed {
+	if s.closed {
 		return nil
 	}
 	s.closed = true

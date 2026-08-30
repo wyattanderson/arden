@@ -419,20 +419,20 @@ Implement Search as the streaming and extensible-CHOICE proof:
 
 ```go
 type SearchRequest struct {
-    BaseObject       LDAPDN
-    Scope            SearchScope
-    DerefAliases     DerefAliases
-    SizeLimit        uint32
-    TimeLimitSeconds uint32
-    TypesOnly        bool
-    Filter           Filter
-    Attributes       []AttributeSelector
+    BaseObject   LDAPDN
+    Scope        SearchScope
+    DerefAliases DerefAliases
+    SizeLimit    uint32
+    TimeLimit    time.Duration
+    TypesOnly    bool
+    Filter       Filter
+    Attributes   []AttributeSelector
 }
 ```
 
-Both integer limits validate against RFC 4511 `maxInt`. The wire type uses
-whole seconds rather than `time.Duration` so fractional and negative durations
-cannot enter the protocol accidentally.
+Size limits and positive time limits validate against RFC 4511 `maxInt`.
+`TimeLimit` is converted to whole seconds for the wire; callers are responsible
+for fractional and negative duration semantics.
 
 The extensible Filter CHOICE is public and unsealed:
 

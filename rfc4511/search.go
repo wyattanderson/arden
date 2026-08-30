@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"slices"
+	"time"
 
 	"github.com/wyattanderson/arden/ber"
 	"github.com/wyattanderson/arden/protocol"
@@ -63,20 +64,17 @@ const (
 )
 
 // SearchRequest is the RFC 4511 SearchRequest protocol operation.
-// TimeLimitSeconds is deliberately an integer number of seconds, not a
-// time.Duration, so fractional or negative values cannot enter the wire.
-//
 // RFC 4511 section 4.5.1.
 type SearchRequest struct {
-	BaseObject       LDAPDN
-	Scope            SearchScope
-	DerefAliases     DerefAliases
-	SizeLimit        uint32
-	TimeLimitSeconds uint32
-	TypesOnly        bool
-	Filter           Filter
-	Attributes       []AttributeSelector
-	Extensions       []UnknownField
+	BaseObject   LDAPDN
+	Scope        SearchScope
+	DerefAliases DerefAliases
+	SizeLimit    uint32
+	TimeLimit    time.Duration
+	TypesOnly    bool
+	Filter       Filter
+	Attributes   []AttributeSelector
+	Extensions   []UnknownField
 }
 
 //revive:disable-next-line:exported
@@ -85,13 +83,11 @@ func (*SearchRequest) ProtocolIdentifier() ber.Identifier { return searchRequest
 //revive:disable-next-line:exported
 func (v *SearchRequest) AppendBER(dst []byte) ([]byte, error) {
 	start := len(dst)
-	if v == nil {
-		return dst, errors.New("arden: nil SearchRequest")
-	}
 	if err := validateDerefAliases(v.DerefAliases); err != nil {
 		return dst, err
 	}
-	if v.SizeLimit > math.MaxInt32 || v.TimeLimitSeconds > math.MaxInt32 {
+	timeLimit := v.TimeLimit / time.Second
+	if v.SizeLimit > math.MaxInt32 || timeLimit > math.MaxInt32 {
 		return dst, errors.New("arden: search size or time limit exceeds maxInt")
 	}
 	if v.Filter == nil {
@@ -110,7 +106,7 @@ func (v *SearchRequest) AppendBER(dst []byte) ([]byte, error) {
 	if contents, err = ber.AppendInteger(contents, int64(v.SizeLimit)); err != nil {
 		return dst[:start], err
 	}
-	if contents, err = ber.AppendInteger(contents, int64(v.TimeLimitSeconds)); err != nil {
+	if contents, err = ber.AppendInteger(contents, int64(timeLimit)); err != nil {
 		return dst[:start], err
 	}
 	if contents, err = ber.AppendBoolean(contents, v.TypesOnly); err != nil {
@@ -141,9 +137,6 @@ func (v *SearchRequest) AppendBER(dst []byte) ([]byte, error) {
 
 //revive:disable-next-line:exported
 func (v *SearchRequest) UnmarshalBER(r *ber.Reader) error {
-	if v == nil {
-		return nilReceiver("SearchRequest")
-	}
 	contents, err := r.Constructed(searchRequestIdentifier)
 	if err != nil {
 		return err
@@ -171,7 +164,7 @@ func (v *SearchRequest) UnmarshalBER(r *ber.Reader) error {
 	if err != nil {
 		return err
 	}
-	if sizeLimit < 0 || sizeLimit > math.MaxInt32 || timeLimit < 0 || timeLimit > math.MaxInt32 {
+	if sizeLimit < 0 || sizeLimit > math.MaxInt32 || timeLimit > math.MaxInt32 {
 		return errors.New("arden: search size or time limit is outside maxInt")
 	}
 	typesOnly, err := contents.Boolean()
@@ -199,15 +192,15 @@ func (v *SearchRequest) UnmarshalBER(r *ber.Reader) error {
 		return err
 	}
 	*v = SearchRequest{
-		BaseObject:       LDAPDN(string(baseObject)),
-		Scope:            SearchScope(scope),
-		DerefAliases:     DerefAliases(derefAliases),
-		SizeLimit:        uint32(sizeLimit),
-		TimeLimitSeconds: uint32(timeLimit),
-		TypesOnly:        typesOnly,
-		Filter:           filter,
-		Attributes:       attributes,
-		Extensions:       extensions,
+		BaseObject:   LDAPDN(string(baseObject)),
+		Scope:        SearchScope(scope),
+		DerefAliases: DerefAliases(derefAliases),
+		SizeLimit:    uint32(sizeLimit),
+		TimeLimit:    time.Duration(timeLimit) * time.Second,
+		TypesOnly:    typesOnly,
+		Filter:       filter,
+		Attributes:   attributes,
+		Extensions:   extensions,
 	}
 	return nil
 }
@@ -257,9 +250,6 @@ func (v SearchResultEntry) AppendBER(dst []byte) ([]byte, error) {
 
 //revive:disable-next-line:exported
 func (v *SearchResultEntry) UnmarshalBER(r *ber.Reader) error {
-	if v == nil {
-		return nilReceiver("SearchResultEntry")
-	}
 	contents, err := r.Constructed(searchEntryIdentifier)
 	if err != nil {
 		return err
@@ -323,9 +313,6 @@ func (v SearchResultReference) AppendBER(dst []byte) ([]byte, error) {
 
 //revive:disable-next-line:exported
 func (v *SearchResultReference) UnmarshalBER(r *ber.Reader) error {
-	if v == nil {
-		return nilReceiver("SearchResultReference")
-	}
 	contents, err := r.Constructed(searchReferenceIdentifier)
 	if err != nil {
 		return err
@@ -371,9 +358,6 @@ func (v SearchResultDone) AppendBER(dst []byte) ([]byte, error) {
 
 //revive:disable-next-line:exported
 func (v *SearchResultDone) UnmarshalBER(r *ber.Reader) error {
-	if v == nil {
-		return nilReceiver("SearchResultDone")
-	}
 	result, err := decodeResultResponse(r, searchDoneIdentifier)
 	if err != nil {
 		return err
@@ -398,9 +382,6 @@ type SearchResult struct {
 // UnmarshalBER decodes one SearchResult alternative based on its application
 // identifier. The receiver is unchanged if decoding fails.
 func (v *SearchResult) UnmarshalBER(r *ber.Reader) error {
-	if v == nil {
-		return nilReceiver("SearchResult")
-	}
 	id, err := r.PeekIdentifier()
 	if err != nil {
 		return err

@@ -37,9 +37,6 @@ func (a PartialAttribute) AppendBER(dst []byte) ([]byte, error) {
 
 //revive:disable-next-line:exported
 func (a *PartialAttribute) UnmarshalBER(r *ber.Reader) error {
-	if a == nil {
-		return errors.New("arden: nil PartialAttribute receiver")
-	}
 	typeValue, values, extensions, err := decodeAttribute(r, false)
 	if err != nil {
 		return err
@@ -55,9 +52,6 @@ func (a Attribute) AppendBER(dst []byte) ([]byte, error) {
 
 //revive:disable-next-line:exported
 func (a *Attribute) UnmarshalBER(r *ber.Reader) error {
-	if a == nil {
-		return errors.New("arden: nil Attribute receiver")
-	}
 	typeValue, values, extensions, err := decodeAttribute(r, true)
 	if err != nil {
 		return err

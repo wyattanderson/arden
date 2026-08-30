@@ -97,9 +97,6 @@ func (v LDAPResult) AppendBER(dst []byte) ([]byte, error) {
 
 //revive:disable-next-line:exported
 func (v *LDAPResult) UnmarshalBER(r *ber.Reader) error {
-	if v == nil {
-		return errors.New("arden: nil LDAPResult receiver")
-	}
 	contents, err := r.Sequence()
 	if err != nil {
 		return err

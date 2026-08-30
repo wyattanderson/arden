@@ -3,6 +3,7 @@ package rfc4511
 import (
 	"math"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -12,14 +13,14 @@ import (
 
 func TestSearchRequestRoundTripsBoundariesAndExtensibleScope(t *testing.T) {
 	request := &SearchRequest{
-		BaseObject:       LDAPDN("dc=example,dc=com"),
-		Scope:            SearchScope(99),
-		DerefAliases:     DerefAlways,
-		SizeLimit:        math.MaxInt32,
-		TimeLimitSeconds: math.MaxInt32,
-		TypesOnly:        true,
-		Filter:           Present{Attribute: AttributeDescription("objectClass")},
-		Attributes:       []AttributeSelector{AttributeSelector("cn"), AttributeSelector("+")},
+		BaseObject:   LDAPDN("dc=example,dc=com"),
+		Scope:        SearchScope(99),
+		DerefAliases: DerefAlways,
+		SizeLimit:    math.MaxInt32,
+		TimeLimit:    math.MaxInt32 * time.Second,
+		TypesOnly:    true,
+		Filter:       Present{Attribute: AttributeDescription("objectClass")},
+		Attributes:   []AttributeSelector{AttributeSelector("cn"), AttributeSelector("+")},
 	}
 	encoded, err := request.AppendBER(nil)
 	require.NoError(t, err)
@@ -31,11 +32,10 @@ func TestSearchRequestRoundTripsBoundariesAndExtensibleScope(t *testing.T) {
 func TestSearchRequestRejectsClosedEnumAndLimitOverflowAtomically(t *testing.T) {
 	validFilter := Present{Attribute: AttributeDescription("cn")}
 	for _, request := range []*SearchRequest{
-		nil,
 		{DerefAliases: DerefAliases(-1), Filter: validFilter},
 		{DerefAliases: DerefAliases(4), Filter: validFilter},
 		{SizeLimit: math.MaxInt32 + 1, Filter: validFilter},
-		{TimeLimitSeconds: math.MaxInt32 + 1, Filter: validFilter},
+		{TimeLimit: (math.MaxInt32 + 1) * time.Second, Filter: validFilter},
 		{},
 	} {
 		dst := []byte{0xde, 0xad}
@@ -52,6 +52,25 @@ func TestSearchRequestRejectsClosedEnumAndLimitOverflowAtomically(t *testing.T) 
 		prior := SearchRequest{BaseObject: LDAPDN("dc=keep"), Filter: validFilter}
 		requireDecodeError(t, encoded, &prior)
 		assert.Equal(t, "dc=keep", string(prior.BaseObject))
+	}
+}
+
+func TestSearchRequestTimeLimitUsesWholeSecondsWithoutSignValidation(t *testing.T) {
+	validFilter := Present{Attribute: AttributeDescription("cn")}
+	for _, test := range []struct {
+		input time.Duration
+		want  time.Duration
+	}{
+		{input: 1500 * time.Millisecond, want: time.Second},
+		{input: -1500 * time.Millisecond, want: -time.Second},
+		{input: math.MaxInt32*time.Second + 500*time.Millisecond, want: math.MaxInt32 * time.Second},
+	} {
+		request := &SearchRequest{TimeLimit: test.input, Filter: validFilter}
+		encoded, err := request.AppendBER(nil)
+		require.NoError(t, err)
+		var got SearchRequest
+		decode(t, encoded, &got)
+		assert.Equal(t, test.want, got.TimeLimit)
 	}
 }
 

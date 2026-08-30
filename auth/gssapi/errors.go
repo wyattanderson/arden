@@ -42,9 +42,6 @@ type Error struct {
 }
 
 func (e *Error) Error() string {
-	if e == nil {
-		return "arden/auth/gssapi: <nil GSS error>"
-	}
 	if e.MajorKnown {
 		return fmt.Sprintf("arden/auth/gssapi: GSS %s failed (major 0x%08x)", e.Operation, e.Major)
 	}
@@ -54,9 +51,6 @@ func (e *Error) Error() string {
 // Unwrap exposes the typed provider cause without including it in ordinary
 // formatted output.
 func (e *Error) Unwrap() error {
-	if e == nil {
-		return nil
-	}
 	return e.Err
 }
 
@@ -178,9 +172,6 @@ type NegotiationError struct {
 }
 
 func (e *NegotiationError) Error() string {
-	if e == nil {
-		return "arden/auth/gssapi: <nil negotiation error>"
-	}
 	return fmt.Sprintf("arden/auth/gssapi: %s: %s", e.Step, e.Failure)
 }
 

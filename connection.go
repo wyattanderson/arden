@@ -171,9 +171,7 @@ func (d *Dialer) dial(ctx context.Context, endpoint Endpoint, initializer connec
 	if err := endpoint.Validate(); err != nil {
 		return nil, nil, err
 	}
-	if d == nil {
-		d = new(Dialer)
-	}
+
 	options, err := d.Options.normalized()
 	if err != nil {
 		return nil, nil, err

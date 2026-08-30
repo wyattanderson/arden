@@ -37,9 +37,6 @@ func (*ModifyDNRequest) ProtocolIdentifier() ber.Identifier { return modifyDNReq
 //revive:disable-next-line:exported
 func (v *ModifyDNRequest) AppendBER(dst []byte) ([]byte, error) {
 	start := len(dst)
-	if v == nil {
-		return dst, errors.New("arden: nil ModifyDNRequest")
-	}
 	contents, err := ber.AppendOctetString(nil, []byte(v.Entry))
 	if err != nil {
 		return dst[:start], err
@@ -68,9 +65,6 @@ func (v *ModifyDNRequest) AppendBER(dst []byte) ([]byte, error) {
 
 //revive:disable-next-line:exported
 func (v *ModifyDNRequest) UnmarshalBER(r *ber.Reader) error {
-	if v == nil {
-		return nilReceiver("ModifyDNRequest")
-	}
 	contents, err := r.Constructed(modifyDNRequestIdentifier)
 	if err != nil {
 		return err
@@ -132,9 +126,6 @@ func (v ModifyDNResponse) AppendBER(dst []byte) ([]byte, error) {
 
 //revive:disable-next-line:exported
 func (v *ModifyDNResponse) UnmarshalBER(r *ber.Reader) error {
-	if v == nil {
-		return nilReceiver("ModifyDNResponse")
-	}
 	result, err := decodeResultResponse(r, modifyDNResponseIdentifier)
 	if err != nil {
 		return err

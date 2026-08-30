@@ -54,9 +54,6 @@ func (*AddRequest) ProtocolIdentifier() ber.Identifier { return addRequestIdenti
 //revive:disable-next-line:exported
 func (v *AddRequest) AppendBER(dst []byte) ([]byte, error) {
 	start := len(dst)
-	if v == nil {
-		return dst, errors.New("arden: nil AddRequest")
-	}
 	contents, err := ber.AppendOctetString(nil, []byte(v.Entry))
 	if err != nil {
 		return dst[:start], err
@@ -88,9 +85,6 @@ func (v *AddRequest) AppendBER(dst []byte) ([]byte, error) {
 //
 //revive:disable-next-line:exported
 func (v *AddRequest) UnmarshalBER(r *ber.Reader) error {
-	if v == nil {
-		return errors.New("arden: nil AddRequest receiver")
-	}
 	contents, err := r.Constructed(addRequestIdentifier)
 	if err != nil {
 		return err
@@ -149,9 +143,6 @@ func (v AddResponse) AppendBER(dst []byte) ([]byte, error) {
 
 //revive:disable-next-line:exported
 func (v *AddResponse) UnmarshalBER(r *ber.Reader) error {
-	if v == nil {
-		return errors.New("arden: nil AddResponse receiver")
-	}
 	contents, err := r.Constructed(addResponseIdentifier)
 	if err != nil {
 		return err

@@ -54,9 +54,6 @@ func (v SimpleAuthentication) AppendBER(dst []byte) ([]byte, error) {
 
 //revive:disable-next-line:exported
 func (v *SimpleAuthentication) UnmarshalBER(r *ber.Reader) error {
-	if v == nil {
-		return nilReceiver("SimpleAuthentication")
-	}
 	value, err := readImplicitOctets(r, simpleAuthenticationIdentifier)
 	if err != nil {
 		return err
@@ -108,9 +105,6 @@ func (v SASLAuthentication) AppendBER(dst []byte) ([]byte, error) {
 
 //revive:disable-next-line:exported
 func (v *SASLAuthentication) UnmarshalBER(r *ber.Reader) error {
-	if v == nil {
-		return nilReceiver("SASLAuthentication")
-	}
 	contents, err := r.Constructed(saslAuthenticationIdentifier)
 	if err != nil {
 		return err
@@ -188,9 +182,6 @@ func (*BindRequest) ProtocolIdentifier() ber.Identifier { return bindRequestIden
 //revive:disable-next-line:exported
 func (v *BindRequest) AppendBER(dst []byte) ([]byte, error) {
 	start := len(dst)
-	if v == nil {
-		return dst, errors.New("arden: nil BindRequest")
-	}
 	if v.Version < 1 || v.Version > 127 {
 		return dst, fmt.Errorf("arden: BindRequest version %d is outside [1, 127]", v.Version)
 	}
@@ -219,9 +210,6 @@ func (v *BindRequest) AppendBER(dst []byte) ([]byte, error) {
 
 //revive:disable-next-line:exported
 func (v *BindRequest) UnmarshalBER(r *ber.Reader) error {
-	if v == nil {
-		return nilReceiver("BindRequest")
-	}
 	contents, err := r.Constructed(bindRequestIdentifier)
 	if err != nil {
 		return err
@@ -289,9 +277,6 @@ func (v BindResponse) AppendBER(dst []byte) ([]byte, error) {
 
 //revive:disable-next-line:exported
 func (v *BindResponse) UnmarshalBER(r *ber.Reader) error {
-	if v == nil {
-		return nilReceiver("BindResponse")
-	}
 	contents, err := r.Constructed(bindResponseIdentifier)
 	if err != nil {
 		return err
@@ -344,9 +329,6 @@ func (*UnbindRequest) AppendBER(dst []byte) ([]byte, error) {
 
 //revive:disable-next-line:exported
 func (v *UnbindRequest) UnmarshalBER(r *ber.Reader) error {
-	if v == nil {
-		return nilReceiver("UnbindRequest")
-	}
 	value, err := r.Primitive(unbindRequestIdentifier)
 	if err != nil {
 		return err
