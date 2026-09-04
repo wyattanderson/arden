@@ -13,11 +13,10 @@ import (
 )
 
 func TestWhoAmI(t *testing.T) {
-	encoded, err := (rfc4511.ExtendedResponse{
+	encoded := (rfc4511.ExtendedResponse{
 		Result:        rfc4511.LDAPResult{ResultCode: rfc4511.ResultSuccess},
 		ResponseValue: []byte("dn:uid=alice,dc=example"), HasResponseValue: true,
-	}).AppendBER(nil)
-	require.NoError(t, err)
+	}).BERPacket().Encode()
 	executor := &executor{response: protocol.Response{
 		ProtocolID: rfc4511.ExtendedResponseIdentifier(), Protocol: encoded,
 	}}

@@ -16,8 +16,7 @@ func TestExtendedRequestValuePresence(t *testing.T) {
 		{Name: LDAPOID("1.2.3"), HasValue: true, Value: []byte{0x00, 0xff}},
 	}
 	for _, request := range tests {
-		encoded, err := request.AppendBER(nil)
-		require.NoError(t, err)
+		encoded := request.BERPacket().Encode()
 		var got ExtendedRequest
 		decode(t, encoded, &got)
 		assert.Equal(t, request, got)
@@ -32,8 +31,7 @@ func TestExtendedAndIntermediateResponseOptionalFields(t *testing.T) {
 		{Result: emptyResult(ResultSuccess), HasResponseName: true, ResponseName: LDAPOID("1.2.3"), HasResponseValue: true, ResponseValue: []byte{0x00, 0xff}},
 	}
 	for _, response := range responseTests {
-		encoded, err := response.AppendBER(nil)
-		require.NoError(t, err)
+		encoded := response.BERPacket().Encode()
 		var got ExtendedResponse
 		decode(t, encoded, &got)
 		assert.Equal(t, response, got)
@@ -46,8 +44,7 @@ func TestExtendedAndIntermediateResponseOptionalFields(t *testing.T) {
 		{HasResponseName: true, ResponseName: LDAPOID("1.2.3"), HasResponseValue: true, ResponseValue: []byte{0x00, 0xff}},
 	}
 	for _, response := range intermediateTests {
-		encoded, err := response.AppendBER(nil)
-		require.NoError(t, err)
+		encoded := response.BERPacket().Encode()
 		var got IntermediateResponse
 		decode(t, encoded, &got)
 		assert.Equal(t, response, got)
@@ -57,7 +54,7 @@ func TestExtendedAndIntermediateResponseOptionalFields(t *testing.T) {
 func TestExtendedResultChoiceDecodesAndExposesValue(t *testing.T) {
 	tests := []struct {
 		name  string
-		value ber.Marshaler
+		value ber.Packeter
 		check func(*testing.T, ExtendedResultValue)
 	}{
 		{"intermediate", IntermediateResponse{HasResponseValue: true, ResponseValue: []byte("continue")}, func(t *testing.T, value ExtendedResultValue) {
@@ -73,8 +70,7 @@ func TestExtendedResultChoiceDecodesAndExposesValue(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			encoded, err := test.value.AppendBER(nil)
-			require.NoError(t, err)
+			encoded := test.value.BERPacket().Encode()
 			var result ExtendedResult
 			decode(t, encoded, &result)
 			test.check(t, result.Value())
@@ -84,18 +80,18 @@ func TestExtendedResultChoiceDecodesAndExposesValue(t *testing.T) {
 }
 
 func TestExtendedTypesValidateNamesAndOrderingAtomically(t *testing.T) {
-	invalidMarshalers := []ber.Marshaler{
+	invalidPackets := []interface {
+		ber.Packeter
+		ber.Unmarshaler
+	}{
 		&ExtendedRequest{},
 		&ExtendedRequest{Name: LDAPOID("1")},
-		ExtendedResponse{HasResponseName: true},
-		ExtendedResponse{HasResponseName: true, ResponseName: LDAPOID("1..2")},
-		IntermediateResponse{HasResponseName: true},
+		&ExtendedResponse{HasResponseName: true},
+		&ExtendedResponse{HasResponseName: true, ResponseName: LDAPOID("1..2")},
+		&IntermediateResponse{HasResponseName: true},
 	}
-	for _, value := range invalidMarshalers {
-		dst := []byte{0xde, 0xad}
-		got, err := value.AppendBER(dst)
-		require.Error(t, err)
-		assert.Equal(t, dst, got)
+	for _, value := range invalidPackets {
+		requireDecodeError(t, value.BERPacket().Encode(), value)
 	}
 
 	requestDuplicate := extendedRequestWire(t,
@@ -129,22 +125,19 @@ func TestExtendedTypesPreserveTrailingExtensions(t *testing.T) {
 		{"request", extendedRequestWire(t, implicit(t, 0, []byte("1.2.3")), extension), func(encoded []byte) ([]byte, int) {
 			var got ExtendedRequest
 			decode(t, encoded, &got)
-			reencoded, err := got.AppendBER(nil)
-			require.NoError(t, err)
+			reencoded := got.BERPacket().Encode()
 			return reencoded, len(got.Extensions)
 		}},
 		{"response", extendedResponseWire(t, extension), func(encoded []byte) ([]byte, int) {
 			var got ExtendedResponse
 			decode(t, encoded, &got)
-			reencoded, err := got.AppendBER(nil)
-			require.NoError(t, err)
+			reencoded := got.BERPacket().Encode()
 			return reencoded, len(got.Extensions)
 		}},
 		{"intermediate", intermediateResponseWire(t, extension), func(encoded []byte) ([]byte, int) {
 			var got IntermediateResponse
 			decode(t, encoded, &got)
-			reencoded, err := got.AppendBER(nil)
-			require.NoError(t, err)
+			reencoded := got.BERPacket().Encode()
 			return reencoded, len(got.Extensions)
 		}},
 	}
@@ -163,8 +156,7 @@ func TestNoticeOfDisconnectionOID(t *testing.T) {
 
 func implicit(t *testing.T, number uint32, value []byte) []byte {
 	t.Helper()
-	encoded, err := ber.Primitive(ber.Identifier{Class: ber.ClassContextSpecific, Number: number}, value).AppendBER(nil)
-	require.NoError(t, err)
+	encoded := ber.Primitive(ber.Identifier{Class: ber.ClassContextSpecific, Number: number}, value).Encode()
 	return encoded
 }
 
@@ -190,7 +182,6 @@ func constructedFields(t *testing.T, id ber.Identifier, prefix []byte, fields ..
 	for _, field := range fields {
 		contents = append(contents, field...)
 	}
-	encoded, err := ber.WithContents(id, contents).AppendBER(nil)
-	require.NoError(t, err)
+	encoded := ber.WithContents(id, contents).Encode()
 	return encoded
 }

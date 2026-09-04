@@ -80,22 +80,6 @@ type SearchRequest struct {
 //revive:disable-next-line:exported
 func (*SearchRequest) ProtocolIdentifier() ber.Identifier { return searchRequestIdentifier }
 
-//revive:disable-next-line:exported
-func (v *SearchRequest) AppendBER(dst []byte) ([]byte, error) {
-	if err := validateDerefAliases(v.DerefAliases); err != nil {
-		return dst, err
-	}
-	timeLimit := v.TimeLimit / time.Second
-	if v.SizeLimit > math.MaxInt32 || timeLimit > math.MaxInt32 {
-		return dst, errors.New("arden: search size or time limit exceeds maxInt")
-	}
-	if v.Filter == nil {
-		return dst, errors.New("arden: SearchRequest has no filter")
-	}
-
-	return v.BERPacket().AppendBER(dst)
-}
-
 // BERPacket returns the search-request packet.
 func (v *SearchRequest) BERPacket() ber.Packet {
 	timeLimit := v.TimeLimit / time.Second
@@ -200,11 +184,6 @@ type SearchResultEntry struct {
 
 func (SearchResultEntry) isSearchResultValue() {}
 
-//revive:disable-next-line:exported
-func (v SearchResultEntry) AppendBER(dst []byte) ([]byte, error) {
-	return v.BERPacket().AppendBER(dst)
-}
-
 // BERPacket returns the search-result entry packet.
 func (v SearchResultEntry) BERPacket() ber.Packet {
 	return ber.Constructed(searchEntryIdentifier).
@@ -253,14 +232,6 @@ type SearchResultReference struct {
 
 func (SearchResultReference) isSearchResultValue() {}
 
-//revive:disable-next-line:exported
-func (v SearchResultReference) AppendBER(dst []byte) ([]byte, error) {
-	if len(v.URIs) == 0 {
-		return dst, errors.New("arden: search result reference requires at least one URI")
-	}
-	return v.BERPacket().AppendBER(dst)
-}
-
 // BERPacket returns the search-result reference packet.
 func (v SearchResultReference) BERPacket() ber.Packet {
 	return ber.Constructed(searchReferenceIdentifier).
@@ -308,11 +279,6 @@ func (SearchResultDone) isSearchResultValue() {}
 
 // LDAPResult returns the terminal search result carried by v.
 func (v SearchResultDone) LDAPResult() LDAPResult { return v.Result }
-
-//revive:disable-next-line:exported
-func (v SearchResultDone) AppendBER(dst []byte) ([]byte, error) {
-	return appendResultResponse(dst, searchDoneIdentifier, v.Result)
-}
 
 // BERPacket returns the search-result done packet.
 func (v SearchResultDone) BERPacket() ber.Packet {
@@ -388,7 +354,7 @@ func SearchResponsePattern() protocol.ResponsePattern[SearchResult] { return sea
 // NewSearchOperation creates the complete request declaration for a Search.
 // Search defaults to Abandon-style cancellation because it may stream for a
 // long time; the connection runtime owns the tombstone lifecycle.
-func NewSearchOperation(request *SearchRequest, controls []ber.Marshaler) (protocol.Operation[SearchResult], error) {
+func NewSearchOperation(request *SearchRequest, controls []ber.Packeter) (protocol.Operation[SearchResult], error) {
 	if request == nil {
 		return protocol.Operation[SearchResult]{}, errors.New("arden: nil SearchRequest")
 	}

@@ -27,10 +27,9 @@ func TestIdentifierBoundaries(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got, err := ber.AppendIdentifier(nil, test.id, math.MaxUint32)
-			require.NoError(t, err)
-			require.Equal(t, test.want, got)
-			e, err := ber.DecodeElement(append(got, 0), limits())
+			got := ber.WithContents(test.id, nil).Encode()
+			require.Equal(t, append(test.want, 0), got)
+			e, err := ber.DecodeElement(got, limits())
 			require.NoError(t, err)
 			assert.Equal(t, test.id, e.Identifier)
 		})
@@ -41,8 +40,7 @@ func TestLengthBoundaries(t *testing.T) {
 	for _, length := range []int{0, 127, 128, 255, 256, 65535, 65536} {
 		t.Run("length", func(t *testing.T) {
 			value := bytes.Repeat([]byte{0x42}, length)
-			encoded, err := ber.OctetString(value).AppendBER(nil)
-			require.NoError(t, err)
+			encoded := ber.OctetString(value).Encode()
 			r, err := ber.NewReader(encoded, limits())
 			require.NoError(t, err)
 			got, err := r.OctetString()
@@ -55,16 +53,14 @@ func TestLengthBoundaries(t *testing.T) {
 
 func TestPrimitiveRoundTrips(t *testing.T) {
 	for _, value := range []int64{math.MinInt64, -129, -128, -1, 0, 1, 127, 128, math.MaxInt64} {
-		encoded, err := ber.Integer(value).AppendBER(nil)
-		require.NoError(t, err)
+		encoded := ber.Integer(value).Encode()
 		r, err := ber.NewReader(encoded, limits())
 		require.NoError(t, err)
 		got, err := r.Integer()
 		require.NoError(t, err)
 		assert.Equal(t, value, got)
 	}
-	encoded, err := ber.Boolean(true).AppendBER(nil)
-	require.NoError(t, err)
+	encoded := ber.Boolean(true).Encode()
 	assert.Equal(t, []byte{1, 1, 0xff}, encoded)
 }
 

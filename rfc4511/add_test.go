@@ -27,8 +27,7 @@ func TestAddRequestRoundTripsAttributesAndCopiesValues(t *testing.T) {
 		},
 	}
 
-	encoded, err := request.AppendBER(nil)
-	require.NoError(t, err)
+	encoded := request.BERPacket().Encode()
 	var decoded AddRequest
 	decode(t, encoded, &decoded)
 	assert.Equal(t, *request, decoded)
@@ -44,15 +43,12 @@ func TestAddRequestRoundTripsAttributesAndCopiesValues(t *testing.T) {
 }
 
 func TestAddRequestRejectsInvalidAttributeAtomically(t *testing.T) {
-	dst := []byte{0xde, 0xad}
 	request := &AddRequest{
 		Attributes: []Attribute{{Type: AttributeDescription("cn")}},
 	}
-	got, err := request.AppendBER(dst)
-	require.Error(t, err)
-	assert.Equal(t, dst, got)
-
 	prior := AddRequest{Entry: LDAPDN("cn=keep")}
+	requireDecodeError(t, request.BERPacket().Encode(), &prior)
+	assert.Equal(t, "cn=keep", string(prior.Entry))
 	malformed := []byte{0x68, 0x09, 0x04, 0x00, 0x30, 0x05, 0x30, 0x03, 0x04, 0x01, 'c'}
 	r, err := ber.NewReader(malformed, ber.DefaultLimits())
 	require.NoError(t, err)
@@ -68,19 +64,15 @@ func TestAddResponsePreservesUnknownResultCode(t *testing.T) {
 	require.NoError(t, response.UnmarshalBER(r))
 	assert.Equal(t, ResultCode(70), response.Result.ResultCode)
 	assert.Equal(t, "taken", string(response.Result.DiagnosticMessage))
-	roundTrip, err := response.AppendBER(nil)
-	require.NoError(t, err)
+	roundTrip := response.BERPacket().Encode()
 	assert.Equal(t, encoded, roundTrip)
 }
 
 func TestAddResponseReferralValidationAndReceiverAtomicity(t *testing.T) {
-	dst := []byte{0xde, 0xad}
 	response := AddResponse{Result: LDAPResult{ResultCode: ResultReferral}}
-	got, err := response.AppendBER(dst)
-	require.Error(t, err)
-	assert.Equal(t, dst, got)
-
 	prior := AddResponse{Result: LDAPResult{ResultCode: ResultSuccess}}
+	requireDecodeError(t, response.BERPacket().Encode(), &prior)
+	assert.Equal(t, ResultSuccess, prior.Result.ResultCode)
 	malformed := []byte{0x69, 0x07, 0x0a, 0x01, 0x0a, 0x04, 0x00, 0x04, 0x00}
 	r, err := ber.NewReader(malformed, ber.DefaultLimits())
 	require.NoError(t, err)
@@ -103,7 +95,6 @@ func TestAddRequestPreservesTrailingExtension(t *testing.T) {
 	require.Len(t, request.Extensions, 1)
 	assert.Equal(t, ber.Identifier{Class: ber.ClassContextSpecific, Number: 3}, request.Extensions[0].Identifier())
 	assert.Equal(t, []byte{0x83, 0x01, 0x7f}, request.Extensions[0].Bytes())
-	roundTrip, err := request.AppendBER(nil)
-	require.NoError(t, err)
+	roundTrip := request.BERPacket().Encode()
 	assert.Equal(t, encoded, roundTrip)
 }

@@ -21,8 +21,7 @@ func TestBindRequestAuthenticationVariants(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			request := &BindRequest{Version: 3, Name: LDAPDN("cn=admin"), Authentication: test.auth}
-			encoded, err := request.AppendBER(nil)
-			require.NoError(t, err)
+			encoded := request.BERPacket().Encode()
 			var got BindRequest
 			decode(t, encoded, &got)
 			assert.Equal(t, request.Version, got.Version)
@@ -44,27 +43,28 @@ func TestBindRequestPreservesUnknownAuthentication(t *testing.T) {
 		encoded[i] = 0
 	}
 	assert.Equal(t, []byte{0x85, 0x02, 0x00, 0xff}, unknown.Raw())
-	reencoded, err := request.AppendBER(nil)
-	require.NoError(t, err)
+	reencoded := request.BERPacket().Encode()
 	assert.Equal(t, []byte{0x60, 0x09, 0x02, 0x01, 0x03, 0x04, 0x00, 0x85, 0x02, 0x00, 0xff}, reencoded)
 }
 
 func TestBindRequestValidationBoundariesAreAtomic(t *testing.T) {
 	for _, version := range []int64{1, 127} {
-		_, err := (&BindRequest{Version: version, Authentication: SimpleAuthentication{}}).AppendBER(nil)
-		require.NoError(t, err)
+		encoded := (&BindRequest{Version: version, Authentication: SimpleAuthentication{}}).BERPacket().Encode()
+		var got BindRequest
+		decode(t, encoded, &got)
+		assert.Equal(t, version, got.Version)
 	}
 	for _, request := range []*BindRequest{
 		{Version: 0, Authentication: SimpleAuthentication{}},
 		{Version: 128, Authentication: SimpleAuthentication{}},
-		{Version: 3},
 		{Version: 3, Authentication: SASLAuthentication{}},
 	} {
-		dst := []byte{0xde, 0xad}
-		got, err := request.AppendBER(dst)
-		require.Error(t, err)
-		assert.Equal(t, dst, got)
+		prior := BindRequest{Version: 9}
+		requireDecodeError(t, request.BERPacket().Encode(), &prior)
+		assert.Equal(t, int64(9), prior.Version)
 	}
+	// A BindRequest with no authentication choice.
+	requireDecodeError(t, []byte{0x60, 0x05, 0x02, 0x01, 0x03, 0x04, 0x00}, &BindRequest{})
 }
 
 func TestBindRequestRejectsDuplicateSASLCredentialsAtomically(t *testing.T) {
@@ -84,8 +84,7 @@ func TestBindAuthenticationExtensionBoundary(t *testing.T) {
 	sasl, ok := request.Authentication.(SASLAuthentication)
 	require.True(t, ok)
 	require.Len(t, sasl.Extensions, 1)
-	reencoded, err := request.AppendBER(nil)
-	require.NoError(t, err)
+	reencoded := request.BERPacket().Encode()
 	assert.Equal(t, encoded, reencoded)
 }
 
@@ -96,8 +95,7 @@ func TestBindResponseServerCredentialsPresence(t *testing.T) {
 		{Result: emptyResult(ResultSuccess), HasServerSASLCredentials: true, ServerSASLCredentials: []byte{0x00, 0xff}},
 	}
 	for _, response := range tests {
-		encoded, err := response.AppendBER(nil)
-		require.NoError(t, err)
+		encoded := response.BERPacket().Encode()
 		var got BindResponse
 		decode(t, encoded, &got)
 		assert.Equal(t, response, got)

@@ -36,9 +36,6 @@ func (testProtocol) ProtocolIdentifier() ber.Identifier { return requestID }
 func (testProtocol) BERPacket() ber.Packet {
 	return ber.Constructed(requestID).BERPacket()
 }
-func (testProtocol) AppendBER(dst []byte) ([]byte, error) {
-	return (testProtocol{}).BERPacket().AppendBER(dst)
-}
 
 func testOperation(t testing.TB) arden.Operation[testResponse] {
 	t.Helper()
@@ -175,10 +172,10 @@ func (s *testServer) serve(connection net.Conn, ordinal int) {
 				if i == s.responses-1 {
 					identifier = responseID
 				}
-				response, _ := ber.Sequence().
+				response := ber.Sequence().
 					Add(ber.Integer(messageID)).
 					Add(ber.Constructed(identifier)).
-					AppendBER(nil)
+					BERPacket().Encode()
 				_, _ = connection.Write(response)
 			}
 			writeMu.Unlock()

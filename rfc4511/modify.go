@@ -84,14 +84,6 @@ type Change struct {
 	Extensions   []UnknownField
 }
 
-//revive:disable-next-line:exported
-func (v Change) AppendBER(dst []byte) ([]byte, error) {
-	if len(v.Modification.Type) == 0 {
-		return dst, errors.New("arden: attribute type is empty")
-	}
-	return v.BERPacket().AppendBER(dst)
-}
-
 // BERPacket returns the modify change packet.
 func (v Change) BERPacket() ber.Packet {
 	return ber.Sequence().
@@ -132,11 +124,6 @@ type ModifyRequest struct {
 
 //revive:disable-next-line:exported
 func (*ModifyRequest) ProtocolIdentifier() ber.Identifier { return modifyRequestIdentifier }
-
-//revive:disable-next-line:exported
-func (v *ModifyRequest) AppendBER(dst []byte) ([]byte, error) {
-	return v.BERPacket().AppendBER(dst)
-}
 
 // BERPacket returns the modify-request packet.
 func (v *ModifyRequest) BERPacket() ber.Packet {
@@ -183,11 +170,6 @@ type ModifyResponse struct{ Result LDAPResult }
 // LDAPResult returns the operation result carried by v.
 func (v ModifyResponse) LDAPResult() LDAPResult { return v.Result }
 
-//revive:disable-next-line:exported
-func (v ModifyResponse) AppendBER(dst []byte) ([]byte, error) {
-	return appendResultResponse(dst, modifyResponseIdentifier, v.Result)
-}
-
 // BERPacket returns the modify-response packet.
 func (v ModifyResponse) BERPacket() ber.Packet {
 	return resultResponsePacket(modifyResponseIdentifier, v.Result)
@@ -207,7 +189,7 @@ func (v *ModifyResponse) UnmarshalBER(r *ber.Reader) error {
 func ModifyResponsePattern() protocol.ResponsePattern[ModifyResponse] { return modifyResponsePattern }
 
 // NewModifyOperation creates a complete Modify request declaration.
-func NewModifyOperation(request *ModifyRequest, controls []ber.Marshaler) (protocol.Operation[ModifyResponse], error) {
+func NewModifyOperation(request *ModifyRequest, controls []ber.Packeter) (protocol.Operation[ModifyResponse], error) {
 	if request == nil {
 		return protocol.Operation[ModifyResponse]{}, errors.New("arden: nil ModifyRequest")
 	}

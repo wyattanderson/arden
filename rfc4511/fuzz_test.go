@@ -33,17 +33,15 @@ func FuzzRFC4511Unmarshalers(f *testing.F) {
 			r, err := ber.NewReader(data, ber.DefaultLimits())
 			if err == nil {
 				if decoder.UnmarshalBER(r) == nil && r.RequireEmpty() == nil {
-					marshaler, ok := decoder.(ber.Marshaler)
+					packet, ok := decoder.(ber.Packeter)
 					require.True(t, ok)
-					canonical, err := marshaler.AppendBER(nil)
-					require.NoError(t, err)
+					canonical := packet.BERPacket().Encode()
 					roundTripped := reflect.New(reflect.TypeOf(decoder).Elem()).Interface().(ber.Unmarshaler)
 					roundTripReader, err := ber.NewReader(canonical, ber.DefaultLimits())
 					require.NoError(t, err)
 					require.NoError(t, roundTripped.UnmarshalBER(roundTripReader))
 					require.NoError(t, roundTripReader.RequireEmpty())
-					reencoded, err := roundTripped.(ber.Marshaler).AppendBER(nil)
-					require.NoError(t, err)
+					reencoded := roundTripped.(ber.Packeter).BERPacket().Encode()
 					require.Equal(t, canonical, reencoded)
 				}
 			}

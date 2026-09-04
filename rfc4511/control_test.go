@@ -21,16 +21,14 @@ func TestControlOptionalFieldSemantics(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			encoded, err := test.in.AppendBER(nil)
-			require.NoError(t, err)
+			encoded := test.in.BERPacket().Encode()
 			var got Control
 			decode(t, encoded, &got)
 			assert.Equal(t, test.in, got)
 		})
 	}
 
-	encoded, err := (Control{Type: LDAPOID("1.2.3")}).AppendBER(nil)
-	require.NoError(t, err)
+	encoded := (Control{Type: LDAPOID("1.2.3")}).BERPacket().Encode()
 	assert.Equal(t, []byte{0x30, 0x07, 0x04, 0x05, '1', '.', '2', '.', '3'}, encoded)
 }
 
@@ -40,10 +38,9 @@ func TestControlValidationAndFieldOrdering(t *testing.T) {
 		{Type: LDAPOID("1")},
 		{Type: LDAPOID("1..2")},
 	} {
-		dst := []byte{0xde, 0xad}
-		got, err := control.AppendBER(dst)
-		require.Error(t, err)
-		assert.Equal(t, dst, got)
+		prior := Control{Type: LDAPOID("9.9")}
+		requireDecodeError(t, control.BERPacket().Encode(), &prior)
+		assert.Equal(t, LDAPOID("9.9"), prior.Type)
 	}
 
 	malformed := [][]byte{

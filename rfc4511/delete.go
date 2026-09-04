@@ -26,11 +26,6 @@ type DeleteRequest struct{ Entry LDAPDN }
 //revive:disable-next-line:exported
 func (*DeleteRequest) ProtocolIdentifier() ber.Identifier { return deleteRequestIdentifier }
 
-//revive:disable-next-line:exported
-func (v *DeleteRequest) AppendBER(dst []byte) ([]byte, error) {
-	return v.BERPacket().AppendBER(dst)
-}
-
 // BERPacket returns the delete-request packet.
 func (v *DeleteRequest) BERPacket() ber.Packet {
 	return ber.Primitive(deleteRequestIdentifier, []byte(v.Entry))
@@ -52,11 +47,6 @@ type DeleteResponse struct{ Result LDAPResult }
 // LDAPResult returns the operation result carried by v.
 func (v DeleteResponse) LDAPResult() LDAPResult { return v.Result }
 
-//revive:disable-next-line:exported
-func (v DeleteResponse) AppendBER(dst []byte) ([]byte, error) {
-	return appendResultResponse(dst, deleteResponseIdentifier, v.Result)
-}
-
 // BERPacket returns the delete-response packet.
 func (v DeleteResponse) BERPacket() ber.Packet {
 	return resultResponsePacket(deleteResponseIdentifier, v.Result)
@@ -76,7 +66,7 @@ func (v *DeleteResponse) UnmarshalBER(r *ber.Reader) error {
 func DeleteResponsePattern() protocol.ResponsePattern[DeleteResponse] { return deleteResponsePattern }
 
 // NewDeleteOperation creates a complete Delete request declaration.
-func NewDeleteOperation(request *DeleteRequest, controls []ber.Marshaler) (protocol.Operation[DeleteResponse], error) {
+func NewDeleteOperation(request *DeleteRequest, controls []ber.Packeter) (protocol.Operation[DeleteResponse], error) {
 	if request == nil {
 		return protocol.Operation[DeleteResponse]{}, errors.New("arden: nil DeleteRequest")
 	}

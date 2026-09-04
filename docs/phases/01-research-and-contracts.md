@@ -28,7 +28,7 @@ dump.
 - Package names and allowed dependency directions.
 - BER identifier representation.
 - Owned response buffers for the initial API.
-- Append-style marshaling and bounded-reader decoding interfaces.
+- Packet-oriented encoding and bounded-reader decoding interfaces.
 - Operation request shape and declarative response pattern.
 - Behavior for invalid response tags: retire the connection.
 - Message ID allocation and non-reuse rule.

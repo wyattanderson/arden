@@ -114,15 +114,13 @@ func TestSimpleBindRejectsAmbiguousEmptyAuthentication(t *testing.T) {
 
 func bindResponse(t *testing.T, code rfc4511.ResultCode, diagnostic []byte) arden.Response {
 	t.Helper()
-	protocol, err := (rfc4511.BindResponse{Result: rfc4511.LDAPResult{
+	bind := rfc4511.BindResponse{Result: rfc4511.LDAPResult{
 		ResultCode: code, DiagnosticMessage: rfc4511.LDAPString(diagnostic),
-	}}).AppendBER(nil)
-	require.NoError(t, err)
-	message, err := ber.Sequence().
+	}}
+	message := ber.Sequence().
 		Add(ber.Integer(1)).
-		Add(ber.Encoded(protocol)).
-		AppendBER(nil)
-	require.NoError(t, err)
+		Add(bind).
+		BERPacket().Encode()
 	response, err := arden.ParseResponse(message, ber.DefaultLimits())
 	require.NoError(t, err)
 	return response

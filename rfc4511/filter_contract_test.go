@@ -34,13 +34,11 @@ func TestFilterAlternativesDispatchToConcreteTypes(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			request := &SearchRequest{Filter: test.in}
-			encoded, err := request.AppendBER(nil)
-			require.NoError(t, err)
+			encoded := request.BERPacket().Encode()
 			var got SearchRequest
 			decode(t, encoded, &got)
 			assert.IsType(t, test.out, got.Filter)
-			reencoded, err := got.AppendBER(nil)
-			require.NoError(t, err)
+			reencoded := got.BERPacket().Encode()
 			assert.Equal(t, encoded, reencoded)
 		})
 	}
@@ -55,8 +53,7 @@ func TestFilterExtensionBoundary(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, ber.Identifier{Class: ber.ClassContextSpecific, Constructed: true, Number: 42}, unknown.FilterIdentifier())
 	assert.Equal(t, unknownWire, unknown.Raw())
-	reencoded, err := request.AppendBER(nil)
-	require.NoError(t, err)
+	reencoded := request.BERPacket().Encode()
 	assert.Equal(t, requestWire, reencoded)
 }
 
@@ -71,18 +68,17 @@ func TestSubstringFilterOrderingRejections(t *testing.T) {
 		{context(2, "z"), context(2, "x")},
 	}
 	for _, parts := range tests {
-		encoded, err := ber.Constructed(ber.Identifier{Class: ber.ClassContextSpecific, Number: 4}).
+		encoded := ber.Constructed(ber.Identifier{Class: ber.ClassContextSpecific, Number: 4}).
 			Add(ber.OctetString("cn")).
 			Add(ber.Sequence().Add(parts...)).
-			AppendBER(nil)
-		require.NoError(t, err)
+			BERPacket().Encode()
 		requireDecodeError(t, encoded, &SubstringFilter{})
 	}
 }
 
 func searchRequestWithFilter(t *testing.T, filter []byte) []byte {
 	t.Helper()
-	encoded, err := ber.Constructed(SearchRequestIdentifier()).
+	encoded := ber.Constructed(SearchRequestIdentifier()).
 		Add(
 			ber.OctetString([]byte(nil)),
 			ber.Enumerated(0),
@@ -93,7 +89,6 @@ func searchRequestWithFilter(t *testing.T, filter []byte) []byte {
 		).
 		Add(ber.Encoded(filter)).
 		Add(ber.Sequence()).
-		AppendBER(nil)
-	require.NoError(t, err)
+		BERPacket().Encode()
 	return encoded
 }

@@ -22,7 +22,7 @@ const MaxMessageID MessageID = 1<<31 - 1
 //
 //revive:disable-next-line:exported
 type ProtocolOperation interface {
-	ber.Marshaler
+	ber.Packeter
 	ProtocolIdentifier() ber.Identifier
 }
 
@@ -211,7 +211,7 @@ type OperationMetadata struct {
 // connection runtime. Applications normally construct Operation[T] instead.
 type UntypedOperation struct {
 	Protocol     ProtocolOperation
-	Controls     []ber.Marshaler
+	Controls     []ber.Packeter
 	Responses    FramingPattern
 	Cancellation CancellationMode
 	Metadata     OperationMetadata
@@ -249,7 +249,7 @@ type AnyOperation interface {
 // Operation is a fully declared request whose response type is T.
 type Operation[T any] struct {
 	Protocol     ProtocolOperation
-	Controls     []ber.Marshaler
+	Controls     []ber.Packeter
 	Responses    ResponsePattern[T]
 	Cancellation CancellationMode
 	Metadata     OperationMetadata

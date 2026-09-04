@@ -80,14 +80,6 @@ type ResultResponse interface {
 	LDAPResult() LDAPResult
 }
 
-//revive:disable-next-line:exported
-func (v LDAPResult) AppendBER(dst []byte) ([]byte, error) {
-	if err := v.validateReferral(); err != nil {
-		return dst, err
-	}
-	return v.BERPacket().AppendBER(dst)
-}
-
 // BERPacket returns the LDAP result packet.
 func (v LDAPResult) BERPacket() ber.Packet {
 	result := ber.Sequence()
@@ -109,7 +101,7 @@ func (v *LDAPResult) UnmarshalBER(r *ber.Reader) error {
 	return nil
 }
 
-// appendPrefix encodes only the LDAPResult fields which can be embedded into
+// addPrefix adds only the LDAPResult fields which can be embedded into
 // BindResponse and ExtendedResponse before their operation-specific fields.
 func (v LDAPResult) addPrefix(dst *ber.Envelope) {
 	dst.Add(

@@ -34,11 +34,6 @@ type ModifyDNRequest struct {
 //revive:disable-next-line:exported
 func (*ModifyDNRequest) ProtocolIdentifier() ber.Identifier { return modifyDNRequestIdentifier }
 
-//revive:disable-next-line:exported
-func (v *ModifyDNRequest) AppendBER(dst []byte) ([]byte, error) {
-	return v.BERPacket().AppendBER(dst)
-}
-
 // BERPacket returns the modify-DN request packet.
 func (v *ModifyDNRequest) BERPacket() ber.Packet {
 	request := ber.Constructed(modifyDNRequestIdentifier).
@@ -109,11 +104,6 @@ type ModifyDNResponse struct{ Result LDAPResult }
 // LDAPResult returns the operation result carried by v.
 func (v ModifyDNResponse) LDAPResult() LDAPResult { return v.Result }
 
-//revive:disable-next-line:exported
-func (v ModifyDNResponse) AppendBER(dst []byte) ([]byte, error) {
-	return appendResultResponse(dst, modifyDNResponseIdentifier, v.Result)
-}
-
 // BERPacket returns the modify-DN response packet.
 func (v ModifyDNResponse) BERPacket() ber.Packet {
 	return resultResponsePacket(modifyDNResponseIdentifier, v.Result)
@@ -135,7 +125,7 @@ func ModifyDNResponsePattern() protocol.ResponsePattern[ModifyDNResponse] {
 }
 
 // NewModifyDNOperation creates a complete Modify DN request declaration.
-func NewModifyDNOperation(request *ModifyDNRequest, controls []ber.Marshaler) (protocol.Operation[ModifyDNResponse], error) {
+func NewModifyDNOperation(request *ModifyDNRequest, controls []ber.Packeter) (protocol.Operation[ModifyDNResponse], error) {
 	if request == nil {
 		return protocol.Operation[ModifyDNResponse]{}, errors.New("arden: nil ModifyDNRequest")
 	}

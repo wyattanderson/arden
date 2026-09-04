@@ -90,8 +90,7 @@ func ldapMessage(t *testing.T, messageID int64, protocol []byte, controlsAndExte
 			message.Add(ber.Encoded(extension))
 		}
 	}
-	encoded, err := message.AppendBER(nil)
-	require.NoError(t, err)
+	encoded := message.BERPacket().Encode()
 	return encoded
 }
 
@@ -100,9 +99,6 @@ func ldapMessageRaw(parts ...[]byte) []byte {
 	for _, part := range parts {
 		message.Add(ber.Encoded(part))
 	}
-	encoded, err := message.AppendBER(nil)
-	if err != nil {
-		panic(err)
-	}
+	encoded := message.BERPacket().Encode()
 	return encoded
 }

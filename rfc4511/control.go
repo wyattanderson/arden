@@ -20,17 +20,6 @@ type Control struct {
 	Extensions  []UnknownField
 }
 
-//revive:disable-next-line:exported
-func (v Control) AppendBER(dst []byte) ([]byte, error) {
-	if err := requireNonEmpty("control type", v.Type); err != nil {
-		return dst, err
-	}
-	if err := validateLDAPOID(v.Type); err != nil {
-		return dst, err
-	}
-	return v.BERPacket().AppendBER(dst)
-}
-
 // BERPacket returns the control packet.
 func (v Control) BERPacket() ber.Packet {
 	control := ber.Sequence().Add(ber.OctetString(v.Type))

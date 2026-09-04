@@ -54,9 +54,6 @@ func (u *rawUnmarshaler) UnmarshalBER(r *ber.Reader) error {
 
 func (o rawOperation) ProtocolIdentifier() ber.Identifier { return o.id }
 func (o rawOperation) BERPacket() ber.Packet              { return ber.Encoded(o.value) }
-func (o rawOperation) AppendBER(dst []byte) ([]byte, error) {
-	return append(dst, o.value...), nil
-}
 
 func TestResponsePatternIsImmutableAndTagOnly(t *testing.T) {
 	continuing := []ber.Identifier{searchEntry, searchRef}
@@ -99,8 +96,7 @@ func TestResponsePatternDecodesToNewTypedPointer(t *testing.T) {
 		Complete: []ber.Identifier{typedResponse},
 	})
 	require.NoError(t, err)
-	encoded, err := ber.Primitive(typedResponse, []byte("decoded")).AppendBER(nil)
-	require.NoError(t, err)
+	encoded := ber.Primitive(typedResponse, []byte("decoded")).Encode()
 
 	decoded, err := pattern.Decode(arden.Response{ProtocolID: typedResponse, Protocol: encoded}, ber.DefaultLimits())
 	require.NoError(t, err)
@@ -161,8 +157,7 @@ func TestCompileOnlyContracts(t *testing.T) {
 
 func TestResponseUnmarshalProtocol(t *testing.T) {
 	id := ber.Identifier{Class: ber.ClassApplication, Number: 9}
-	protocol, err := ber.Primitive(id, []byte("result")).AppendBER(nil)
-	require.NoError(t, err)
+	protocol := ber.Primitive(id, []byte("result")).Encode()
 	response := arden.Response{
 		MessageID:  7,
 		ProtocolID: id,

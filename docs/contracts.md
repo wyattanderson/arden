@@ -1,4 +1,4 @@
-# Phase 1 frozen contracts
+# Public contracts
 
 ## Package boundaries
 
@@ -18,14 +18,14 @@ imports `ber` and `protocol`. The root generic client and connection runtime
 compose those packages. Extensions may use `protocol` and `rfc4511` directly,
 without importing the root client.
 Hand-authored built-ins and external extension values implement the same
-`ber.Marshaler`, `ber.Unmarshaler`, and `protocol.ProtocolOperation` contracts.
+`ber.Packeter`, `ber.Unmarshaler`, and `protocol.ProtocolOperation` contracts.
 Built-ins have no internal runtime access or registration privilege.
 Optional adapters may add dependencies; the runtime remains
 standard-library-only.
 
 ## Public shapes
 
-The Phase 1 compile-checked definitions live in `ber/identifier.go`,
+The compile-checked definitions live in `ber/packet.go`, `ber/identifier.go`,
 `operation.go`, `endpoint.go`, `errors.go`, `trace.go`, and
 `pool/selection.go`.
 
@@ -33,8 +33,12 @@ The Phase 1 compile-checked definitions live in `ber/identifier.go`,
   lossless, comparable, supports high-tag-number form, and does not conflate a
   tag number with its class/form bits. Phase 2 will reject encoded tag numbers
   that exceed configured limits before narrowing to `uint32`.
-- Marshaling is append-style: `AppendBER(dst) (dst, error)`. Failure leaves the
-  input slice unchanged. The Phase 2 reader contract is a concrete bounded
+- Encoding is packet-oriented: `BERPacket() ber.Packet` constructs a value,
+  `Envelope.Add` composes children, and `Packet.Encode() []byte` serializes it
+  into a new slice without an error result. `Packet.AppendTo(dst) []byte`
+  appends to an existing buffer. Construction assumes valid input; it does not
+  validate RFC semantics or re-decode children. Serialization preserves the
+  destination prefix and may reuse its capacity. The reader is a concrete bounded
   cursor over caller-owned bytes: constructing it requires validated limits;
   entering a constructed element returns a child reader limited to that
   element; primitive reads advance only on success; typed `UnmarshalBER`

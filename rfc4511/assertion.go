@@ -14,14 +14,6 @@ type AttributeValueAssertion struct {
 	Extensions []UnknownField
 }
 
-//revive:disable-next-line:exported
-func (v AttributeValueAssertion) AppendBER(dst []byte) ([]byte, error) {
-	if err := requireNonEmpty("attribute description", v.Type); err != nil {
-		return dst, err
-	}
-	return v.BERPacket().AppendBER(dst)
-}
-
 // BERPacket returns the attribute-value assertion packet.
 func (v AttributeValueAssertion) BERPacket() ber.Packet {
 	return ber.Sequence().

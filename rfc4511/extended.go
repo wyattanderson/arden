@@ -45,17 +45,6 @@ type ExtendedRequest struct {
 //revive:disable-next-line:exported
 func (*ExtendedRequest) ProtocolIdentifier() ber.Identifier { return extendedRequestIdentifier }
 
-//revive:disable-next-line:exported
-func (v *ExtendedRequest) AppendBER(dst []byte) ([]byte, error) {
-	if err := requireNonEmpty("extended request name", v.Name); err != nil {
-		return dst, err
-	}
-	if err := validateLDAPOID(v.Name); err != nil {
-		return dst, err
-	}
-	return v.BERPacket().AppendBER(dst)
-}
-
 // BERPacket returns the extended-request packet.
 func (v *ExtendedRequest) BERPacket() ber.Packet {
 	request := ber.Constructed(extendedRequestIdentifier).
@@ -129,25 +118,6 @@ func (ExtendedResponse) isExtendedResultValue() {}
 
 // LDAPResult returns the operation result carried by v.
 func (v ExtendedResponse) LDAPResult() LDAPResult { return v.Result }
-
-//revive:disable-next-line:exported
-func (v ExtendedResponse) AppendBER(dst []byte) ([]byte, error) {
-	if len(v.Result.Extensions) != 0 {
-		return dst, errors.New("arden: ExtendedResponse result extensions must be response extensions")
-	}
-	if v.HasResponseName {
-		if err := requireNonEmpty("extended response name", v.ResponseName); err != nil {
-			return dst, err
-		}
-		if err := validateLDAPOID(v.ResponseName); err != nil {
-			return dst, err
-		}
-	}
-	if err := v.Result.validateReferral(); err != nil {
-		return dst, err
-	}
-	return v.BERPacket().AppendBER(dst)
-}
 
 // BERPacket returns the extended-response packet.
 func (v ExtendedResponse) BERPacket() ber.Packet {
@@ -232,19 +202,6 @@ type IntermediateResponse struct {
 }
 
 func (IntermediateResponse) isExtendedResultValue() {}
-
-//revive:disable-next-line:exported
-func (v IntermediateResponse) AppendBER(dst []byte) ([]byte, error) {
-	if v.HasResponseName {
-		if err := requireNonEmpty("intermediate response name", v.ResponseName); err != nil {
-			return dst, err
-		}
-		if err := validateLDAPOID(v.ResponseName); err != nil {
-			return dst, err
-		}
-	}
-	return v.BERPacket().AppendBER(dst)
-}
 
 // BERPacket returns the intermediate-response packet.
 func (v IntermediateResponse) BERPacket() ber.Packet {
@@ -364,7 +321,7 @@ func ExtendedResponsePattern() protocol.ResponsePattern[ExtendedResult] {
 }
 
 // NewExtendedOperation creates a complete Extended request declaration.
-func NewExtendedOperation(request *ExtendedRequest, controls []ber.Marshaler) (protocol.Operation[ExtendedResult], error) {
+func NewExtendedOperation(request *ExtendedRequest, controls []ber.Packeter) (protocol.Operation[ExtendedResult], error) {
 	if request == nil {
 		return protocol.Operation[ExtendedResult]{}, errors.New("arden: nil ExtendedRequest")
 	}

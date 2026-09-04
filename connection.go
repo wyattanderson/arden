@@ -509,45 +509,27 @@ func isAssociationChanging(id ber.Identifier) bool {
 }
 
 func encodeLDAPRequest(id MessageID, op UntypedOperation, limits ber.Limits) ([]byte, error) {
-	protocol, err := op.Protocol.AppendBER(nil)
-	if err != nil {
-		return nil, err
-	}
-	element, err := ber.DecodeElement(protocol, limits)
-	if err != nil {
-		return nil, fmt.Errorf("arden: request protocolOp: %w", err)
-	}
-	if got, want := element.Identifier, op.Protocol.ProtocolIdentifier(); got != want {
-		return nil, fmt.Errorf("arden: encoded request identifier %s does not match declared identifier %s", got, want)
-	}
-
 	message := ber.Sequence().
 		Add(ber.Integer(id)).
-		Add(ber.Encoded(protocol))
+		Add(op.Protocol)
 	if len(op.Controls) != 0 {
-		controls := ber.Constructed(controlsIdentifier)
-		for i, control := range op.Controls {
-			encoded, err := control.AppendBER(nil)
-			if err != nil {
-				return nil, fmt.Errorf("arden: control %d: %w", i, err)
-			}
-			element, err := ber.DecodeElement(encoded, limits)
-			if err != nil {
-				return nil, fmt.Errorf("arden: control %d: %w", i, err)
-			}
-			if element.Identifier != ber.SequenceIdentifier {
-				return nil, fmt.Errorf("arden: control %d identifier %s is not a SEQUENCE", i, element.Identifier)
-			}
-			controls.Add(ber.Encoded(encoded))
-		}
-		message.Add(controls)
+		message.Add(ber.Constructed(controlsIdentifier).Add(op.Controls...))
 	}
-	encoded, err := message.AppendBER(nil)
-	if err != nil {
-		return nil, err
-	}
+	encoded := message.BERPacket().Encode()
 	if len(encoded) > limits.MaxFrameBytes {
 		return nil, &LimitError{Limit: "request frame bytes", Value: uint64(len(encoded)), Max: uint64(limits.MaxFrameBytes)}
+	}
+	// Requests and responses share the LDAPMessage envelope. Validate the
+	// completed frame at the transport boundary, including opaque packets.
+	envelope, err := parseOwnedResponse(encoded, limits)
+	if err != nil {
+		return nil, fmt.Errorf("arden: request envelope: %w", err)
+	}
+	if got, want := envelope.ProtocolID, op.Protocol.ProtocolIdentifier(); got != want {
+		return nil, fmt.Errorf("arden: encoded request identifier %s does not match declared identifier %s", got, want)
+	}
+	if len(envelope.Controls) != len(op.Controls) || len(envelope.Extensions) != 0 {
+		return nil, errors.New("arden: request packets must each encode exactly one value")
 	}
 	return encoded, nil
 }
@@ -924,12 +906,7 @@ func (c *Conn) sendAbandon(target *pendingOperation) {
 		return
 	}
 
-	message, err := encodeAbandonRequest(abandonID, target.id)
-	if err != nil {
-		c.releaseReserved(abandonID)
-		c.retire(&ProtocolError{Kind: ProtocolEnvelope, MessageID: target.id, Err: err})
-		return
-	}
+	message := encodeInternalRequest(abandonID, &rfc4511.AbandonRequest{Target: target.id})
 	ctx, cancel := context.WithTimeout(context.Background(), c.options.CancellationWriteTimeout)
 	defer cancel()
 	if err := c.acquireWriter(ctx); err != nil {
@@ -953,7 +930,7 @@ func (c *Conn) sendAbandon(target *pendingOperation) {
 	target.signalReady()
 	c.mu.Unlock()
 
-	_, err = c.writeAll(ctx, message)
+	_, err := c.writeAll(ctx, message)
 	c.releaseWriter()
 	c.releaseReserved(abandonID)
 	if err != nil {
@@ -961,19 +938,11 @@ func (c *Conn) sendAbandon(target *pendingOperation) {
 	}
 }
 
-func encodeAbandonRequest(messageID, target MessageID) ([]byte, error) {
-	protocolValue, err := (&rfc4511.AbandonRequest{Target: target}).AppendBER(nil)
-	if err != nil {
-		return nil, err
-	}
-	return encodeInternalRequest(messageID, protocolValue)
-}
-
-func encodeInternalRequest(messageID MessageID, protocol []byte) ([]byte, error) {
+func encodeInternalRequest(messageID MessageID, operation ber.Packeter) []byte {
 	return ber.Sequence().
 		Add(ber.Integer(messageID)).
-		Add(ber.Encoded(protocol)).
-		AppendBER(nil)
+		Add(operation).
+		BERPacket().Encode()
 }
 
 func (c *Conn) readLoop() {
@@ -1246,8 +1215,7 @@ func (c *Conn) CloseContext(ctx context.Context) error {
 		id, ok := c.tryReserveMessageIDLocked()
 		c.mu.Unlock()
 		if ok {
-			protocolValue, _ := (&rfc4511.UnbindRequest{}).AppendBER(nil)
-			message, _ := encodeInternalRequest(id, protocolValue)
+			message := encodeInternalRequest(id, &rfc4511.UnbindRequest{})
 			_, closeErr = c.writeAll(ctx, message)
 			c.releaseReserved(id)
 		}

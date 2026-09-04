@@ -44,7 +44,7 @@ func NewClient(executor Executor) *Client {
 // RequestOption adds an LDAP control to an ordinary operation.
 type RequestOption interface{ applyRequest(*requestOptions) }
 
-type requestOptions struct{ controls []ber.Marshaler }
+type requestOptions struct{ controls []ber.Packeter }
 
 type controlOption struct{ control rfc4511.Control }
 
@@ -376,11 +376,7 @@ func (r *Entries) startPage(cookie []byte) error {
 	}
 	controls := slices.Clone(r.options.controls)
 	if r.request.PageSize > 0 {
-		control, err := newPagedResultsControl(r.request.PageSize, cookie)
-		if err != nil {
-			return err
-		}
-		controls = append(controls, control)
+		controls = append(controls, newPagedResultsControl(r.request.PageSize, cookie))
 	}
 	request := r.request.protocolRequest()
 	operation, err := rfc4511.NewSearchOperation(&request, controls)
@@ -400,7 +396,7 @@ func (r *Entries) closeStream() error {
 	return stream.Close()
 }
 
-func requestControls(options []RequestOption) []ber.Marshaler {
+func requestControls(options []RequestOption) []ber.Packeter {
 	var applied requestOptions
 	for _, option := range options {
 		if option != nil {
@@ -532,14 +528,11 @@ func decodeControls(elements []ber.Element, limits ber.Limits) ([]rfc4511.Contro
 	return controls, nil
 }
 
-func newPagedResultsControl(size uint32, cookie []byte) (rfc4511.Control, error) {
-	value, err := ber.Sequence().
+func newPagedResultsControl(size uint32, cookie []byte) rfc4511.Control {
+	value := ber.Sequence().
 		Add(ber.Integer(size), ber.OctetString(cookie)).
-		AppendBER(nil)
-	if err != nil {
-		return rfc4511.Control{}, err
-	}
-	return rfc4511.Control{Type: pagedResultsOID, Value: value, HasValue: true}, nil
+		BERPacket().Encode()
+	return rfc4511.Control{Type: pagedResultsOID, Value: value, HasValue: true}
 }
 
 func pagedResultsCookie(controls []rfc4511.Control, limits ber.Limits) ([]byte, error) {

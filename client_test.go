@@ -153,10 +153,8 @@ func TestClientExecuteStreamDecodesResponsesAndControls(t *testing.T) {
 }
 
 func TestClientSearchFollowsPagedResultsCookies(t *testing.T) {
-	firstControl, err := newPagedResultsControl(2, []byte("next"))
-	require.NoError(t, err)
-	secondControl, err := newPagedResultsControl(2, nil)
-	require.NoError(t, err)
+	firstControl := newPagedResultsControl(2, []byte("next"))
+	secondControl := newPagedResultsControl(2, nil)
 	executor := &scriptedExecutor{pages: [][]Response{
 		{
 			protocolResponse(t, rfc4511.SearchResultEntryIdentifier(), rfc4511.SearchResultEntry{
@@ -246,19 +244,17 @@ func (s *scriptedResponseStream) Close() error {
 	return nil
 }
 
-func protocolResponse(t *testing.T, identifier ber.Identifier, value ber.Marshaler) Response {
+func protocolResponse(t *testing.T, identifier ber.Identifier, value ber.Packeter) Response {
 	t.Helper()
-	protocol, err := value.AppendBER(nil)
-	require.NoError(t, err)
+	protocol := value.BERPacket().Encode()
 	return Response{ProtocolID: identifier, Protocol: protocol, Bytes: protocol}
 }
 
-func protocolResponseWithControls(t *testing.T, identifier ber.Identifier, value ber.Marshaler, controls ...rfc4511.Control) Response {
+func protocolResponseWithControls(t *testing.T, identifier ber.Identifier, value ber.Packeter, controls ...rfc4511.Control) Response {
 	t.Helper()
 	response := protocolResponse(t, identifier, value)
 	for _, control := range controls {
-		raw, err := control.AppendBER(nil)
-		require.NoError(t, err)
+		raw := control.BERPacket().Encode()
 		response.Controls = append(response.Controls, ber.Element{Identifier: ber.SequenceIdentifier, Raw: raw})
 	}
 	return response
@@ -266,8 +262,8 @@ func protocolResponseWithControls(t *testing.T, identifier ber.Identifier, value
 
 func requestPageCookie(t *testing.T, operation UntypedOperation) []byte {
 	t.Helper()
-	for _, marshaler := range operation.Controls {
-		control, ok := marshaler.(rfc4511.Control)
+	for _, packet := range operation.Controls {
+		control, ok := packet.(rfc4511.Control)
 		if !ok || control.Type != pagedResultsOID {
 			continue
 		}

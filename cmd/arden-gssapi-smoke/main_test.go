@@ -5,7 +5,6 @@ package main
 import (
 	"context"
 	"io"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -27,7 +26,7 @@ func TestWhoAmIVerifiesAuthenticatedAuthorizationIdentity(t *testing.T) {
 	got, err := rfc4532.WhoAmI(context.Background(), executor)
 	require.NoError(t, err)
 	require.Equal(t, "u:alice@EXAMPLE.TEST", got)
-	request, ok := executor.operation.Protocol.(*rfc4511.ExtendedRequest)
+	request, ok := executor.operation.Untyped().Protocol.(*rfc4511.ExtendedRequest)
 	require.True(t, ok)
 	assert.Equal(t, rfc4532.OID, request.Name)
 	assert.False(t, request.HasValue)
@@ -111,13 +110,10 @@ func (s *singleResponseStream) Close() error {
 
 func extendedResponse(t *testing.T, response rfc4511.ExtendedResponse) arden.Response {
 	t.Helper()
-	protocol, err := response.AppendBER(nil)
-	require.NoError(t, err)
-	message, err := ber.Sequence().
+	message := ber.Sequence().
 		Add(ber.Integer(1)).
-		Add(ber.Encoded(protocol)).
-		AppendBER(nil)
-	require.NoError(t, err)
+		Add(response).
+		BERPacket().Encode()
 	decoded, err := arden.ParseResponse(message, ber.DefaultLimits())
 	require.NoError(t, err)
 	return decoded

@@ -32,13 +32,11 @@ func TestLDAPResultRoundTripsSemanticVariants(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			encoded, err := test.in.AppendBER(nil)
-			require.NoError(t, err)
+			encoded := test.in.BERPacket().Encode()
 			var got LDAPResult
 			decode(t, encoded, &got)
 			assert.Equal(t, test.in, got)
-			reencoded, err := got.AppendBER(nil)
-			require.NoError(t, err)
+			reencoded := got.BERPacket().Encode()
 			assert.Equal(t, encoded, reencoded)
 		})
 	}
@@ -49,10 +47,9 @@ func TestLDAPResultReferralRulesAreAtomic(t *testing.T) {
 		{ResultCode: ResultReferral},
 		{ResultCode: ResultSuccess, Referrals: []URI{URI("ldap://unexpected")}},
 	} {
-		dst := []byte{0xde, 0xad}
-		got, err := result.AppendBER(dst)
-		require.Error(t, err)
-		assert.Equal(t, dst, got)
+		prior := LDAPResult{ResultCode: ResultBusy}
+		requireDecodeError(t, result.BERPacket().Encode(), &prior)
+		assert.Equal(t, ResultBusy, prior.ResultCode)
 	}
 
 	prior := LDAPResult{ResultCode: ResultBusy, DiagnosticMessage: LDAPString("keep")}
@@ -78,8 +75,7 @@ func TestLDAPResultPreservesTrailingExtensionsAndOwnership(t *testing.T) {
 		encoded[i] = 0
 	}
 	assert.Equal(t, []byte{0x83, 0x01, 0x7f}, result.Extensions[0].Bytes())
-	reencoded, err := result.AppendBER(nil)
-	require.NoError(t, err)
+	reencoded := result.BERPacket().Encode()
 	assert.Equal(t, []byte{0x30, 0x0a, 0x0a, 0x01, 0x00, 0x04, 0x00, 0x04, 0x00, 0x83, 0x01, 0x7f}, reencoded)
 }
 

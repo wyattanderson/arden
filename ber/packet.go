@@ -11,7 +11,7 @@ type octets interface {
 	~string | ~[]byte
 }
 
-// Packeter produces one BER packet.
+// Packeter constructs one BER packet without serializing or validating it.
 type Packeter interface {
 	BERPacket() Packet
 }
@@ -91,12 +91,14 @@ func (p Packet) BERPacket() Packet {
 	return p
 }
 
-// AppendBER appends p to dst.
-func (p Packet) AppendBER(dst []byte) ([]byte, error) {
-	return p.appendTo(dst), nil
+// Encode returns the packet's complete BER encoding in a new byte slice.
+func (p Packet) Encode() []byte {
+	return p.AppendTo(make([]byte, 0, p.encodedLength()))
 }
 
-func (p Packet) appendTo(dst []byte) []byte {
+// AppendTo appends the packet's complete BER encoding to dst. It may reuse
+// dst's capacity but does not retain dst or modify its existing prefix.
+func (p Packet) AppendTo(dst []byte) []byte {
 	if p.encoded {
 		return append(dst, p.value...)
 	}
@@ -107,7 +109,7 @@ func (p Packet) appendTo(dst []byte) []byte {
 		return append(dst, p.value...)
 	}
 	for i := range p.children {
-		dst = p.children[i].appendTo(dst)
+		dst = p.children[i].AppendTo(dst)
 	}
 	return dst
 }
@@ -163,11 +165,6 @@ func (e *Envelope) Add[T Packeter](children ...T) *Envelope {
 // BERPacket returns the constructed packet.
 func (e *Envelope) BERPacket() Packet {
 	return e.packet
-}
-
-// AppendBER appends e and its children to dst.
-func (e *Envelope) AppendBER(dst []byte) ([]byte, error) {
-	return e.packet.AppendBER(dst)
 }
 
 func integerBytes[T integer](value T) []byte {

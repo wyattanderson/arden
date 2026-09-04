@@ -71,10 +71,8 @@ func TestAnonymousBootstrapOverExplicitPlaintext(t *testing.T) {
 			serverErr <- errors.New("server received a non-anonymous Bind")
 			return
 		}
-		response, err := authenticationBindMessage(envelope.MessageID, rfc4511.ResultSuccess, nil)
-		if err == nil {
-			_, err = peer.Write(response)
-		}
+		response := authenticationBindMessage(envelope.MessageID, rfc4511.ResultSuccess, nil)
+		_, err = peer.Write(response)
 		if err != nil {
 			serverErr <- err
 			return
@@ -134,10 +132,8 @@ func TestSimpleBindCompletesDuringDirectTLSDial(t *testing.T) {
 			serverErr <- errors.New("server received unexpected Simple Bind values")
 			return
 		}
-		response, err := authenticationBindMessage(envelope.MessageID, rfc4511.ResultSuccess, nil)
-		if err == nil {
-			_, err = peer.Write(response)
-		}
+		response := authenticationBindMessage(envelope.MessageID, rfc4511.ResultSuccess, nil)
+		_, err = peer.Write(response)
 		if err != nil {
 			serverErr <- err
 			return
@@ -198,14 +194,12 @@ func TestFailedSimpleBindNeverPublishesConnectionAndRedactsValues(t *testing.T) 
 			closed <- err
 			return
 		}
-		response, err := authenticationBindMessage(
+		response := authenticationBindMessage(
 			envelope.MessageID,
 			rfc4511.ResultInvalidCredentials,
 			[]byte("diagnostic-with-secret-value"),
 		)
-		if err == nil {
-			_, err = peer.Write(response)
-		}
+		_, err = peer.Write(response)
 		if err != nil {
 			closed <- err
 			return
@@ -245,17 +239,14 @@ func TestSimpleBindPlaintextPreflightRunsBeforeDial(t *testing.T) {
 	assert.NotErrorAs(t, err, &transportErr)
 }
 
-func authenticationBindMessage(id arden.MessageID, code rfc4511.ResultCode, diagnostic []byte) ([]byte, error) {
-	protocol, err := (rfc4511.BindResponse{Result: rfc4511.LDAPResult{
+func authenticationBindMessage(id arden.MessageID, code rfc4511.ResultCode, diagnostic []byte) []byte {
+	response := rfc4511.BindResponse{Result: rfc4511.LDAPResult{
 		ResultCode: code, DiagnosticMessage: rfc4511.LDAPString(diagnostic),
-	}}).AppendBER(nil)
-	if err != nil {
-		return nil, err
-	}
+	}}
 	return ber.Sequence().
 		Add(ber.Integer(id)).
-		Add(ber.Encoded(protocol)).
-		AppendBER(nil)
+		Add(response).
+		BERPacket().Encode()
 }
 
 func authenticationTestCertificate(t *testing.T, serverName string) (tls.Certificate, *x509.CertPool) {

@@ -47,13 +47,6 @@ type ldapBytes interface {
 	AttributeValue | AssertionValue
 }
 
-func appendLDAPText[T ldapText](dst []byte, value T) ([]byte, error) {
-	if !utf8.ValidString(string(value)) {
-		return dst, errors.New("arden: LDAP text is not valid UTF-8")
-	}
-	return ber.OctetString(value).AppendBER(dst)
-}
-
 func unmarshalLDAPText[T ldapText](dst *T, r *ber.Reader) error {
 	if dst == nil {
 		return errors.New("arden: nil OCTET STRING receiver")
@@ -69,10 +62,6 @@ func unmarshalLDAPText[T ldapText](dst *T, r *ber.Reader) error {
 	return nil
 }
 
-func appendLDAPBytes[T ldapBytes](dst []byte, value T) ([]byte, error) {
-	return ber.OctetString(value).AppendBER(dst)
-}
-
 func unmarshalLDAPBytes[T ldapBytes](dst *T, r *ber.Reader) error {
 	if dst == nil {
 		return errors.New("arden: nil LDAP byte value receiver")
@@ -85,24 +74,11 @@ func unmarshalLDAPBytes[T ldapBytes](dst *T, r *ber.Reader) error {
 	return nil
 }
 
-//revive:disable-next-line:exported
-func (v LDAPString) AppendBER(dst []byte) ([]byte, error) {
-	return appendLDAPText(dst, v)
-}
-
 // BERPacket returns v as an OCTET STRING packet.
 func (v LDAPString) BERPacket() ber.Packet { return ber.OctetString(v) }
 
 //revive:disable-next-line:exported
 func (v *LDAPString) UnmarshalBER(r *ber.Reader) error { return unmarshalLDAPText(v, r) }
-
-//revive:disable-next-line:exported
-func (v LDAPOID) AppendBER(dst []byte) ([]byte, error) {
-	if err := validateLDAPOID(v); err != nil {
-		return dst, err
-	}
-	return appendLDAPText(dst, v)
-}
 
 // BERPacket returns v as an OCTET STRING packet.
 func (v LDAPOID) BERPacket() ber.Packet { return ber.OctetString(v) }
@@ -123,19 +99,11 @@ func (v *LDAPOID) UnmarshalBER(r *ber.Reader) error {
 	return nil
 }
 
-//revive:disable-next-line:exported
-func (v LDAPDN) AppendBER(dst []byte) ([]byte, error) { return appendLDAPText(dst, v) }
-
 // BERPacket returns v as an OCTET STRING packet.
 func (v LDAPDN) BERPacket() ber.Packet { return ber.OctetString(v) }
 
 //revive:disable-next-line:exported
 func (v *LDAPDN) UnmarshalBER(r *ber.Reader) error { return unmarshalLDAPText(v, r) }
-
-//revive:disable-next-line:exported
-func (v RelativeLDAPDN) AppendBER(dst []byte) ([]byte, error) {
-	return appendLDAPText(dst, v)
-}
 
 // BERPacket returns v as an OCTET STRING packet.
 func (v RelativeLDAPDN) BERPacket() ber.Packet { return ber.OctetString(v) }
@@ -145,19 +113,11 @@ func (v *RelativeLDAPDN) UnmarshalBER(r *ber.Reader) error {
 	return unmarshalLDAPText(v, r)
 }
 
-//revive:disable-next-line:exported
-func (v URI) AppendBER(dst []byte) ([]byte, error) { return appendLDAPText(dst, v) }
-
 // BERPacket returns v as an OCTET STRING packet.
 func (v URI) BERPacket() ber.Packet { return ber.OctetString(v) }
 
 //revive:disable-next-line:exported
 func (v *URI) UnmarshalBER(r *ber.Reader) error { return unmarshalLDAPText(v, r) }
-
-//revive:disable-next-line:exported
-func (v AttributeDescription) AppendBER(dst []byte) ([]byte, error) {
-	return appendLDAPText(dst, v)
-}
 
 // BERPacket returns v as an OCTET STRING packet.
 func (v AttributeDescription) BERPacket() ber.Packet { return ber.OctetString(v) }
@@ -165,11 +125,6 @@ func (v AttributeDescription) BERPacket() ber.Packet { return ber.OctetString(v)
 //revive:disable-next-line:exported
 func (v *AttributeDescription) UnmarshalBER(r *ber.Reader) error {
 	return unmarshalLDAPText(v, r)
-}
-
-//revive:disable-next-line:exported
-func (v AttributeSelector) AppendBER(dst []byte) ([]byte, error) {
-	return appendLDAPText(dst, v)
 }
 
 // BERPacket returns v as an OCTET STRING packet.
@@ -180,11 +135,6 @@ func (v *AttributeSelector) UnmarshalBER(r *ber.Reader) error {
 	return unmarshalLDAPText(v, r)
 }
 
-//revive:disable-next-line:exported
-func (v MatchingRuleID) AppendBER(dst []byte) ([]byte, error) {
-	return appendLDAPText(dst, v)
-}
-
 // BERPacket returns v as an OCTET STRING packet.
 func (v MatchingRuleID) BERPacket() ber.Packet { return ber.OctetString(v) }
 
@@ -193,22 +143,12 @@ func (v *MatchingRuleID) UnmarshalBER(r *ber.Reader) error {
 	return unmarshalLDAPText(v, r)
 }
 
-//revive:disable-next-line:exported
-func (v AttributeValue) AppendBER(dst []byte) ([]byte, error) {
-	return appendLDAPBytes(dst, v)
-}
-
 // BERPacket returns v as an OCTET STRING packet.
 func (v AttributeValue) BERPacket() ber.Packet { return ber.OctetString(v) }
 
 //revive:disable-next-line:exported
 func (v *AttributeValue) UnmarshalBER(r *ber.Reader) error {
 	return unmarshalLDAPBytes(v, r)
-}
-
-//revive:disable-next-line:exported
-func (v AssertionValue) AppendBER(dst []byte) ([]byte, error) {
-	return appendLDAPBytes(dst, v)
 }
 
 // BERPacket returns v as an OCTET STRING packet.
@@ -232,14 +172,6 @@ func (f UnknownField) Identifier() ber.Identifier { return f.identifier }
 
 // Bytes returns the complete preserved BER encoding in an independent slice.
 func (f UnknownField) Bytes() []byte { return bytes.Clone(f.raw) }
-
-//revive:disable-next-line:exported
-func (f UnknownField) AppendBER(dst []byte) ([]byte, error) {
-	if len(f.raw) == 0 {
-		return dst, errors.New("arden: unknown field was not decoded")
-	}
-	return append(dst, f.raw...), nil
-}
 
 // BERPacket returns the preserved complete BER packet.
 func (f UnknownField) BERPacket() ber.Packet { return ber.Encoded(f.raw) }

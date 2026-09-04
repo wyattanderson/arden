@@ -30,14 +30,6 @@ type CompareRequest struct {
 //revive:disable-next-line:exported
 func (*CompareRequest) ProtocolIdentifier() ber.Identifier { return compareRequestIdentifier }
 
-//revive:disable-next-line:exported
-func (v *CompareRequest) AppendBER(dst []byte) ([]byte, error) {
-	if err := requireNonEmpty("attribute description", v.Assertion.Type); err != nil {
-		return dst, err
-	}
-	return v.BERPacket().AppendBER(dst)
-}
-
 // BERPacket returns the compare-request packet.
 func (v *CompareRequest) BERPacket() ber.Packet {
 	return ber.Constructed(compareRequestIdentifier).
@@ -76,11 +68,6 @@ type CompareResponse struct{ Result LDAPResult }
 // LDAPResult returns the operation result carried by v.
 func (v CompareResponse) LDAPResult() LDAPResult { return v.Result }
 
-//revive:disable-next-line:exported
-func (v CompareResponse) AppendBER(dst []byte) ([]byte, error) {
-	return appendResultResponse(dst, compareResponseIdentifier, v.Result)
-}
-
 // BERPacket returns the compare-response packet.
 func (v CompareResponse) BERPacket() ber.Packet {
 	return resultResponsePacket(compareResponseIdentifier, v.Result)
@@ -102,7 +89,7 @@ func CompareResponsePattern() protocol.ResponsePattern[CompareResponse] {
 }
 
 // NewCompareOperation creates a complete Compare request declaration.
-func NewCompareOperation(request *CompareRequest, controls []ber.Marshaler) (protocol.Operation[CompareResponse], error) {
+func NewCompareOperation(request *CompareRequest, controls []ber.Packeter) (protocol.Operation[CompareResponse], error) {
 	if request == nil {
 		return protocol.Operation[CompareResponse]{}, errors.New("arden: nil CompareRequest")
 	}

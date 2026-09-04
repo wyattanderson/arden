@@ -2,7 +2,6 @@ package rfc4511
 
 import (
 	"errors"
-	"fmt"
 	"slices"
 
 	"github.com/wyattanderson/arden/ber"
@@ -47,20 +46,6 @@ type AddRequest struct {
 //
 //revive:disable-next-line:exported
 func (*AddRequest) ProtocolIdentifier() ber.Identifier { return addRequestIdentifier }
-
-// AppendBER appends exactly one AddRequest protocolOp, without an LDAPMessage
-// envelope, message ID, or controls.
-//
-//revive:disable-next-line:exported
-func (v *AddRequest) AppendBER(dst []byte) ([]byte, error) {
-	for i := range v.Attributes {
-		attribute := &v.Attributes[i]
-		if err := validateAttribute(attribute.Type, attribute.Values, true); err != nil {
-			return dst, fmt.Errorf("arden: add attribute %d: %w", i, err)
-		}
-	}
-	return v.BERPacket().AppendBER(dst)
-}
 
 // BERPacket returns the add-request packet.
 func (v *AddRequest) BERPacket() ber.Packet {
@@ -118,11 +103,6 @@ type AddResponse struct {
 // LDAPResult returns the operation result carried by v.
 func (v AddResponse) LDAPResult() LDAPResult { return v.Result }
 
-//revive:disable-next-line:exported
-func (v AddResponse) AppendBER(dst []byte) ([]byte, error) {
-	return appendResultResponse(dst, addResponseIdentifier, v.Result)
-}
-
 // BERPacket returns the add-response packet.
 func (v AddResponse) BERPacket() ber.Packet {
 	return resultResponsePacket(addResponseIdentifier, v.Result)
@@ -149,7 +129,7 @@ func AddResponsePattern() protocol.ResponsePattern[AddResponse] { return addResp
 // NewAddOperation creates the complete request declaration for an Add. It
 // clones the control slice but not the caller-owned request or control values;
 // the connection validates and encodes them before concurrent use.
-func NewAddOperation(request *AddRequest, controls []ber.Marshaler) (protocol.Operation[AddResponse], error) {
+func NewAddOperation(request *AddRequest, controls []ber.Packeter) (protocol.Operation[AddResponse], error) {
 	if request == nil {
 		return protocol.Operation[AddResponse]{}, errors.New("arden: nil AddRequest")
 	}

@@ -29,11 +29,6 @@ type Attribute struct {
 	Extensions []UnknownField
 }
 
-//revive:disable-next-line:exported
-func (a PartialAttribute) AppendBER(dst []byte) ([]byte, error) {
-	return appendAttribute(dst, a.Type, a.Values, a.Extensions, false)
-}
-
 // BERPacket returns the partial-attribute packet.
 func (a PartialAttribute) BERPacket() ber.Packet {
 	return attributePacket(a.Type, a.Values, a.Extensions)
@@ -49,11 +44,6 @@ func (a *PartialAttribute) UnmarshalBER(r *ber.Reader) error {
 	return nil
 }
 
-//revive:disable-next-line:exported
-func (a Attribute) AppendBER(dst []byte) ([]byte, error) {
-	return appendAttribute(dst, a.Type, a.Values, a.Extensions, true)
-}
-
 // BERPacket returns the attribute packet.
 func (a Attribute) BERPacket() ber.Packet {
 	return attributePacket(a.Type, a.Values, a.Extensions)
@@ -66,33 +56,6 @@ func (a *Attribute) UnmarshalBER(r *ber.Reader) error {
 		return err
 	}
 	*a = Attribute{Type: typeValue, Values: values, Extensions: extensions}
-	return nil
-}
-
-func appendAttribute(
-	dst []byte,
-	typeValue AttributeDescription,
-	values []AttributeValue,
-	extensions []UnknownField,
-	requireValue bool,
-) ([]byte, error) {
-	if err := validateAttribute(typeValue, values, requireValue); err != nil {
-		return dst, err
-	}
-	return attributePacket(typeValue, values, extensions).AppendBER(dst)
-}
-
-func validateAttribute(
-	typeValue AttributeDescription,
-	values []AttributeValue,
-	requireValue bool,
-) error {
-	if len(typeValue) == 0 {
-		return errors.New("arden: attribute type is empty")
-	}
-	if requireValue && len(values) == 0 {
-		return errors.New("arden: Attribute requires at least one value")
-	}
 	return nil
 }
 

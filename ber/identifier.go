@@ -61,29 +61,11 @@ func (c Class) String() string {
 	}
 }
 
-// Marshaler appends one complete BER value to dst. Implementations must leave
-// dst unchanged when they return an error.
-type Marshaler interface {
-	AppendBER(dst []byte) ([]byte, error)
-}
-
 // Unmarshaler consumes one complete BER value of its expected type from r.
 // Implementations must leave their receiver unchanged when they return an
 // error. The reader position is unspecified after an error.
 type Unmarshaler interface {
 	UnmarshalBER(r *Reader) error
-}
-
-// AppendIdentifier appends id in BER identifier form. Tag numbers through 30
-// use the compact form; all other numbers use high-tag-number form.
-func AppendIdentifier(dst []byte, id Identifier, maxTagNumber uint32) ([]byte, error) {
-	if !id.Valid() {
-		return dst, fmt.Errorf("%w: %s", ErrInvalidIdentifier, id)
-	}
-	if id.Number > maxTagNumber {
-		return dst, &LimitError{Limit: "tag number", Value: uint64(id.Number), Max: uint64(maxTagNumber)}
-	}
-	return appendIdentifier(dst, id), nil
 }
 
 func appendIdentifier(dst []byte, id Identifier) []byte {

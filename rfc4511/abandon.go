@@ -24,14 +24,6 @@ type AbandonRequest struct{ Target protocol.MessageID }
 //revive:disable-next-line:exported
 func (*AbandonRequest) ProtocolIdentifier() ber.Identifier { return abandonRequestIdentifier }
 
-//revive:disable-next-line:exported
-func (v *AbandonRequest) AppendBER(dst []byte) ([]byte, error) {
-	if v.Target <= 0 || v.Target > protocol.MaxMessageID {
-		return dst, errors.New("arden: AbandonRequest target is outside [1, MaxMessageID]")
-	}
-	return v.BERPacket().AppendBER(dst)
-}
-
 // BERPacket returns the abandon-request packet.
 func (v *AbandonRequest) BERPacket() ber.Packet {
 	return ber.IntegerWithIdentifier(abandonRequestIdentifier, v.Target)
@@ -56,7 +48,7 @@ func AbandonResponsePattern() protocol.ResponsePattern[protocol.NoResponse] {
 }
 
 // NewAbandonOperation creates a complete Abandon request declaration.
-func NewAbandonOperation(request *AbandonRequest, controls []ber.Marshaler) (protocol.Operation[protocol.NoResponse], error) {
+func NewAbandonOperation(request *AbandonRequest, controls []ber.Packeter) (protocol.Operation[protocol.NoResponse], error) {
 	if request == nil {
 		return protocol.Operation[protocol.NoResponse]{}, errors.New("arden: nil AbandonRequest")
 	}

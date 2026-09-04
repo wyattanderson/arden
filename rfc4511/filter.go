@@ -74,14 +74,6 @@ type UnknownFilter struct {
 // FilterIdentifier returns the preserved filter choice identifier.
 func (f UnknownFilter) FilterIdentifier() ber.Identifier { return f.identifier }
 
-//revive:disable-next-line:exported
-func (f UnknownFilter) AppendBER(dst []byte) ([]byte, error) {
-	if len(f.raw) == 0 {
-		return dst, errors.New("arden: unknown filter was not decoded")
-	}
-	return f.BERPacket().AppendBER(dst)
-}
-
 // BERPacket returns the preserved complete filter packet.
 func (f UnknownFilter) BERPacket() ber.Packet { return ber.Encoded(f.raw) }
 
@@ -93,11 +85,6 @@ type And struct{ Filters []Filter }
 
 // FilterIdentifier returns the context-specific AND filter identifier.
 func (And) FilterIdentifier() ber.Identifier { return andFilterIdentifier }
-
-//revive:disable-next-line:exported
-func (f And) AppendBER(dst []byte) ([]byte, error) {
-	return appendFilterSet(dst, andFilterIdentifier, f.Filters, "AND")
-}
 
 // BERPacket returns the AND filter packet.
 func (f And) BERPacket() ber.Packet {
@@ -120,11 +107,6 @@ type Or struct{ Filters []Filter }
 // FilterIdentifier returns the context-specific OR filter identifier.
 func (Or) FilterIdentifier() ber.Identifier { return orFilterIdentifier }
 
-//revive:disable-next-line:exported
-func (f Or) AppendBER(dst []byte) ([]byte, error) {
-	return appendFilterSet(dst, orFilterIdentifier, f.Filters, "OR")
-}
-
 // BERPacket returns the OR filter packet.
 func (f Or) BERPacket() ber.Packet {
 	return ber.Constructed(orFilterIdentifier).Add(f.Filters...).BERPacket()
@@ -145,14 +127,6 @@ type Not struct{ Filter Filter }
 
 // FilterIdentifier returns the context-specific NOT filter identifier.
 func (Not) FilterIdentifier() ber.Identifier { return notFilterIdentifier }
-
-//revive:disable-next-line:exported
-func (f Not) AppendBER(dst []byte) ([]byte, error) {
-	if f.Filter == nil {
-		return dst, errors.New("arden: NOT filter has no child")
-	}
-	return f.BERPacket().AppendBER(dst)
-}
 
 // BERPacket returns the NOT filter packet.
 func (f Not) BERPacket() ber.Packet {
@@ -182,11 +156,6 @@ type EqualityMatch struct{ Assertion AttributeValueAssertion }
 // FilterIdentifier returns the context-specific equality-match filter identifier.
 func (EqualityMatch) FilterIdentifier() ber.Identifier { return equalityMatchIdentifier }
 
-//revive:disable-next-line:exported
-func (f EqualityMatch) AppendBER(dst []byte) ([]byte, error) {
-	return appendAssertionFilter(dst, equalityMatchIdentifier, f.Assertion)
-}
-
 // BERPacket returns the equality-match filter packet.
 func (f EqualityMatch) BERPacket() ber.Packet {
 	return assertionFilterPacket(equalityMatchIdentifier, f.Assertion)
@@ -207,11 +176,6 @@ type GreaterOrEqual struct{ Assertion AttributeValueAssertion }
 
 // FilterIdentifier returns the context-specific greater-or-equal filter identifier.
 func (GreaterOrEqual) FilterIdentifier() ber.Identifier { return greaterOrEqualIdentifier }
-
-//revive:disable-next-line:exported
-func (f GreaterOrEqual) AppendBER(dst []byte) ([]byte, error) {
-	return appendAssertionFilter(dst, greaterOrEqualIdentifier, f.Assertion)
-}
 
 // BERPacket returns the greater-or-equal filter packet.
 func (f GreaterOrEqual) BERPacket() ber.Packet {
@@ -234,11 +198,6 @@ type LessOrEqual struct{ Assertion AttributeValueAssertion }
 // FilterIdentifier returns the context-specific less-or-equal filter identifier.
 func (LessOrEqual) FilterIdentifier() ber.Identifier { return lessOrEqualIdentifier }
 
-//revive:disable-next-line:exported
-func (f LessOrEqual) AppendBER(dst []byte) ([]byte, error) {
-	return appendAssertionFilter(dst, lessOrEqualIdentifier, f.Assertion)
-}
-
 // BERPacket returns the less-or-equal filter packet.
 func (f LessOrEqual) BERPacket() ber.Packet {
 	return assertionFilterPacket(lessOrEqualIdentifier, f.Assertion)
@@ -260,11 +219,6 @@ type ApproximateMatch struct{ Assertion AttributeValueAssertion }
 // FilterIdentifier returns the context-specific approximate-match filter identifier.
 func (ApproximateMatch) FilterIdentifier() ber.Identifier { return approximateMatchIdentifier }
 
-//revive:disable-next-line:exported
-func (f ApproximateMatch) AppendBER(dst []byte) ([]byte, error) {
-	return appendAssertionFilter(dst, approximateMatchIdentifier, f.Assertion)
-}
-
 // BERPacket returns the approximate-match filter packet.
 func (f ApproximateMatch) BERPacket() ber.Packet {
 	return assertionFilterPacket(approximateMatchIdentifier, f.Assertion)
@@ -285,14 +239,6 @@ type Present struct{ Attribute AttributeDescription }
 
 // FilterIdentifier returns the context-specific presence filter identifier.
 func (Present) FilterIdentifier() ber.Identifier { return presentIdentifier }
-
-//revive:disable-next-line:exported
-func (f Present) AppendBER(dst []byte) ([]byte, error) {
-	if err := requireNonEmpty("present attribute description", f.Attribute); err != nil {
-		return dst, err
-	}
-	return f.BERPacket().AppendBER(dst)
-}
 
 // BERPacket returns the presence filter packet.
 func (f Present) BERPacket() ber.Packet {
@@ -325,17 +271,6 @@ type SubstringFilter struct {
 
 // FilterIdentifier returns the context-specific substring filter identifier.
 func (SubstringFilter) FilterIdentifier() ber.Identifier { return substringsIdentifier }
-
-//revive:disable-next-line:exported
-func (f SubstringFilter) AppendBER(dst []byte) ([]byte, error) {
-	if err := requireNonEmpty("substring attribute description", f.Type); err != nil {
-		return dst, err
-	}
-	if f.Initial == nil && len(f.Any) == 0 && f.Final == nil {
-		return dst, errors.New("arden: substring filter requires at least one part")
-	}
-	return f.BERPacket().AppendBER(dst)
-}
 
 // BERPacket returns the substring filter packet.
 func (f SubstringFilter) BERPacket() ber.Packet {
@@ -437,14 +372,6 @@ type ExtensibleMatch struct {
 
 // FilterIdentifier returns the context-specific extensible-match filter identifier.
 func (ExtensibleMatch) FilterIdentifier() ber.Identifier { return extensibleMatchIdentifier }
-
-//revive:disable-next-line:exported
-func (f ExtensibleMatch) AppendBER(dst []byte) ([]byte, error) {
-	if err := f.validate(); err != nil {
-		return dst, err
-	}
-	return f.BERPacket().AppendBER(dst)
-}
 
 // BERPacket returns the extensible-match filter packet.
 func (f ExtensibleMatch) BERPacket() ber.Packet {
@@ -557,18 +484,6 @@ func (f ExtensibleMatch) validate() error {
 	return nil
 }
 
-func appendFilterSet(dst []byte, id ber.Identifier, filters []Filter, name string) ([]byte, error) {
-	if len(filters) == 0 {
-		return dst, fmt.Errorf("arden: %s filter requires at least one child", name)
-	}
-	for i, filter := range filters {
-		if filter == nil {
-			return dst, fmt.Errorf("arden: %s filter child %d is nil", name, i)
-		}
-	}
-	return ber.Constructed(id).Add(filters...).AppendBER(dst)
-}
-
 func decodeFilterSet(r *ber.Reader, id ber.Identifier, name string) ([]Filter, error) {
 	contents, err := r.Constructed(id)
 	if err != nil {
@@ -644,13 +559,6 @@ func decodeFilter(r *ber.Reader) (Filter, error) {
 		}
 		return UnknownFilter{identifier: e.Identifier, raw: bytes.Clone(e.Raw)}, nil
 	}
-}
-
-func appendAssertionFilter(dst []byte, id ber.Identifier, assertion AttributeValueAssertion) ([]byte, error) {
-	if err := requireNonEmpty("attribute description", assertion.Type); err != nil {
-		return dst, err
-	}
-	return assertionFilterPacket(id, assertion).AppendBER(dst)
 }
 
 func assertionFilterPacket(id ber.Identifier, assertion AttributeValueAssertion) ber.Packet {

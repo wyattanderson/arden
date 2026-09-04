@@ -22,7 +22,7 @@ func TestRFC4511CodecRoundTrips(t *testing.T) {
 
 	for _, test := range []struct {
 		name string
-		in   ber.Marshaler
+		in   ber.Packeter
 		out  ber.Unmarshaler
 	}{
 		{"control", Control{Type: LDAPOID("1.2.3"), Criticality: true, Value: []byte{}, HasValue: true}, &Control{}},
@@ -66,24 +66,20 @@ func TestRFC4511CodecRoundTrips(t *testing.T) {
 }
 
 func TestFilterWireSpecialCasesAndExternalAlternative(t *testing.T) {
-	present, err := (Present{Attribute: AttributeDescription("cn")}).AppendBER(nil)
-	require.NoError(t, err)
+	present := (Present{Attribute: AttributeDescription("cn")}).BERPacket().Encode()
 	assert.Equal(t, []byte{0x87, 0x02, 'c', 'n'}, present)
 
-	equality, err := (EqualityMatch{Assertion: AttributeValueAssertion{Type: AttributeDescription("cn")}}).AppendBER(nil)
-	require.NoError(t, err)
+	equality := (EqualityMatch{Assertion: AttributeValueAssertion{Type: AttributeDescription("cn")}}).BERPacket().Encode()
 	assert.Equal(t, []byte{0xa3, 0x06, 0x04, 0x02, 'c', 'n', 0x04, 0x00}, equality)
 
 	// RFC 4511 section 4.5.1.7: NOT carries the complete child Filter under
 	// context-specific constructed tag [2]. This vector covers erratum 5292's
 	// disputed tagging shape without introducing a compatibility exception.
-	not, err := (Not{Filter: Present{Attribute: AttributeDescription("cn")}}).AppendBER(nil)
-	require.NoError(t, err)
+	not := (Not{Filter: Present{Attribute: AttributeDescription("cn")}}).BERPacket().Encode()
 	assert.Equal(t, []byte{0xa2, 0x04, 0x87, 0x02, 'c', 'n'}, not)
 
 	request := &SearchRequest{Filter: externalFilter{}}
-	encoded, err := request.AppendBER(nil)
-	require.NoError(t, err)
+	encoded := request.BERPacket().Encode()
 	r, err := ber.NewReader(encoded, ber.DefaultLimits())
 	require.NoError(t, err)
 	var decoded SearchRequest
@@ -101,8 +97,7 @@ func TestRFCReceiverAtomicityAndOwnership(t *testing.T) {
 	require.Error(t, prior.UnmarshalBER(r))
 	assert.Equal(t, "dc=keep", string(prior.BaseObject))
 
-	encoded, err := (&ExtendedResponse{Result: LDAPResult{ResultCode: ResultSuccess}, ResponseValue: []byte{0, 0xff}, HasResponseValue: true}).AppendBER(nil)
-	require.NoError(t, err)
+	encoded := (&ExtendedResponse{Result: LDAPResult{ResultCode: ResultSuccess}, ResponseValue: []byte{0, 0xff}, HasResponseValue: true}).BERPacket().Encode()
 	r, err = ber.NewReader(encoded, ber.DefaultLimits())
 	require.NoError(t, err)
 	var decoded ExtendedResponse
@@ -115,28 +110,29 @@ func TestRFCReceiverAtomicityAndOwnership(t *testing.T) {
 
 func TestLDAPOIDValidation(t *testing.T) {
 	for _, oid := range []LDAPOID{"", "1", "1.", ".1", "1..2", "01.2", "1.a"} {
-		_, err := oid.AppendBER([]byte{0xaa})
-		require.Error(t, err, "LDAPOID %q was accepted", oid)
+		requireDecodeError(t, oid.BERPacket().Encode(), new(LDAPOID))
 	}
-	_, err := LDAPOID("1.3.6.1.4.1.1466.20037").AppendBER(nil)
-	require.NoError(t, err)
+	oid := LDAPOID("1.3.6.1.4.1.1466.20037")
+	var got LDAPOID
+	decode(t, oid.BERPacket().Encode(), &got)
+	assert.Equal(t, oid, got)
 }
 
-func TestRFC4511StructuralRejectionsPreserveDestinations(t *testing.T) {
-	for _, value := range []ber.Marshaler{
-		And{},
-		Or{},
-		Not{},
-		SubstringFilter{Type: AttributeDescription("cn")},
-		ExtensibleMatch{MatchValue: AssertionValue("x")},
+func TestRFC4511StructuralRejections(t *testing.T) {
+	for _, value := range []interface {
+		ber.Packeter
+		ber.Unmarshaler
+	}{
+		&And{},
+		&Or{},
+		&SubstringFilter{Type: AttributeDescription("cn")},
+		&ExtensibleMatch{MatchValue: AssertionValue("x")},
 		&SearchRequest{DerefAliases: 99, Filter: Present{Attribute: AttributeDescription("cn")}},
 		&AbandonRequest{Target: 0},
 	} {
-		dst := []byte{0xde, 0xad}
-		got, err := value.AppendBER(dst)
-		require.Error(t, err, "%T unexpectedly encoded", value)
-		assert.Equal(t, dst, got, "%T changed destination on error", value)
+		requireDecodeError(t, value.BERPacket().Encode(), value)
 	}
+	requireDecodeError(t, []byte{0xa2, 0x00}, &Not{})
 
 	r, err := ber.NewReader([]byte{0xa2, 0x08, 0x87, 0x02, 'c', 'n', 0x87, 0x02, 's', 'n'}, ber.DefaultLimits())
 	require.NoError(t, err)
@@ -148,22 +144,19 @@ func TestRFC4511StructuralRejectionsPreserveDestinations(t *testing.T) {
 	var substring SubstringFilter
 	require.Error(t, substring.UnmarshalBER(r))
 
-	control, err := (Control{Type: LDAPOID("1.2.3")}).AppendBER(nil)
-	require.NoError(t, err)
+	control := (Control{Type: LDAPOID("1.2.3")}).BERPacket().Encode()
 	assert.Equal(t, []byte{0x30, 0x07, 0x04, 0x05, '1', '.', '2', '.', '3'}, control)
 	assert.False(t, bytes.Contains(control, []byte{0x01, 0x01, 0x00}))
 }
 
-func roundTrip(t *testing.T, input ber.Marshaler, output ber.Unmarshaler) {
+func roundTrip(t *testing.T, input ber.Packeter, output ber.Unmarshaler) {
 	t.Helper()
-	encoded, err := input.AppendBER([]byte{0xa5})
-	require.NoError(t, err)
+	encoded := input.BERPacket().AppendTo([]byte{0xa5})
 	r, err := ber.NewReader(encoded[1:], ber.DefaultLimits())
 	require.NoError(t, err)
 	require.NoError(t, output.UnmarshalBER(r))
 	require.NoError(t, r.RequireEmpty())
-	roundTripped, err := output.(ber.Marshaler).AppendBER(nil)
-	require.NoError(t, err)
+	roundTripped := output.(ber.Packeter).BERPacket().Encode()
 	assert.Equal(t, encoded[1:], roundTripped)
 }
 
@@ -174,7 +167,4 @@ type externalFilter struct{}
 func (externalFilter) FilterIdentifier() ber.Identifier { return externalFilterIdentifier }
 func (externalFilter) BERPacket() ber.Packet {
 	return ber.Constructed(externalFilterIdentifier).BERPacket()
-}
-func (externalFilter) AppendBER(dst []byte) ([]byte, error) {
-	return (externalFilter{}).BERPacket().AppendBER(dst)
 }

@@ -54,13 +54,6 @@ func readImplicitBoolean(r *ber.Reader, id ber.Identifier) (bool, error) {
 	return value[0] == 0xff, nil
 }
 
-func appendResultResponse(dst []byte, id ber.Identifier, result LDAPResult) ([]byte, error) {
-	if err := result.validateReferral(); err != nil {
-		return dst, err
-	}
-	return resultResponsePacket(id, result).AppendBER(dst)
-}
-
 func resultResponsePacket(id ber.Identifier, result LDAPResult) ber.Packet {
 	response := ber.Constructed(id)
 	result.addPrefix(response)

@@ -22,8 +22,7 @@ func TestSearchRequestRoundTripsBoundariesAndExtensibleScope(t *testing.T) {
 		Filter:       Present{Attribute: AttributeDescription("objectClass")},
 		Attributes:   []AttributeSelector{AttributeSelector("cn"), AttributeSelector("+")},
 	}
-	encoded, err := request.AppendBER(nil)
-	require.NoError(t, err)
+	encoded := request.BERPacket().Encode()
 	var got SearchRequest
 	decode(t, encoded, &got)
 	assert.Equal(t, *request, got)
@@ -36,12 +35,10 @@ func TestSearchRequestRejectsClosedEnumAndLimitOverflowAtomically(t *testing.T) 
 		{DerefAliases: DerefAliases(4), Filter: validFilter},
 		{SizeLimit: math.MaxInt32 + 1, Filter: validFilter},
 		{TimeLimit: (math.MaxInt32 + 1) * time.Second, Filter: validFilter},
-		{},
 	} {
-		dst := []byte{0xde, 0xad}
-		got, err := request.AppendBER(dst)
-		require.Error(t, err)
-		assert.Equal(t, dst, got)
+		prior := SearchRequest{BaseObject: LDAPDN("dc=keep"), Filter: validFilter}
+		requireDecodeError(t, request.BERPacket().Encode(), &prior)
+		assert.Equal(t, "dc=keep", string(prior.BaseObject))
 	}
 
 	for _, encoded := range [][]byte{
@@ -66,8 +63,7 @@ func TestSearchRequestTimeLimitUsesWholeSecondsWithoutSignValidation(t *testing.
 		{input: math.MaxInt32*time.Second + 500*time.Millisecond, want: math.MaxInt32 * time.Second},
 	} {
 		request := &SearchRequest{TimeLimit: test.input, Filter: validFilter}
-		encoded, err := request.AppendBER(nil)
-		require.NoError(t, err)
+		encoded := request.BERPacket().Encode()
 		var got SearchRequest
 		decode(t, encoded, &got)
 		assert.Equal(t, test.want, got.TimeLimit)
@@ -75,35 +71,27 @@ func TestSearchRequestTimeLimitUsesWholeSecondsWithoutSignValidation(t *testing.
 }
 
 func TestSearchResultReferenceRequiresURIAndPreservesExtensions(t *testing.T) {
-	dst := []byte{0xde, 0xad}
-	got, err := (SearchResultReference{}).AppendBER(dst)
-	require.Error(t, err)
-	assert.Equal(t, dst, got)
-
-	empty, err := ber.Constructed(SearchResultReferenceIdentifier()).AppendBER(nil)
-	require.NoError(t, err)
+	empty := (SearchResultReference{}).BERPacket().Encode()
 	requireDecodeError(t, empty, &SearchResultReference{})
 
-	encoded, err := ber.Constructed(SearchResultReferenceIdentifier()).
+	encoded := ber.Constructed(SearchResultReferenceIdentifier()).
 		Add(
 			ber.OctetString("ldap://example"),
 			ber.Primitive(ber.Identifier{Class: ber.ClassContextSpecific, Number: 5}, []byte{0x7f}),
 		).
-		AppendBER(nil)
-	require.NoError(t, err)
+		BERPacket().Encode()
 	var reference SearchResultReference
 	decode(t, encoded, &reference)
 	assert.Equal(t, []URI{URI("ldap://example")}, reference.URIs)
 	require.Len(t, reference.Extensions, 1)
-	reencoded, err := reference.AppendBER(nil)
-	require.NoError(t, err)
+	reencoded := reference.BERPacket().Encode()
 	assert.Equal(t, encoded, reencoded)
 }
 
 func TestSearchResultChoiceDecodesAndExposesValue(t *testing.T) {
 	tests := []struct {
 		name  string
-		value ber.Marshaler
+		value ber.Packeter
 		check func(*testing.T, SearchResultValue)
 	}{
 		{"entry", SearchResultEntry{ObjectName: "uid=alice,dc=example"}, func(t *testing.T, value SearchResultValue) {
@@ -124,8 +112,7 @@ func TestSearchResultChoiceDecodesAndExposesValue(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			encoded, err := test.value.AppendBER(nil)
-			require.NoError(t, err)
+			encoded := test.value.BERPacket().Encode()
 			var result SearchResult
 			decode(t, encoded, &result)
 			test.check(t, result.Value())
@@ -135,13 +122,11 @@ func TestSearchResultChoiceDecodesAndExposesValue(t *testing.T) {
 }
 
 func TestSearchResultChoiceRejectsUnknownIdentifierAtomically(t *testing.T) {
-	encoded, err := (SearchResultEntry{ObjectName: "dc=keep"}).AppendBER(nil)
-	require.NoError(t, err)
+	encoded := (SearchResultEntry{ObjectName: "dc=keep"}).BERPacket().Encode()
 	var result SearchResult
 	decode(t, encoded, &result)
 
-	unknown, err := ber.Constructed(applicationConstructed(30)).AppendBER(nil)
-	require.NoError(t, err)
+	unknown := ber.Constructed(applicationConstructed(30)).BERPacket().Encode()
 	requireDecodeError(t, unknown, &result)
 	entry, ok := result.Value().(SearchResultEntry)
 	require.True(t, ok)
@@ -150,7 +135,7 @@ func TestSearchResultChoiceRejectsUnknownIdentifierAtomically(t *testing.T) {
 
 func searchRequestEncoding(t *testing.T, scope, deref, size, timeLimit int64) []byte {
 	t.Helper()
-	encoded, err := ber.Constructed(SearchRequestIdentifier()).
+	encoded := ber.Constructed(SearchRequestIdentifier()).
 		Add(
 			ber.OctetString([]byte(nil)),
 			ber.Enumerated(scope),
@@ -161,7 +146,6 @@ func searchRequestEncoding(t *testing.T, scope, deref, size, timeLimit int64) []
 		).
 		Add(Present{Attribute: AttributeDescription("cn")}).
 		Add(ber.Sequence()).
-		AppendBER(nil)
-	require.NoError(t, err)
+		BERPacket().Encode()
 	return encoded
 }

@@ -205,28 +205,22 @@ func modifyDoneResponse(t *testing.T) arden.Response {
 	})
 }
 
-func protocolResponse(t *testing.T, identifier ber.Identifier, value ber.Marshaler) arden.Response {
+func protocolResponse(t *testing.T, identifier ber.Identifier, value ber.Packeter) arden.Response {
 	t.Helper()
-	protocol, err := value.AppendBER(nil)
-	if err != nil {
-		t.Fatalf("encode protocol response: %v", err)
-	}
+	protocol := value.BERPacket().Encode()
 	return arden.Response{ProtocolID: identifier, Protocol: protocol, Bytes: protocol}
 }
 
 func protocolResponseWithControls(
 	t *testing.T,
 	identifier ber.Identifier,
-	value ber.Marshaler,
+	value ber.Packeter,
 	controls ...rfc4511.Control,
 ) arden.Response {
 	t.Helper()
 	response := protocolResponse(t, identifier, value)
 	for _, control := range controls {
-		raw, err := control.AppendBER(nil)
-		if err != nil {
-			t.Fatalf("encode response control: %v", err)
-		}
+		raw := control.BERPacket().Encode()
 		response.Controls = append(response.Controls, ber.Element{Raw: raw})
 	}
 	return response
@@ -234,12 +228,9 @@ func protocolResponseWithControls(
 
 func emptyPageControl(t *testing.T) rfc4511.Control {
 	t.Helper()
-	value, err := ber.Sequence().
+	value := ber.Sequence().
 		Add(ber.Integer(0), ber.OctetString([]byte(nil))).
-		AppendBER(nil)
-	if err != nil {
-		t.Fatalf("encode page control: %v", err)
-	}
+		BERPacket().Encode()
 	return rfc4511.Control{
 		Type:     "1.2.840.113556.1.4.319",
 		Value:    value,

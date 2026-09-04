@@ -46,11 +46,6 @@ func (v SimpleAuthentication) AuthenticationIdentifier() ber.Identifier {
 	return simpleAuthenticationIdentifier
 }
 
-//revive:disable-next-line:exported
-func (v SimpleAuthentication) AppendBER(dst []byte) ([]byte, error) {
-	return v.BERPacket().AppendBER(dst)
-}
-
 // BERPacket returns the simple-authentication packet.
 func (v SimpleAuthentication) BERPacket() ber.Packet {
 	return ber.Primitive(simpleAuthenticationIdentifier, v)
@@ -78,14 +73,6 @@ type SASLAuthentication struct {
 // AuthenticationIdentifier returns the context-specific SASL authentication identifier.
 func (SASLAuthentication) AuthenticationIdentifier() ber.Identifier {
 	return saslAuthenticationIdentifier
-}
-
-//revive:disable-next-line:exported
-func (v SASLAuthentication) AppendBER(dst []byte) ([]byte, error) {
-	if err := requireNonEmpty("SASL mechanism", v.Mechanism); err != nil {
-		return dst, err
-	}
-	return v.BERPacket().AppendBER(dst)
 }
 
 // BERPacket returns the SASL-authentication packet.
@@ -152,14 +139,6 @@ type UnknownAuthentication struct {
 // AuthenticationIdentifier returns the preserved authentication choice identifier.
 func (v UnknownAuthentication) AuthenticationIdentifier() ber.Identifier { return v.identifier }
 
-//revive:disable-next-line:exported
-func (v UnknownAuthentication) AppendBER(dst []byte) ([]byte, error) {
-	if len(v.raw) == 0 {
-		return dst, errors.New("arden: unknown authentication was not decoded")
-	}
-	return v.BERPacket().AppendBER(dst)
-}
-
 // BERPacket returns the preserved authentication packet.
 func (v UnknownAuthentication) BERPacket() ber.Packet { return ber.Encoded(v.raw) }
 
@@ -176,22 +155,6 @@ type BindRequest struct {
 
 //revive:disable-next-line:exported
 func (*BindRequest) ProtocolIdentifier() ber.Identifier { return bindRequestIdentifier }
-
-//revive:disable-next-line:exported
-func (v *BindRequest) AppendBER(dst []byte) ([]byte, error) {
-	if v.Version < 1 || v.Version > 127 {
-		return dst, fmt.Errorf("arden: BindRequest version %d is outside [1, 127]", v.Version)
-	}
-	if v.Authentication == nil {
-		return dst, errors.New("arden: BindRequest has no authentication choice")
-	}
-	if authentication, ok := v.Authentication.(SASLAuthentication); ok {
-		if err := requireNonEmpty("SASL mechanism", authentication.Mechanism); err != nil {
-			return dst, err
-		}
-	}
-	return v.BERPacket().AppendBER(dst)
-}
 
 // BERPacket returns the bind-request packet.
 func (v *BindRequest) BERPacket() ber.Packet {
@@ -241,17 +204,6 @@ type BindResponse struct {
 
 // LDAPResult returns the operation result carried by v.
 func (v BindResponse) LDAPResult() LDAPResult { return v.Result }
-
-//revive:disable-next-line:exported
-func (v BindResponse) AppendBER(dst []byte) ([]byte, error) {
-	if len(v.Result.Extensions) != 0 {
-		return dst, errors.New("arden: BindResponse result extensions must be response extensions")
-	}
-	if err := v.Result.validateReferral(); err != nil {
-		return dst, err
-	}
-	return v.BERPacket().AppendBER(dst)
-}
 
 // BERPacket returns the bind-response packet.
 func (v BindResponse) BERPacket() ber.Packet {
@@ -310,11 +262,6 @@ type UnbindRequest struct{}
 //revive:disable-next-line:exported
 func (*UnbindRequest) ProtocolIdentifier() ber.Identifier { return unbindRequestIdentifier }
 
-//revive:disable-next-line:exported
-func (*UnbindRequest) AppendBER(dst []byte) ([]byte, error) {
-	return ber.Primitive(unbindRequestIdentifier, nil).AppendBER(dst)
-}
-
 // BERPacket returns the unbind-request packet.
 func (*UnbindRequest) BERPacket() ber.Packet {
 	return ber.Primitive(unbindRequestIdentifier, nil)
@@ -342,7 +289,7 @@ func UnbindResponsePattern() protocol.ResponsePattern[protocol.NoResponse] {
 }
 
 // NewBindOperation creates a complete Bind request declaration.
-func NewBindOperation(request *BindRequest, controls []ber.Marshaler) (protocol.Operation[BindResponse], error) {
+func NewBindOperation(request *BindRequest, controls []ber.Packeter) (protocol.Operation[BindResponse], error) {
 	if request == nil {
 		return protocol.Operation[BindResponse]{}, errors.New("arden: nil BindRequest")
 	}
@@ -360,7 +307,7 @@ func NewBindOperation(request *BindRequest, controls []ber.Marshaler) (protocol.
 }
 
 // NewUnbindOperation creates a complete Unbind request declaration.
-func NewUnbindOperation(request *UnbindRequest, controls []ber.Marshaler) (protocol.Operation[protocol.NoResponse], error) {
+func NewUnbindOperation(request *UnbindRequest, controls []ber.Packeter) (protocol.Operation[protocol.NoResponse], error) {
 	if request == nil {
 		return protocol.Operation[protocol.NoResponse]{}, errors.New("arden: nil UnbindRequest")
 	}

@@ -75,32 +75,45 @@ Names may change during implementation, but the dependency boundary may not.
 
 ## Public codec contracts
 
-### Marshaling
+### Packet encoding
 
 RFC values and external extension values use:
 
 ```go
-type Marshaler interface {
-    AppendBER(dst []byte) ([]byte, error)
+type Packeter interface {
+    BERPacket() Packet
 }
+
+func (p Packet) Encode() []byte
+func (p Packet) AppendTo(dst []byte) []byte
 ```
 
-`AppendBER`:
+`BERPacket` constructs one value without serializing it. Primitive constructors
+return `Packet`; constructed values use `Envelope.Add`, whose generic method
+accepts typed slices of `Packeter` values. RFC values compose directly into the
+tree, including filters and controls.
+
+`Packet.Encode` returns the complete encoding in a new byte slice. Use
+`Packet.AppendTo` when appending to an existing buffer instead.
+
+`Packet.AppendTo`:
 
 - appends exactly one complete BER value, including identifier and length;
 - emits deterministic LDAP BER rather than preserving a noncanonical source
   encoding;
 - may reuse destination capacity;
-- leaves the original destination length and contents unchanged on error;
 - does not retain the destination or mutate its existing prefix;
-- validates required fields, choices, cardinality, defaults, integer ranges,
-  identifiers, and RFC structural constraints before returning usable bytes;
-- encodes only its receiver, without an LDAP envelope, message ID, controls,
+- has no error result and assumes the packet tree was constructed correctly;
+- encodes only its packet, without adding an LDAP envelope, message ID, controls,
   I/O, context, tracing, or connection side effect.
 
-Hand-authored codecs should encode into temporary child buffers or use BER
-helpers with explicit rollback points. They must not depend on reflection,
-`encoding/asn1`, or a generic mutable object tree.
+Packet constructors copy supplied bytes. Preserved complete encodings use
+`ber.Encoded`; raw contents under an explicit identifier use `ber.WithContents`.
+Normal composition does not serialize child buffers or need rollback points.
+Construction does not validate required fields or RFC constraints; typed
+decoders retain those checks, and the transport validates the completed
+LDAPMessage envelope and its configured limits before writing. Codecs do not
+depend on reflection or `encoding/asn1`.
 
 ### Unmarshaling
 
@@ -139,7 +152,7 @@ without weakening `UnmarshalBER`.
 
 The following is a release requirement:
 
-- RFC and extension values implement the same `ber.Marshaler` and
+- RFC and extension values implement the same `ber.Packeter` and
   `ber.Unmarshaler` interfaces.
 - RFC requests and extension requests implement the same
   `protocol.ProtocolOperation` interface.
@@ -157,13 +170,13 @@ The request value and complete exchange declaration remain separate:
 
 ```go
 type ProtocolOperation interface {
-    ber.Marshaler
+    ber.Packeter
     ProtocolIdentifier() ber.Identifier
 }
 
 type Operation[T any] struct {
     Protocol     ProtocolOperation
-    Controls     []ber.Marshaler
+    Controls     []ber.Packeter
     Responses    ResponsePattern[T]
     Cancellation CancellationMode
     Metadata     OperationMetadata
@@ -176,8 +189,8 @@ type AnyOperation interface {
 
 The protocol value emits only `LDAPMessage.protocolOp`. The root runtime assigns
 the message ID and wraps the value and ordered controls in the envelope.
-`ProtocolIdentifier` must agree with the identifier actually encoded by
-`AppendBER`; Phase 4 validates that agreement before writing.
+`ProtocolIdentifier` must agree with the identifier in `BERPacket()`; the
+transport validates that agreement in the completed frame before writing.
 
 An RFC helper assembles an `Operation[T]` with the standard typed response pattern,
 a conservative cancellation default, cloned controls, and a safe label. It
@@ -367,7 +380,7 @@ type Attribute struct {
 }
 ```
 
-The RFC layer enforces the nonempty `Attribute` rule. It cannot generically
+The RFC decoder enforces the nonempty `Attribute` rule. It cannot generically
 decide schema equivalence between values or whether an attribute is
 NO-USER-MODIFICATION; schema-aware application code owns those checks.
 
@@ -382,14 +395,14 @@ type AddRequest struct {
 }
 
 func (*AddRequest) ProtocolIdentifier() ber.Identifier // application/C/8
-func (*AddRequest) AppendBER([]byte) ([]byte, error)
+func (*AddRequest) BERPacket() ber.Packet
 func (*AddRequest) UnmarshalBER(*ber.Reader) error
 
 type AddResponse struct {
     Result LDAPResult
 }
 
-func (*AddResponse) AppendBER([]byte) ([]byte, error)
+func (AddResponse) BERPacket() ber.Packet
 func (*AddResponse) UnmarshalBER(*ber.Reader) error // application/C/9
 ```
 
@@ -411,7 +424,8 @@ rolled back.
 
 Tests cover empty attribute values, multiple attributes, binary values,
 application-tag replacement of SEQUENCE, unsuccessful terminal LDAP results,
-controls, receiver/destination atomicity, and unknown extensible result codes.
+controls, receiver atomicity, destination-prefix preservation, and unknown
+extensible result codes.
 
 ## Search vertical slice
 
@@ -430,7 +444,7 @@ type SearchRequest struct {
 }
 ```
 
-Size limits and positive time limits validate against RFC 4511 `maxInt`.
+Decoding validates size limits and positive time limits against RFC 4511 `maxInt`.
 `TimeLimit` is converted to whole seconds for the wire; callers are responsible
 for fractional and negative duration semantics.
 
@@ -438,13 +452,12 @@ The extensible Filter CHOICE is public and unsealed:
 
 ```go
 type Filter interface {
-    ber.Marshaler
-    FilterIdentifier() ber.Identifier
+    ber.Packeter
 }
 ```
 
 Hand-author And, Or, Not, Equality Match, Substrings, Greater or Equal, Less or
-Equal, Present, Approximate Match, and Extensible Match. Standard codecs enforce
+Equal, Present, Approximate Match, and Extensible Match. Standard decoders enforce
 their cardinality and optional/default rules. An external filter alternative
 implements the same interface.
 
@@ -507,7 +520,7 @@ generic string-based Search/Add/Modify/Delete client methods.
 
 - Table-driven application tag, enum, and result-code inventory tests.
 - Positive and negative fixtures for every concrete type family.
-- Marshal failure leaves destination bytes unchanged.
+- Packet serialization preserves the destination prefix.
 - Unmarshal failure leaves the receiver unchanged.
 - Exact consumption and extension-tail preservation.
 - Owned retained bytes after typed decoding.
@@ -525,7 +538,7 @@ beside the regression.
 
 ## Deliverables
 
-- Public `ber.Unmarshaler` composition interface.
+- Public `ber.Packeter` and `ber.Unmarshaler` composition interfaces.
 - Response protocol/control views and public protocol unmarshaling path.
 - Hand-authored `rfc4511` common values and LDAPResult.
 - Add and Search vertical slices with operation helpers and typed response
@@ -543,7 +556,7 @@ local to typed decoding; the root reader only routes by `Response.ProtocolID`
 and the immutable `FramingPattern` erased from the submitted operation.
 
 External controls, filter alternatives, and protocol operations use the same
-`ber.Marshaler`, `ber.Unmarshaler`, `rfc4511.Filter`, and
+`ber.Packeter`, `ber.Unmarshaler`, `rfc4511.Filter`, and
 `protocol.ProtocolOperation` contracts as RFC values. There is no registration path. Unknown extensible
 enum values, CHOICE alternatives, and trailing fields are retained as typed
 raw values where their schemas permit preservation.

@@ -25,6 +25,4 @@ func requireDecodeError(t *testing.T, encoded []byte, out ber.Unmarshaler) {
 
 type rawControl struct{}
 
-func (rawControl) AppendBER(dst []byte) ([]byte, error) {
-	return append(dst, 0x30, 0x00), nil
-}
+func (rawControl) BERPacket() ber.Packet { return ber.Sequence().BERPacket() }

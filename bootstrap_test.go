@@ -61,8 +61,7 @@ func newSetupPipeConnection(t *testing.T, options ConnectionOptions) (*Conn, net
 
 func bindLikeOperation(t *testing.T, token []byte) Operation[rfc4511.BindResponse] {
 	t.Helper()
-	protocol, err := ber.WithContents(rfc4511.BindRequestIdentifier(), token).AppendBER(nil)
-	require.NoError(t, err)
+	protocol := ber.WithContents(rfc4511.BindRequestIdentifier(), token).Encode()
 	pattern, err := NewResponsePattern[rfc4511.BindResponse](ResponseSpec{Complete: []ber.Identifier{testBindResponse}})
 	require.NoError(t, err)
 	return Operation[rfc4511.BindResponse]{
@@ -342,7 +341,6 @@ func TestInitializationOptionsAreBounded(t *testing.T) {
 
 func mustElement(t *testing.T, id ber.Identifier, value []byte) []byte {
 	t.Helper()
-	encoded, err := ber.WithContents(id, value).AppendBER(nil)
-	assert.NoError(t, err)
+	encoded := ber.WithContents(id, value).Encode()
 	return encoded
 }

@@ -4,29 +4,25 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 
 	"github.com/wyattanderson/arden/ber"
 	"github.com/wyattanderson/arden/protocol"
 )
 
 func TestPrimitiveOperationWireTags(t *testing.T) {
-	deleteEncoded, err := (&DeleteRequest{Entry: LDAPDN("cn=Jane")}).AppendBER(nil)
-	require.NoError(t, err)
+	deleteEncoded := (&DeleteRequest{Entry: LDAPDN("cn=Jane")}).BERPacket().Encode()
 	assert.Equal(t, []byte{0x4a, 0x07, 'c', 'n', '=', 'J', 'a', 'n', 'e'}, deleteEncoded)
 	var deleteRequest DeleteRequest
 	decode(t, deleteEncoded, &deleteRequest)
 	assert.Equal(t, "cn=Jane", string(deleteRequest.Entry))
 
-	abandonEncoded, err := (&AbandonRequest{Target: 9}).AppendBER(nil)
-	require.NoError(t, err)
+	abandonEncoded := (&AbandonRequest{Target: 9}).BERPacket().Encode()
 	assert.Equal(t, []byte{0x50, 0x01, 0x09}, abandonEncoded)
 	var abandonRequest AbandonRequest
 	decode(t, abandonEncoded, &abandonRequest)
 	assert.Equal(t, protocol.MessageID(9), abandonRequest.Target)
 
-	unbindEncoded, err := (&UnbindRequest{}).AppendBER(nil)
-	require.NoError(t, err)
+	unbindEncoded := (&UnbindRequest{}).BERPacket().Encode()
 	assert.Equal(t, []byte{0x42, 0x00}, unbindEncoded)
 	decode(t, unbindEncoded, &UnbindRequest{})
 	requireDecodeError(t, []byte{0x42, 0x01, 0x00}, &UnbindRequest{})
@@ -34,18 +30,19 @@ func TestPrimitiveOperationWireTags(t *testing.T) {
 
 func TestAbandonRequestTargetBoundariesAreAtomic(t *testing.T) {
 	for _, target := range []protocol.MessageID{1, protocol.MaxMessageID} {
-		_, err := (&AbandonRequest{Target: target}).AppendBER(nil)
-		require.NoError(t, err)
+		encoded := (&AbandonRequest{Target: target}).BERPacket().Encode()
+		var got AbandonRequest
+		decode(t, encoded, &got)
+		assert.Equal(t, target, got.Target)
 	}
 	for _, target := range []protocol.MessageID{0, -1} {
-		dst := []byte{0xde, 0xad}
-		got, err := (&AbandonRequest{Target: target}).AppendBER(dst)
-		require.Error(t, err)
-		assert.Equal(t, dst, got)
+		encoded := (&AbandonRequest{Target: target}).BERPacket().Encode()
+		prior := AbandonRequest{Target: 7}
+		requireDecodeError(t, encoded, &prior)
+		assert.Equal(t, protocol.MessageID(7), prior.Target)
 	}
 
-	encoded, err := ber.IntegerWithIdentifier(AbandonRequestIdentifier(), 0).AppendBER(nil)
-	require.NoError(t, err)
+	encoded := ber.IntegerWithIdentifier(AbandonRequestIdentifier(), 0).Encode()
 	prior := AbandonRequest{Target: 7}
 	requireDecodeError(t, encoded, &prior)
 	assert.Equal(t, protocol.MessageID(7), prior.Target)
@@ -62,8 +59,7 @@ func TestModifyPreservesExtensibleOperationValue(t *testing.T) {
 			},
 		}},
 	}
-	encoded, err := request.AppendBER(nil)
-	require.NoError(t, err)
+	encoded := request.BERPacket().Encode()
 	var got ModifyRequest
 	decode(t, encoded, &got)
 	assert.Equal(t, *request, got)
@@ -75,15 +71,14 @@ func TestModifyDNOptionalNewSuperiorAndDuplicateRejection(t *testing.T) {
 		{Entry: LDAPDN("cn=Jane"), NewRDN: RelativeLDAPDN("cn=Janet")},
 		{Entry: LDAPDN("cn=Jane"), NewRDN: RelativeLDAPDN("cn=Janet"), DeleteOldRDN: true, NewSuperior: &superior},
 	} {
-		encoded, err := request.AppendBER(nil)
-		require.NoError(t, err)
+		encoded := request.BERPacket().Encode()
 		var got ModifyDNRequest
 		decode(t, encoded, &got)
 		assert.Equal(t, request, got)
 	}
 
 	newSuperiorID := ber.Identifier{Class: ber.ClassContextSpecific, Number: 0}
-	encoded, err := ber.Constructed(ModifyDNRequestIdentifier()).
+	encoded := ber.Constructed(ModifyDNRequestIdentifier()).
 		Add(
 			ber.OctetString("cn=Jane"),
 			ber.OctetString("cn=Janet"),
@@ -91,24 +86,22 @@ func TestModifyDNOptionalNewSuperiorAndDuplicateRejection(t *testing.T) {
 			ber.Primitive(newSuperiorID, []byte("ou=one")),
 			ber.Primitive(newSuperiorID, []byte("ou=two")),
 		).
-		AppendBER(nil)
-	require.NoError(t, err)
+		BERPacket().Encode()
 	requireDecodeError(t, encoded, &ModifyDNRequest{})
 }
 
 func TestCompareRequestRejectsEmptyAssertionTypeAtomically(t *testing.T) {
 	request := &CompareRequest{Entry: LDAPDN("cn=Jane"), Assertion: AttributeValueAssertion{Value: AssertionValue("Jane")}}
-	dst := []byte{0xde, 0xad}
-	got, err := request.AppendBER(dst)
-	require.Error(t, err)
-	assert.Equal(t, dst, got)
+	prior := CompareRequest{Entry: LDAPDN("cn=keep")}
+	requireDecodeError(t, request.BERPacket().Encode(), &prior)
+	assert.Equal(t, LDAPDN("cn=keep"), prior.Entry)
 }
 
 func TestCommonResultResponsesPreserveUnknownCode(t *testing.T) {
 	result := LDAPResult{ResultCode: ResultCode(70), DiagnosticMessage: LDAPString("extension-defined")}
 	tests := []struct {
 		name string
-		in   ber.Marshaler
+		in   ber.Packeter
 		out  ber.Unmarshaler
 	}{
 		{"search", SearchResultDone{Result: result}, &SearchResultDone{}},
