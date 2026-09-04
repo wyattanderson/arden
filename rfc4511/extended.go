@@ -57,46 +57,15 @@ func (v *ExtendedRequest) BERPacket() ber.Packet {
 
 //revive:disable-next-line:exported
 func (v *ExtendedRequest) UnmarshalBER(r *ber.Reader) error {
-	contents, err := r.Constructed(extendedRequestIdentifier)
-	if err != nil {
+	d := ber.NewDecoder(r).Constructed(extendedRequestIdentifier)
+	decoded := ExtendedRequest{Name: d.ReadAs[LDAPOID](extendedRequestNameIdentifier)}
+	if d.NextIs(extendedRequestValueIdentifier) {
+		decoded.Value = d.Primitive[[]byte](extendedRequestValueIdentifier)
+		decoded.HasValue = true
+	}
+	decoded.Extensions = d.Extensions[UnknownField](extendedRequestNameIdentifier, extendedRequestValueIdentifier)
+	if err := d.End(); err != nil {
 		return err
-	}
-	name, err := readImplicitOctets(contents, extendedRequestNameIdentifier)
-	if err != nil {
-		return err
-	}
-	if err := requireNonEmpty("extended request name", name); err != nil {
-		return err
-	}
-	if err := validateLDAPOID(name); err != nil {
-		return err
-	}
-	decoded := ExtendedRequest{Name: LDAPOID(name)}
-	if !contents.Empty() {
-		id, err := contents.PeekIdentifier()
-		if err != nil {
-			return err
-		}
-		if id == extendedRequestValueIdentifier {
-			decoded.Value, err = readImplicitOctets(contents, extendedRequestValueIdentifier)
-			if err != nil {
-				return err
-			}
-			decoded.HasValue = true
-		}
-	}
-	if !contents.Empty() {
-		id, err := contents.PeekIdentifier()
-		if err != nil {
-			return err
-		}
-		if id == extendedRequestNameIdentifier || id == extendedRequestValueIdentifier {
-			return fmt.Errorf("arden: duplicate or out-of-order ExtendedRequest field %s", id)
-		}
-		decoded.Extensions, err = decodeUnknownFields(contents)
-		if err != nil {
-			return err
-		}
 	}
 	*v = decoded
 	return nil
@@ -134,59 +103,19 @@ func (v ExtendedResponse) BERPacket() ber.Packet {
 
 //revive:disable-next-line:exported
 func (v *ExtendedResponse) UnmarshalBER(r *ber.Reader) error {
-	contents, err := r.Constructed(extendedResponseIdentifier)
-	if err != nil {
+	d := ber.NewDecoder(r).Constructed(extendedResponseIdentifier)
+	decoded := ExtendedResponse{Result: d.Embed[LDAPResult]()}
+	if d.NextIs(extendedResponseNameIdentifier) {
+		decoded.ResponseName = d.ReadAs[LDAPOID](extendedResponseNameIdentifier)
+		decoded.HasResponseName = true
+	}
+	if d.NextIs(extendedResponseValueIdentifier) {
+		decoded.ResponseValue = d.Primitive[[]byte](extendedResponseValueIdentifier)
+		decoded.HasResponseValue = true
+	}
+	decoded.Extensions = d.Extensions[UnknownField](extendedResponseNameIdentifier, extendedResponseValueIdentifier)
+	if err := d.End(); err != nil {
 		return err
-	}
-	result, err := decodeLDAPResultPrefix(contents)
-	if err != nil {
-		return err
-	}
-	decoded := ExtendedResponse{Result: result}
-	if !contents.Empty() {
-		id, err := contents.PeekIdentifier()
-		if err != nil {
-			return err
-		}
-		if id == extendedResponseNameIdentifier {
-			value, err := readImplicitOctets(contents, extendedResponseNameIdentifier)
-			if err != nil {
-				return err
-			}
-			if err := requireNonEmpty("extended response name", value); err != nil {
-				return err
-			}
-			if err := validateLDAPOID(value); err != nil {
-				return err
-			}
-			decoded.ResponseName, decoded.HasResponseName = LDAPOID(value), true
-		}
-	}
-	if !contents.Empty() {
-		id, err := contents.PeekIdentifier()
-		if err != nil {
-			return err
-		}
-		if id == extendedResponseValueIdentifier {
-			decoded.ResponseValue, err = readImplicitOctets(contents, extendedResponseValueIdentifier)
-			if err != nil {
-				return err
-			}
-			decoded.HasResponseValue = true
-		}
-	}
-	if !contents.Empty() {
-		id, err := contents.PeekIdentifier()
-		if err != nil {
-			return err
-		}
-		if id == referralIdentifier || id == extendedResponseNameIdentifier || id == extendedResponseValueIdentifier {
-			return fmt.Errorf("arden: duplicate or out-of-order ExtendedResponse field %s", id)
-		}
-		decoded.Extensions, err = decodeUnknownFields(contents)
-		if err != nil {
-			return err
-		}
 	}
 	*v = decoded
 	return nil
@@ -217,55 +146,19 @@ func (v IntermediateResponse) BERPacket() ber.Packet {
 
 //revive:disable-next-line:exported
 func (v *IntermediateResponse) UnmarshalBER(r *ber.Reader) error {
-	contents, err := r.Constructed(intermediateResponseIdentifier)
-	if err != nil {
+	d := ber.NewDecoder(r).Constructed(intermediateResponseIdentifier)
+	var decoded IntermediateResponse
+	if d.NextIs(intermediateResponseNameIdentifier) {
+		decoded.ResponseName = d.ReadAs[LDAPOID](intermediateResponseNameIdentifier)
+		decoded.HasResponseName = true
+	}
+	if d.NextIs(intermediateResponseValueIdentifier) {
+		decoded.ResponseValue = d.Primitive[[]byte](intermediateResponseValueIdentifier)
+		decoded.HasResponseValue = true
+	}
+	decoded.Extensions = d.Extensions[UnknownField](intermediateResponseNameIdentifier, intermediateResponseValueIdentifier)
+	if err := d.End(); err != nil {
 		return err
-	}
-	decoded := IntermediateResponse{}
-	if !contents.Empty() {
-		id, err := contents.PeekIdentifier()
-		if err != nil {
-			return err
-		}
-		if id == intermediateResponseNameIdentifier {
-			value, err := readImplicitOctets(contents, intermediateResponseNameIdentifier)
-			if err != nil {
-				return err
-			}
-			if err := requireNonEmpty("intermediate response name", value); err != nil {
-				return err
-			}
-			if err := validateLDAPOID(value); err != nil {
-				return err
-			}
-			decoded.ResponseName, decoded.HasResponseName = LDAPOID(value), true
-		}
-	}
-	if !contents.Empty() {
-		id, err := contents.PeekIdentifier()
-		if err != nil {
-			return err
-		}
-		if id == intermediateResponseValueIdentifier {
-			decoded.ResponseValue, err = readImplicitOctets(contents, intermediateResponseValueIdentifier)
-			if err != nil {
-				return err
-			}
-			decoded.HasResponseValue = true
-		}
-	}
-	if !contents.Empty() {
-		id, err := contents.PeekIdentifier()
-		if err != nil {
-			return err
-		}
-		if id == intermediateResponseNameIdentifier || id == intermediateResponseValueIdentifier {
-			return fmt.Errorf("arden: duplicate or out-of-order IntermediateResponse field %s", id)
-		}
-		decoded.Extensions, err = decodeUnknownFields(contents)
-		if err != nil {
-			return err
-		}
 	}
 	*v = decoded
 	return nil
@@ -286,26 +179,19 @@ type ExtendedResult struct {
 // UnmarshalBER decodes an IntermediateResponse or terminal ExtendedResponse.
 // The receiver is unchanged if decoding fails.
 func (v *ExtendedResult) UnmarshalBER(r *ber.Reader) error {
-	id, err := r.PeekIdentifier()
-	if err != nil {
-		return err
-	}
+	d := ber.NewDecoder(r)
+	id := d.PeekIdentifier()
 	var decoded ExtendedResultValue
 	switch id {
 	case intermediateResponseIdentifier:
-		var intermediate IntermediateResponse
-		if err := intermediate.UnmarshalBER(r); err != nil {
-			return err
-		}
-		decoded = intermediate
+		decoded = d.Read[IntermediateResponse]()
 	case extendedResponseIdentifier:
-		var response ExtendedResponse
-		if err := response.UnmarshalBER(r); err != nil {
-			return err
-		}
-		decoded = response
+		decoded = d.Read[ExtendedResponse]()
 	default:
-		return fmt.Errorf("arden: unexpected ExtendedResult identifier %s", id)
+		d.Fail(fmt.Errorf("arden: unexpected ExtendedResult identifier %s", id))
+	}
+	if err := d.Err(); err != nil {
+		return err
 	}
 	*v = ExtendedResult{value: decoded}
 	return nil

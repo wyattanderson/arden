@@ -19,6 +19,7 @@ var (
 	ErrInvalidBoolean       = errors.New("ber: invalid boolean")
 	ErrInvalidInteger       = errors.New("ber: invalid integer")
 	ErrInvalidNull          = errors.New("ber: invalid null")
+	ErrNoProgress           = errors.New("ber: decoder consumed no value")
 )
 
 // DecodeError identifies the byte offset at which a BER decode failed. Offset

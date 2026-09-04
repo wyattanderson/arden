@@ -93,11 +93,15 @@ func (f And) BERPacket() ber.Packet {
 
 //revive:disable-next-line:exported
 func (f *And) UnmarshalBER(r *ber.Reader) error {
-	filters, err := decodeFilterSet(r, andFilterIdentifier, "AND")
-	if err != nil {
+	d := ber.NewDecoder(r).Constructed(andFilterIdentifier)
+	decoded := And{Filters: d.AllUsing(decodeFilter)}
+	if err := d.End(); err != nil {
 		return err
 	}
-	*f = And{Filters: filters}
+	if len(decoded.Filters) == 0 {
+		return errors.New("arden: AND filter requires at least one child")
+	}
+	*f = decoded
 	return nil
 }
 
@@ -114,11 +118,15 @@ func (f Or) BERPacket() ber.Packet {
 
 //revive:disable-next-line:exported
 func (f *Or) UnmarshalBER(r *ber.Reader) error {
-	filters, err := decodeFilterSet(r, orFilterIdentifier, "OR")
-	if err != nil {
+	d := ber.NewDecoder(r).Constructed(orFilterIdentifier)
+	decoded := Or{Filters: d.AllUsing(decodeFilter)}
+	if err := d.End(); err != nil {
 		return err
 	}
-	*f = Or{Filters: filters}
+	if len(decoded.Filters) == 0 {
+		return errors.New("arden: OR filter requires at least one child")
+	}
+	*f = decoded
 	return nil
 }
 
@@ -135,18 +143,12 @@ func (f Not) BERPacket() ber.Packet {
 
 //revive:disable-next-line:exported
 func (f *Not) UnmarshalBER(r *ber.Reader) error {
-	contents, err := r.Constructed(notFilterIdentifier)
-	if err != nil {
+	d := ber.NewDecoder(r).Constructed(notFilterIdentifier)
+	decoded := Not{Filter: d.Using(decodeFilter)}
+	if err := d.End(); err != nil {
 		return err
 	}
-	child, err := decodeFilter(contents)
-	if err != nil {
-		return err
-	}
-	if err := contents.RequireEmpty(); err != nil {
-		return err
-	}
-	*f = Not{Filter: child}
+	*f = decoded
 	return nil
 }
 
@@ -163,11 +165,12 @@ func (f EqualityMatch) BERPacket() ber.Packet {
 
 //revive:disable-next-line:exported
 func (f *EqualityMatch) UnmarshalBER(r *ber.Reader) error {
-	assertion, err := decodeAssertionFilter(r, equalityMatchIdentifier)
-	if err != nil {
+	d := ber.NewDecoder(r)
+	decoded := EqualityMatch{Assertion: d.ReadAs[AttributeValueAssertion](equalityMatchIdentifier)}
+	if err := d.Err(); err != nil {
 		return err
 	}
-	*f = EqualityMatch{Assertion: assertion}
+	*f = decoded
 	return nil
 }
 
@@ -184,11 +187,12 @@ func (f GreaterOrEqual) BERPacket() ber.Packet {
 
 //revive:disable-next-line:exported
 func (f *GreaterOrEqual) UnmarshalBER(r *ber.Reader) error {
-	assertion, err := decodeAssertionFilter(r, greaterOrEqualIdentifier)
-	if err != nil {
+	d := ber.NewDecoder(r)
+	decoded := GreaterOrEqual{Assertion: d.ReadAs[AttributeValueAssertion](greaterOrEqualIdentifier)}
+	if err := d.Err(); err != nil {
 		return err
 	}
-	*f = GreaterOrEqual{Assertion: assertion}
+	*f = decoded
 	return nil
 }
 
@@ -205,11 +209,12 @@ func (f LessOrEqual) BERPacket() ber.Packet {
 
 //revive:disable-next-line:exported
 func (f *LessOrEqual) UnmarshalBER(r *ber.Reader) error {
-	assertion, err := decodeAssertionFilter(r, lessOrEqualIdentifier)
-	if err != nil {
+	d := ber.NewDecoder(r)
+	decoded := LessOrEqual{Assertion: d.ReadAs[AttributeValueAssertion](lessOrEqualIdentifier)}
+	if err := d.Err(); err != nil {
 		return err
 	}
-	*f = LessOrEqual{Assertion: assertion}
+	*f = decoded
 	return nil
 }
 
@@ -226,11 +231,12 @@ func (f ApproximateMatch) BERPacket() ber.Packet {
 
 //revive:disable-next-line:exported
 func (f *ApproximateMatch) UnmarshalBER(r *ber.Reader) error {
-	assertion, err := decodeAssertionFilter(r, approximateMatchIdentifier)
-	if err != nil {
+	d := ber.NewDecoder(r)
+	decoded := ApproximateMatch{Assertion: d.ReadAs[AttributeValueAssertion](approximateMatchIdentifier)}
+	if err := d.Err(); err != nil {
 		return err
 	}
-	*f = ApproximateMatch{Assertion: assertion}
+	*f = decoded
 	return nil
 }
 
@@ -247,14 +253,15 @@ func (f Present) BERPacket() ber.Packet {
 
 //revive:disable-next-line:exported
 func (f *Present) UnmarshalBER(r *ber.Reader) error {
-	attribute, err := r.Primitive(presentIdentifier)
-	if err != nil {
+	d := ber.NewDecoder(r)
+	decoded := Present{Attribute: d.ReadAs[AttributeDescription](presentIdentifier)}
+	if err := d.Err(); err != nil {
 		return err
 	}
-	if err := requireNonEmpty("present attribute description", attribute); err != nil {
+	if err := requireNonEmpty("present attribute description", decoded.Attribute); err != nil {
 		return err
 	}
-	*f = Present{Attribute: AttributeDescription(string(attribute))}
+	*f = decoded
 	return nil
 }
 
@@ -293,69 +300,31 @@ func (f SubstringFilter) BERPacket() ber.Packet {
 
 //revive:disable-next-line:exported
 func (f *SubstringFilter) UnmarshalBER(r *ber.Reader) error {
-	contents, err := r.Constructed(substringsIdentifier)
-	if err != nil {
+	d := ber.NewDecoder(r).Constructed(substringsIdentifier)
+	decoded := SubstringFilter{Type: d.Read[AttributeDescription]()}
+	parts := d.Sequence()
+	if parts.NextIs(initialSubstringIdentifier) {
+		initial := parts.ReadAs[AssertionValue](initialSubstringIdentifier)
+		decoded.Initial = &initial
+	}
+	for parts.NextIs(anySubstringIdentifier) {
+		decoded.Any = append(decoded.Any, parts.ReadAs[AssertionValue](anySubstringIdentifier))
+	}
+	if parts.NextIs(finalSubstringIdentifier) {
+		final := parts.ReadAs[AssertionValue](finalSubstringIdentifier)
+		decoded.Final = &final
+	}
+	decoded.Extensions = parts.Extensions[UnknownField](
+		initialSubstringIdentifier, anySubstringIdentifier, finalSubstringIdentifier,
+	)
+	if err := d.End(); err != nil {
 		return err
 	}
-	typeValue, err := contents.OctetString()
-	if err != nil {
+	if err := requireNonEmpty("substring attribute description", decoded.Type); err != nil {
 		return err
-	}
-	if err := requireNonEmpty("substring attribute description", typeValue); err != nil {
-		return err
-	}
-	parts, err := contents.Sequence()
-	if err != nil {
-		return err
-	}
-	decoded := SubstringFilter{Type: AttributeDescription(string(typeValue))}
-	for !parts.Empty() {
-		id, err := parts.PeekIdentifier()
-		if err != nil {
-			return err
-		}
-		switch id {
-		case initialSubstringIdentifier:
-			if decoded.Initial != nil || len(decoded.Any) != 0 || decoded.Final != nil {
-				return errors.New("arden: substring initial part is out of order")
-			}
-			value, err := readImplicitOctets(parts, initialSubstringIdentifier)
-			if err != nil {
-				return err
-			}
-			initial := AssertionValue(value)
-			decoded.Initial = &initial
-		case anySubstringIdentifier:
-			if decoded.Final != nil {
-				return errors.New("arden: substring any part follows final part")
-			}
-			value, err := readImplicitOctets(parts, anySubstringIdentifier)
-			if err != nil {
-				return err
-			}
-			decoded.Any = append(decoded.Any, AssertionValue(value))
-		case finalSubstringIdentifier:
-			if decoded.Final != nil {
-				return errors.New("arden: substring has multiple final parts")
-			}
-			value, err := readImplicitOctets(parts, finalSubstringIdentifier)
-			if err != nil {
-				return err
-			}
-			final := AssertionValue(value)
-			decoded.Final = &final
-		default:
-			decoded.Extensions, err = decodeUnknownFields(parts)
-			if err != nil {
-				return err
-			}
-		}
 	}
 	if decoded.Initial == nil && len(decoded.Any) == 0 && decoded.Final == nil {
 		return errors.New("arden: substring filter requires at least one part")
-	}
-	if err := contents.RequireEmpty(); err != nil {
-		return err
 	}
 	*f = decoded
 	return nil
@@ -391,74 +360,25 @@ func (f ExtensibleMatch) BERPacket() ber.Packet {
 
 //revive:disable-next-line:exported
 func (f *ExtensibleMatch) UnmarshalBER(r *ber.Reader) error {
-	contents, err := r.Constructed(extensibleMatchIdentifier)
-	if err != nil {
+	d := ber.NewDecoder(r).Constructed(extensibleMatchIdentifier)
+	var decoded ExtensibleMatch
+	if d.NextIs(matchingRuleIdentifier) {
+		rule := d.ReadAs[MatchingRuleID](matchingRuleIdentifier)
+		decoded.MatchingRule = &rule
+	}
+	if d.NextIs(matchingTypeIdentifier) {
+		attribute := d.ReadAs[AttributeDescription](matchingTypeIdentifier)
+		decoded.Type = &attribute
+	}
+	decoded.MatchValue = d.ReadAs[AssertionValue](matchValueIdentifier)
+	if d.NextIs(dnAttributesIdentifier) {
+		decoded.DNAttributes = d.BooleanAs(dnAttributesIdentifier)
+	}
+	decoded.Extensions = d.Extensions[UnknownField](
+		matchingRuleIdentifier, matchingTypeIdentifier, matchValueIdentifier, dnAttributesIdentifier,
+	)
+	if err := d.End(); err != nil {
 		return err
-	}
-	decoded := ExtensibleMatch{}
-	if !contents.Empty() {
-		id, err := contents.PeekIdentifier()
-		if err != nil {
-			return err
-		}
-		if id == matchingRuleIdentifier {
-			value, err := readImplicitOctets(contents, matchingRuleIdentifier)
-			if err != nil {
-				return err
-			}
-			if err := requireNonEmpty("matching rule", value); err != nil {
-				return err
-			}
-			matchingRule := MatchingRuleID(value)
-			decoded.MatchingRule = &matchingRule
-		}
-	}
-	if !contents.Empty() {
-		id, err := contents.PeekIdentifier()
-		if err != nil {
-			return err
-		}
-		if id == matchingTypeIdentifier {
-			value, err := readImplicitOctets(contents, matchingTypeIdentifier)
-			if err != nil {
-				return err
-			}
-			if err := requireNonEmpty("matching type", value); err != nil {
-				return err
-			}
-			typeValue := AttributeDescription(value)
-			decoded.Type = &typeValue
-		}
-	}
-	value, err := readImplicitOctets(contents, matchValueIdentifier)
-	if err != nil {
-		return err
-	}
-	decoded.MatchValue = AssertionValue(value)
-	if !contents.Empty() {
-		id, err := contents.PeekIdentifier()
-		if err != nil {
-			return err
-		}
-		if id == dnAttributesIdentifier {
-			decoded.DNAttributes, err = readImplicitBoolean(contents, dnAttributesIdentifier)
-			if err != nil {
-				return err
-			}
-		}
-	}
-	if !contents.Empty() {
-		id, err := contents.PeekIdentifier()
-		if err != nil {
-			return err
-		}
-		if id == matchingRuleIdentifier || id == matchingTypeIdentifier || id == matchValueIdentifier || id == dnAttributesIdentifier {
-			return fmt.Errorf("arden: duplicate or out-of-order extensible match field %s", id)
-		}
-		decoded.Extensions, err = decodeUnknownFields(contents)
-		if err != nil {
-			return err
-		}
 	}
 	if err := decoded.validate(); err != nil {
 		return err
@@ -484,81 +404,42 @@ func (f ExtensibleMatch) validate() error {
 	return nil
 }
 
-func decodeFilterSet(r *ber.Reader, id ber.Identifier, name string) ([]Filter, error) {
-	contents, err := r.Constructed(id)
-	if err != nil {
-		return nil, err
-	}
-	var filters []Filter
-	for !contents.Empty() {
-		filter, err := decodeFilter(contents)
-		if err != nil {
-			return nil, err
-		}
-		filters = append(filters, filter)
-	}
-	if len(filters) == 0 {
-		return nil, fmt.Errorf("arden: %s filter requires at least one child", name)
-	}
-	return filters, nil
-}
-
 func decodeFilter(r *ber.Reader) (Filter, error) {
-	id, err := r.PeekIdentifier()
-	if err != nil {
-		return nil, err
-	}
+	d := ber.NewDecoder(r)
+	id := d.PeekIdentifier()
+	var decoded Filter
 	switch id {
 	case andFilterIdentifier:
-		var filter And
-		err = filter.UnmarshalBER(r)
-		return filter, err
+		decoded = d.Read[And]()
 	case orFilterIdentifier:
-		var filter Or
-		err = filter.UnmarshalBER(r)
-		return filter, err
+		decoded = d.Read[Or]()
 	case notFilterIdentifier:
-		var filter Not
-		err = filter.UnmarshalBER(r)
-		return filter, err
+		decoded = d.Read[Not]()
 	case equalityMatchIdentifier:
-		var filter EqualityMatch
-		err = filter.UnmarshalBER(r)
-		return filter, err
+		decoded = d.Read[EqualityMatch]()
 	case substringsIdentifier:
-		var filter SubstringFilter
-		err = filter.UnmarshalBER(r)
-		return filter, err
+		decoded = d.Read[SubstringFilter]()
 	case greaterOrEqualIdentifier:
-		var filter GreaterOrEqual
-		err = filter.UnmarshalBER(r)
-		return filter, err
+		decoded = d.Read[GreaterOrEqual]()
 	case lessOrEqualIdentifier:
-		var filter LessOrEqual
-		err = filter.UnmarshalBER(r)
-		return filter, err
+		decoded = d.Read[LessOrEqual]()
 	case presentIdentifier:
-		var filter Present
-		err = filter.UnmarshalBER(r)
-		return filter, err
+		decoded = d.Read[Present]()
 	case approximateMatchIdentifier:
-		var filter ApproximateMatch
-		err = filter.UnmarshalBER(r)
-		return filter, err
+		decoded = d.Read[ApproximateMatch]()
 	case extensibleMatchIdentifier:
-		var filter ExtensibleMatch
-		err = filter.UnmarshalBER(r)
-		return filter, err
+		decoded = d.Read[ExtensibleMatch]()
 	default:
 		if id.Class != ber.ClassContextSpecific {
-			return nil, fmt.Errorf("arden: filter identifier %s is not context-specific", id)
+			d.Fail(fmt.Errorf("arden: filter identifier %s is not context-specific", id))
 		}
-		e, err := r.SkipElement()
-		if err != nil {
-			return nil, err
-		}
-		return UnknownFilter{identifier: e.Identifier, raw: bytes.Clone(e.Raw)}, nil
+		field := d.Read[UnknownField]()
+		decoded = UnknownFilter(field)
 	}
+	if err := d.Err(); err != nil {
+		return nil, err
+	}
+	return decoded, nil
 }
 
 func assertionFilterPacket(id ber.Identifier, assertion AttributeValueAssertion) ber.Packet {
@@ -569,12 +450,4 @@ func assertionFilterPacket(id ber.Identifier, assertion AttributeValueAssertion)
 		).
 		Add(assertion.Extensions...).
 		BERPacket()
-}
-
-func decodeAssertionFilter(r *ber.Reader, id ber.Identifier) (AttributeValueAssertion, error) {
-	contents, err := r.Constructed(id)
-	if err != nil {
-		return AttributeValueAssertion{}, err
-	}
-	return decodeAssertionContents(contents)
 }

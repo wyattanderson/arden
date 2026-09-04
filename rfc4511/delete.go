@@ -33,11 +33,12 @@ func (v *DeleteRequest) BERPacket() ber.Packet {
 
 //revive:disable-next-line:exported
 func (v *DeleteRequest) UnmarshalBER(r *ber.Reader) error {
-	entry, err := r.Primitive(deleteRequestIdentifier)
-	if err != nil {
+	d := ber.NewDecoder(r)
+	decoded := DeleteRequest{Entry: d.ReadAs[LDAPDN](deleteRequestIdentifier)}
+	if err := d.Err(); err != nil {
 		return err
 	}
-	*v = DeleteRequest{Entry: LDAPDN(string(entry))}
+	*v = decoded
 	return nil
 }
 
@@ -54,11 +55,12 @@ func (v DeleteResponse) BERPacket() ber.Packet {
 
 //revive:disable-next-line:exported
 func (v *DeleteResponse) UnmarshalBER(r *ber.Reader) error {
-	result, err := decodeResultResponse(r, deleteResponseIdentifier)
-	if err != nil {
+	d := ber.NewDecoder(r)
+	decoded := DeleteResponse{Result: d.ReadAs[LDAPResult](deleteResponseIdentifier)}
+	if err := d.Err(); err != nil {
 		return err
 	}
-	*v = DeleteResponse{Result: result}
+	*v = decoded
 	return nil
 }
 

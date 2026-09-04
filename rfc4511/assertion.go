@@ -1,8 +1,6 @@
 package rfc4511
 
 import (
-	"bytes"
-
 	"github.com/wyattanderson/arden/ber"
 )
 
@@ -24,37 +22,25 @@ func (v AttributeValueAssertion) BERPacket() ber.Packet {
 
 //revive:disable-next-line:exported
 func (v *AttributeValueAssertion) UnmarshalBER(r *ber.Reader) error {
-	contents, err := r.Sequence()
-	if err != nil {
-		return err
-	}
-	decoded, err := decodeAssertionContents(contents)
-	if err != nil {
-		return err
-	}
-	*v = decoded
-	return nil
+	return v.UnmarshalAs(ber.SequenceIdentifier).UnmarshalBER(r)
 }
 
-func decodeAssertionContents(r *ber.Reader) (AttributeValueAssertion, error) {
-	typeValue, err := r.OctetString()
-	if err != nil {
-		return AttributeValueAssertion{}, err
-	}
-	if err := requireNonEmpty("attribute description", typeValue); err != nil {
-		return AttributeValueAssertion{}, err
-	}
-	value, err := r.OctetString()
-	if err != nil {
-		return AttributeValueAssertion{}, err
-	}
-	extensions, err := decodeUnknownFields(r)
-	if err != nil {
-		return AttributeValueAssertion{}, err
-	}
-	return AttributeValueAssertion{
-		Type:       AttributeDescription(string(typeValue)),
-		Value:      AssertionValue(bytes.Clone(value)),
-		Extensions: extensions,
-	}, nil
+// UnmarshalAs binds the assertion decoder to an alternate identifier.
+func (v *AttributeValueAssertion) UnmarshalAs(id ber.Identifier) ber.Unmarshaler {
+	return ber.UnmarshalFunc(func(r *ber.Reader) error {
+		d := ber.NewDecoder(r).Constructed(id)
+		decoded := AttributeValueAssertion{
+			Type:       d.Read[AttributeDescription](),
+			Value:      d.Read[AssertionValue](),
+			Extensions: d.Extensions[UnknownField](),
+		}
+		if err := d.End(); err != nil {
+			return err
+		}
+		if err := requireNonEmpty("attribute description", decoded.Type); err != nil {
+			return err
+		}
+		*v = decoded
+		return nil
+	})
 }

@@ -95,23 +95,16 @@ func (v Change) BERPacket() ber.Packet {
 
 //revive:disable-next-line:exported
 func (v *Change) UnmarshalBER(r *ber.Reader) error {
-	contents, err := r.Sequence()
-	if err != nil {
+	d := ber.NewDecoder(r).Sequence()
+	decoded := Change{
+		Operation:    d.Enumerated[ModifyOperation](),
+		Modification: d.Read[PartialAttribute](),
+		Extensions:   d.Extensions[UnknownField](),
+	}
+	if err := d.End(); err != nil {
 		return err
 	}
-	operation, err := contents.Enumerated()
-	if err != nil {
-		return err
-	}
-	var modification PartialAttribute
-	if err := modification.UnmarshalBER(contents); err != nil {
-		return err
-	}
-	extensions, err := decodeUnknownFields(contents)
-	if err != nil {
-		return err
-	}
-	*v = Change{Operation: ModifyOperation(operation), Modification: modification, Extensions: extensions}
+	*v = decoded
 	return nil
 }
 
@@ -136,31 +129,16 @@ func (v *ModifyRequest) BERPacket() ber.Packet {
 
 //revive:disable-next-line:exported
 func (v *ModifyRequest) UnmarshalBER(r *ber.Reader) error {
-	contents, err := r.Constructed(modifyRequestIdentifier)
-	if err != nil {
+	d := ber.NewDecoder(r).Constructed(modifyRequestIdentifier)
+	decoded := ModifyRequest{
+		Object:     d.Read[LDAPDN](),
+		Changes:    d.Sequence().All[Change](),
+		Extensions: d.Extensions[UnknownField](),
+	}
+	if err := d.End(); err != nil {
 		return err
 	}
-	object, err := contents.OctetString()
-	if err != nil {
-		return err
-	}
-	changesReader, err := contents.Sequence()
-	if err != nil {
-		return err
-	}
-	var changes []Change
-	for !changesReader.Empty() {
-		var change Change
-		if err := change.UnmarshalBER(changesReader); err != nil {
-			return err
-		}
-		changes = append(changes, change)
-	}
-	extensions, err := decodeUnknownFields(contents)
-	if err != nil {
-		return err
-	}
-	*v = ModifyRequest{Object: LDAPDN(string(object)), Changes: changes, Extensions: extensions}
+	*v = decoded
 	return nil
 }
 
@@ -177,11 +155,12 @@ func (v ModifyResponse) BERPacket() ber.Packet {
 
 //revive:disable-next-line:exported
 func (v *ModifyResponse) UnmarshalBER(r *ber.Reader) error {
-	result, err := decodeResultResponse(r, modifyResponseIdentifier)
-	if err != nil {
+	d := ber.NewDecoder(r)
+	decoded := ModifyResponse{Result: d.ReadAs[LDAPResult](modifyResponseIdentifier)}
+	if err := d.Err(); err != nil {
 		return err
 	}
-	*v = ModifyResponse{Result: result}
+	*v = decoded
 	return nil
 }
 

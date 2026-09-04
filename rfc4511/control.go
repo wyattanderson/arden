@@ -1,9 +1,6 @@
 package rfc4511
 
 import (
-	"bytes"
-	"fmt"
-
 	"github.com/wyattanderson/arden/ber"
 )
 
@@ -34,58 +31,18 @@ func (v Control) BERPacket() ber.Packet {
 
 //revive:disable-next-line:exported
 func (v *Control) UnmarshalBER(r *ber.Reader) error {
-	contents, err := r.Sequence()
-	if err != nil {
+	d := ber.NewDecoder(r).Sequence()
+	decoded := Control{Type: d.Read[LDAPOID]()}
+	if d.NextIs(ber.BooleanIdentifier) {
+		decoded.Criticality = d.Boolean()
+	}
+	if d.NextIs(ber.OctetStringIdentifier) {
+		decoded.Value = d.OctetString[[]byte]()
+		decoded.HasValue = true
+	}
+	decoded.Extensions = d.Extensions[UnknownField](ber.BooleanIdentifier, ber.OctetStringIdentifier)
+	if err := d.End(); err != nil {
 		return err
-	}
-	typeValue, err := contents.OctetString()
-	if err != nil {
-		return err
-	}
-	if err := requireNonEmpty("control type", typeValue); err != nil {
-		return err
-	}
-	if err := validateLDAPOID(typeValue); err != nil {
-		return err
-	}
-	decoded := Control{Type: LDAPOID(string(typeValue))}
-	if !contents.Empty() {
-		id, err := contents.PeekIdentifier()
-		if err != nil {
-			return err
-		}
-		if id == ber.BooleanIdentifier {
-			decoded.Criticality, err = contents.Boolean()
-			if err != nil {
-				return err
-			}
-		}
-	}
-	if !contents.Empty() {
-		id, err := contents.PeekIdentifier()
-		if err != nil {
-			return err
-		}
-		if id == ber.OctetStringIdentifier {
-			value, err := contents.OctetString()
-			if err != nil {
-				return err
-			}
-			decoded.Value, decoded.HasValue = bytes.Clone(value), true
-		}
-	}
-	if !contents.Empty() {
-		id, err := contents.PeekIdentifier()
-		if err != nil {
-			return err
-		}
-		if id == ber.BooleanIdentifier || id == ber.OctetStringIdentifier {
-			return fmt.Errorf("arden: duplicate or out-of-order Control field %s", id)
-		}
-		decoded.Extensions, err = decodeUnknownFields(contents)
-		if err != nil {
-			return err
-		}
 	}
 	*v = decoded
 	return nil

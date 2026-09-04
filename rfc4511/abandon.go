@@ -31,14 +31,15 @@ func (v *AbandonRequest) BERPacket() ber.Packet {
 
 //revive:disable-next-line:exported
 func (v *AbandonRequest) UnmarshalBER(r *ber.Reader) error {
-	target, err := r.IntegerWithIdentifier(abandonRequestIdentifier)
-	if err != nil {
+	d := ber.NewDecoder(r)
+	decoded := AbandonRequest{Target: d.IntegerAs[protocol.MessageID](abandonRequestIdentifier)}
+	if err := d.Err(); err != nil {
 		return err
 	}
-	if target <= 0 || target > int64(protocol.MaxMessageID) {
+	if decoded.Target <= 0 || decoded.Target > protocol.MaxMessageID {
 		return errors.New("arden: AbandonRequest target is outside [1, MaxMessageID]")
 	}
-	*v = AbandonRequest{Target: protocol.MessageID(target)}
+	*v = decoded
 	return nil
 }
 

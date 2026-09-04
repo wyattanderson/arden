@@ -227,43 +227,67 @@ func (r *Reader) Boolean() (bool, error) {
 
 // Integer reads a signed BER INTEGER that fits in int64 and the configured
 // integer-size limit.
-func (r *Reader) Integer() (int64, error) { return r.integer(IntegerIdentifier) }
+func (r *Reader) Integer() (int64, error) { return r.integer[int64](IntegerIdentifier) }
 
 // IntegerWithIdentifier reads a signed BER INTEGER that has an implicit
 // primitive identifier, such as an LDAP application-tagged MessageID.
 func (r *Reader) IntegerWithIdentifier(id Identifier) (int64, error) {
-	return r.integer(id)
+	return r.integer[int64](id)
 }
 
 // Enumerated reads a signed BER ENUMERATED value.
-func (r *Reader) Enumerated() (int64, error) { return r.integer(EnumeratedIdentifier) }
+func (r *Reader) Enumerated() (int64, error) { return r.integer[int64](EnumeratedIdentifier) }
 
-func (r *Reader) integer(id Identifier) (int64, error) {
+func (r *Reader) integer[T integer](id Identifier) (T, error) {
 	start, elements := r.pos, r.state.elements
 	value, err := r.Primitive(id)
 	if err != nil {
 		return 0, err
 	}
-	if len(value) == 0 {
+	result, err := decodeInteger[T](value, r.limits.MaxIntegerBytes)
+	if err != nil {
 		r.pos, r.state.elements = start, elements
-		return 0, decodeError(r.base+start, ErrInvalidInteger)
-	}
-	if len(value) > r.limits.MaxIntegerBytes {
-		r.pos, r.state.elements = start, elements
-		return 0, decodeError(r.base+start, &LimitError{Limit: "integer bytes", Value: uint64(len(value)), Max: uint64(r.limits.MaxIntegerBytes)})
-	}
-	if len(value) > 8 {
-		r.pos, r.state.elements = start, elements
-		return 0, decodeError(r.base+start, ErrInvalidInteger)
-	}
-	var result int64
-	for _, b := range value {
-		result = result<<8 | int64(b)
-	}
-	if value[0]&0x80 != 0 && len(value) < 8 {
-		result |= -1 << (uint(len(value)) * 8)
+		return 0, decodeError(r.base+start, err)
 	}
 	return result, nil
+}
+
+// decodeInteger checks BER's signed representation before narrowing to the
+// destination. An unsigned 64-bit value may need nine octets for its sign.
+func decodeInteger[T integer](value []byte, maxBytes int) (T, error) {
+	if len(value) == 0 {
+		return 0, ErrInvalidInteger
+	}
+	if len(value) > maxBytes {
+		return 0, &LimitError{Limit: "integer bytes", Value: uint64(len(value)), Max: uint64(maxBytes)}
+	}
+	negative := value[0]&0x80 != 0
+	if len(value) > 9 || (len(value) == 9 && (negative || value[0] != 0)) {
+		return 0, ErrInvalidInteger
+	}
+	var bits uint64
+	for _, b := range value {
+		if bits > math.MaxUint64>>8 {
+			return 0, ErrInvalidInteger
+		}
+		bits = bits<<8 | uint64(b)
+	}
+	if negative {
+		if len(value) < 8 {
+			bits |= math.MaxUint64 << (uint(len(value)) * 8)
+		}
+		n := int64(bits)
+		converted := T(n)
+		if converted >= 0 || int64(converted) != n {
+			return 0, ErrInvalidInteger
+		}
+		return converted, nil
+	}
+	converted := T(bits)
+	if converted < 0 || uint64(converted) != bits {
+		return 0, ErrInvalidInteger
+	}
+	return converted, nil
 }
 
 // OctetString reads a primitive universal OCTET STRING. Constructed OCTET

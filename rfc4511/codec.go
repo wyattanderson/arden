@@ -27,14 +27,6 @@ func implicitOctetsPacket[T ~string | ~[]byte](id ber.Identifier, value T) ber.P
 	return ber.Primitive(id, []byte(value))
 }
 
-func readImplicitOctets(r *ber.Reader, id ber.Identifier) ([]byte, error) {
-	value, err := r.Primitive(id)
-	if err != nil {
-		return nil, err
-	}
-	return bytes.Clone(value), nil
-}
-
 func implicitBooleanPacket(id ber.Identifier, value bool) ber.Packet {
 	b := byte(0)
 	if value {
@@ -43,29 +35,10 @@ func implicitBooleanPacket(id ber.Identifier, value bool) ber.Packet {
 	return ber.Primitive(id, []byte{b})
 }
 
-func readImplicitBoolean(r *ber.Reader, id ber.Identifier) (bool, error) {
-	value, err := r.Primitive(id)
-	if err != nil {
-		return false, err
-	}
-	if len(value) != 1 || (value[0] != 0 && value[0] != 0xff) {
-		return false, fmt.Errorf("arden: invalid implicit BOOLEAN %s", id)
-	}
-	return value[0] == 0xff, nil
-}
-
 func resultResponsePacket(id ber.Identifier, result LDAPResult) ber.Packet {
 	response := ber.Constructed(id)
 	result.addPrefix(response)
 	return response.Add(result.Extensions...).BERPacket()
-}
-
-func decodeResultResponse(r *ber.Reader, id ber.Identifier) (LDAPResult, error) {
-	contents, err := r.Constructed(id)
-	if err != nil {
-		return LDAPResult{}, err
-	}
-	return decodeLDAPResultContents(contents)
 }
 
 func requireNonEmpty[T ~string | ~[]byte](name string, value T) error {

@@ -38,8 +38,17 @@ The compile-checked definitions live in `ber/packet.go`, `ber/identifier.go`,
   into a new slice without an error result. `Packet.AppendTo(dst) []byte`
   appends to an existing buffer. Construction assumes valid input; it does not
   validate RFC semantics or re-decode children. Serialization preserves the
-  destination prefix and may reuse its capacity. The reader is a concrete bounded
-  cursor over caller-owned bytes: constructing it requires validated limits;
+  destination prefix and may reuse its capacity. Typed decoding uses a scoped,
+  first-error `ber.Decoder`: `Read[T]` consumes a complete value, `ReadAs[T](id)`
+  invokes a type-owned decoder bound to another identifier, and `Embed[T]`
+  reads known components directly in an enclosing scope. Embedded types reserve
+  identifiers they own; the enclosing type consumes its remaining fields and
+  preserves trailing unknowns with `Extensions[T]`, which rejects reserved
+  identifiers throughout that extension region. `End` rejects unread contents;
+  `Err` permits unread siblings but still finishes outstanding child scopes.
+  All reads after failure are inert, and typed values are committed only after
+  success. The underlying reader remains a concrete bounded cursor over
+  caller-owned bytes: constructing it requires validated limits;
   entering a constructed element returns a child reader limited to that
   element; primitive reads advance only on success; typed `UnmarshalBER`
   methods take that reader and reject trailing bytes except at an explicit RFC

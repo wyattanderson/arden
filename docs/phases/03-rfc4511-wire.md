@@ -148,6 +148,84 @@ The lower-level `ber.Reader` continues to return borrowed views. Ownership is a
 typed-codec rule. A future explicitly named view decoder may opt into borrowing
 without weakening `UnmarshalBER`.
 
+#### Scoped typed decoding
+
+RFC codecs use `ber.NewDecoder(r)` to collect the first error while expressing
+fields in wire order. A constructed scope is entered with `Constructed(id)`,
+`Sequence()`, or `Set()`. Failed scope entry returns an inert decoder, never
+nil. Parent and child scopes share the first error, and subsequent operations
+neither consume input nor invoke custom decoders.
+
+```go
+d := ber.NewDecoder(r).Constructed(searchEntryIdentifier)
+decoded := SearchResultEntry{
+    ObjectName: d.Read[LDAPDN](),
+    Attributes: d.Sequence().All[PartialAttribute](),
+    Extensions: d.Extensions[UnknownField](),
+}
+if err := d.End(); err != nil {
+    return err
+}
+*v = decoded
+return nil
+```
+
+- `Read[T]()` invokes `(*T).UnmarshalBER` and bounds that invocation to one
+  complete TLV. A decoder cannot consume the following sibling. Successful
+  custom decoders must consume their whole value and make progress.
+- `Integer[T]`, `IntegerAs[T](id)`, and `Enumerated[T]` check representability
+  before conversion, including rejecting negative values for unsigned types.
+  Positive unsigned 64-bit values may require nine BER octets and therefore
+  an explicitly increased `MaxIntegerBytes` limit.
+- `All[T]()` and `AllUsing(fn)` consume a whole collection, stop at the first
+  failure, and never return partial collections. Empty collections are nil.
+- `Using(fn)` adapts an existing `func(*Reader) (T, error)`; unlike `Read`, it
+  may intentionally read zero or multiple values. It does not finish a scope.
+- `NextIs(id)` distinguishes absent optional fields from malformed identifiers.
+- `Primitive[T](id)` and `OctetString[T]()` return owned octets. Typed RFC reads
+  use their named decoders so text and OID validation is applied consistently.
+- `End()` finishes a scope and rejects unread contents. `Err()` allows unread
+  siblings. Both finish any outstanding child scopes; reading another parent
+  field also finishes the preceding child instead of silently skipping it.
+
+#### Alternate identifiers and embedded components
+
+```go
+type TaggedUnmarshaler interface {
+    UnmarshalAs(Identifier) Unmarshaler
+}
+
+type FieldsUnmarshaler interface {
+    UnmarshalBERFields(*Decoder) error
+}
+```
+
+`ReadAs[LDAPResult](searchDoneIdentifier)` decodes a complete LDAPResult under
+the search-result application's identifier. The type's default `UnmarshalBER`
+delegates to `UnmarshalAs` with its universal identifier. Retagging changes the
+expected identifier; it does not bypass identifier or primitive/constructed
+form checks. `ber.UnmarshalFunc` adapts a bound decoding function.
+
+`Embed[LDAPResult]()` instead decodes known LDAPResult fields in the existing
+scope, as required by BindResponse and ExtendedResponse. The embedded type
+does not enter an envelope, consume unknown extensions, or call `End`. Its
+field decoder is also the single implementation used by default and tagged
+LDAPResult decoding. The enclosing type owns its additional fields and all
+trailing extensions.
+
+An embedded type calls `Reserve(ids...)` for known identifiers that must not
+reappear in the trailing extension region. `Extensions[UnknownField](ids...)`
+adds the enclosing type's exclusions and rejects every reserved identifier in
+that region, even after an unknown field. Reservations are local to the scope:
+embedding shares them; nested constructed values do not. This lets LDAPResult
+reserve its referral field without exposing that field to BindResponse or
+ExtendedResponse. UnknownField still validates nested BER and preserves owned
+copies of complete encodings.
+
+Wire-level semantic checks remain with the RFC types. In particular, search
+time limits retain the existing signed, whole-second policy, while duration
+conversion rejects unrepresentable values before multiplication.
+
 ### Same API for RFC and extensions
 
 The following is a release requirement:

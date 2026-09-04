@@ -53,11 +53,12 @@ func (v SimpleAuthentication) BERPacket() ber.Packet {
 
 //revive:disable-next-line:exported
 func (v *SimpleAuthentication) UnmarshalBER(r *ber.Reader) error {
-	value, err := readImplicitOctets(r, simpleAuthenticationIdentifier)
-	if err != nil {
+	d := ber.NewDecoder(r)
+	value := d.Primitive[SimpleAuthentication](simpleAuthenticationIdentifier)
+	if err := d.Err(); err != nil {
 		return err
 	}
-	*v = SimpleAuthentication(value)
+	*v = value
 	return nil
 }
 
@@ -87,43 +88,18 @@ func (v SASLAuthentication) BERPacket() ber.Packet {
 
 //revive:disable-next-line:exported
 func (v *SASLAuthentication) UnmarshalBER(r *ber.Reader) error {
-	contents, err := r.Constructed(saslAuthenticationIdentifier)
-	if err != nil {
+	d := ber.NewDecoder(r).Constructed(saslAuthenticationIdentifier)
+	decoded := SASLAuthentication{Mechanism: d.Read[LDAPString]()}
+	if d.NextIs(ber.OctetStringIdentifier) {
+		decoded.Credentials = d.OctetString[[]byte]()
+		decoded.HasCredentials = true
+	}
+	decoded.Extensions = d.Extensions[UnknownField](ber.OctetStringIdentifier)
+	if err := d.End(); err != nil {
 		return err
 	}
-	mechanism, err := contents.OctetString()
-	if err != nil {
+	if err := requireNonEmpty("SASL mechanism", decoded.Mechanism); err != nil {
 		return err
-	}
-	if err := requireNonEmpty("SASL mechanism", mechanism); err != nil {
-		return err
-	}
-	decoded := SASLAuthentication{Mechanism: LDAPString(string(mechanism))}
-	if !contents.Empty() {
-		id, err := contents.PeekIdentifier()
-		if err != nil {
-			return err
-		}
-		if id == ber.OctetStringIdentifier {
-			credentials, err := contents.OctetString()
-			if err != nil {
-				return err
-			}
-			decoded.Credentials, decoded.HasCredentials = bytes.Clone(credentials), true
-		}
-	}
-	if !contents.Empty() {
-		id, err := contents.PeekIdentifier()
-		if err != nil {
-			return err
-		}
-		if id == ber.OctetStringIdentifier {
-			return fmt.Errorf("arden: duplicate SASL credentials field %s", id)
-		}
-		decoded.Extensions, err = decodeUnknownFields(contents)
-		if err != nil {
-			return err
-		}
 	}
 	*v = decoded
 	return nil
@@ -167,30 +143,20 @@ func (v *BindRequest) BERPacket() ber.Packet {
 
 //revive:disable-next-line:exported
 func (v *BindRequest) UnmarshalBER(r *ber.Reader) error {
-	contents, err := r.Constructed(bindRequestIdentifier)
-	if err != nil {
+	d := ber.NewDecoder(r).Constructed(bindRequestIdentifier)
+	decoded := BindRequest{
+		Version:        d.Integer[int64](),
+		Name:           d.Read[LDAPDN](),
+		Authentication: d.Using(decodeAuthentication),
+		Extensions:     d.Extensions[UnknownField](),
+	}
+	if err := d.End(); err != nil {
 		return err
 	}
-	version, err := contents.Integer()
-	if err != nil {
-		return err
+	if decoded.Version < 1 || decoded.Version > 127 {
+		return fmt.Errorf("arden: BindRequest version %d is outside [1, 127]", decoded.Version)
 	}
-	if version < 1 || version > 127 {
-		return fmt.Errorf("arden: BindRequest version %d is outside [1, 127]", version)
-	}
-	name, err := contents.OctetString()
-	if err != nil {
-		return err
-	}
-	authentication, err := decodeAuthentication(contents)
-	if err != nil {
-		return err
-	}
-	extensions, err := decodeUnknownFields(contents)
-	if err != nil {
-		return err
-	}
-	*v = BindRequest{Version: version, Name: LDAPDN(string(name)), Authentication: authentication, Extensions: extensions}
+	*v = decoded
 	return nil
 }
 
@@ -217,40 +183,15 @@ func (v BindResponse) BERPacket() ber.Packet {
 
 //revive:disable-next-line:exported
 func (v *BindResponse) UnmarshalBER(r *ber.Reader) error {
-	contents, err := r.Constructed(bindResponseIdentifier)
-	if err != nil {
+	d := ber.NewDecoder(r).Constructed(bindResponseIdentifier)
+	decoded := BindResponse{Result: d.Embed[LDAPResult]()}
+	if d.NextIs(serverSASLCredentialsIdentifier) {
+		decoded.ServerSASLCredentials = d.Primitive[[]byte](serverSASLCredentialsIdentifier)
+		decoded.HasServerSASLCredentials = true
+	}
+	decoded.Extensions = d.Extensions[UnknownField](serverSASLCredentialsIdentifier)
+	if err := d.End(); err != nil {
 		return err
-	}
-	result, err := decodeLDAPResultPrefix(contents)
-	if err != nil {
-		return err
-	}
-	decoded := BindResponse{Result: result}
-	if !contents.Empty() {
-		id, err := contents.PeekIdentifier()
-		if err != nil {
-			return err
-		}
-		if id == serverSASLCredentialsIdentifier {
-			credentials, err := readImplicitOctets(contents, serverSASLCredentialsIdentifier)
-			if err != nil {
-				return err
-			}
-			decoded.ServerSASLCredentials, decoded.HasServerSASLCredentials = credentials, true
-		}
-	}
-	if !contents.Empty() {
-		id, err := contents.PeekIdentifier()
-		if err != nil {
-			return err
-		}
-		if id == referralIdentifier || id == serverSASLCredentialsIdentifier {
-			return fmt.Errorf("arden: duplicate or out-of-order BindResponse field %s", id)
-		}
-		decoded.Extensions, err = decodeUnknownFields(contents)
-		if err != nil {
-			return err
-		}
 	}
 	*v = decoded
 	return nil
@@ -269,12 +210,10 @@ func (*UnbindRequest) BERPacket() ber.Packet {
 
 //revive:disable-next-line:exported
 func (v *UnbindRequest) UnmarshalBER(r *ber.Reader) error {
-	value, err := r.Primitive(unbindRequestIdentifier)
-	if err != nil {
+	d := ber.NewDecoder(r)
+	d.NullAs(unbindRequestIdentifier)
+	if err := d.Err(); err != nil {
 		return err
-	}
-	if len(value) != 0 {
-		return errors.New("arden: UnbindRequest has nonempty contents")
 	}
 	*v = UnbindRequest{}
 	return nil
@@ -325,31 +264,23 @@ func NewUnbindOperation(request *UnbindRequest, controls []ber.Packeter) (protoc
 }
 
 func decodeAuthentication(r *ber.Reader) (AuthenticationChoice, error) {
-	id, err := r.PeekIdentifier()
-	if err != nil {
-		return nil, err
-	}
+	d := ber.NewDecoder(r)
+	id := d.PeekIdentifier()
+	var decoded AuthenticationChoice
 	switch id {
 	case simpleAuthenticationIdentifier:
-		var value SimpleAuthentication
-		if err := value.UnmarshalBER(r); err != nil {
-			return nil, err
-		}
-		return value, nil
+		decoded = d.Read[SimpleAuthentication]()
 	case saslAuthenticationIdentifier:
-		var value SASLAuthentication
-		if err := value.UnmarshalBER(r); err != nil {
-			return nil, err
-		}
-		return value, nil
+		decoded = d.Read[SASLAuthentication]()
 	default:
 		if id.Class != ber.ClassContextSpecific {
-			return nil, fmt.Errorf("arden: authentication identifier %s is not context-specific", id)
+			d.Fail(fmt.Errorf("arden: authentication identifier %s is not context-specific", id))
 		}
-		e, err := r.SkipElement()
-		if err != nil {
-			return nil, err
-		}
-		return UnknownAuthentication{identifier: e.Identifier, raw: bytes.Clone(e.Raw)}, nil
+		field := d.Read[UnknownField]()
+		decoded = UnknownAuthentication(field)
 	}
+	if err := d.Err(); err != nil {
+		return nil, err
+	}
+	return decoded, nil
 }

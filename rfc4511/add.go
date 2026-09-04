@@ -61,35 +61,16 @@ func (v *AddRequest) BERPacket() ber.Packet {
 //
 //revive:disable-next-line:exported
 func (v *AddRequest) UnmarshalBER(r *ber.Reader) error {
-	contents, err := r.Constructed(addRequestIdentifier)
-	if err != nil {
+	d := ber.NewDecoder(r).Constructed(addRequestIdentifier)
+	decoded := AddRequest{
+		Entry:      d.Read[LDAPDN](),
+		Attributes: d.Sequence().All[Attribute](),
+		Extensions: d.Extensions[UnknownField](),
+	}
+	if err := d.End(); err != nil {
 		return err
 	}
-	entry, err := contents.OctetString()
-	if err != nil {
-		return err
-	}
-	attributeList, err := contents.Sequence()
-	if err != nil {
-		return err
-	}
-	var attributes []Attribute
-	for !attributeList.Empty() {
-		var attribute Attribute
-		if err := attribute.UnmarshalBER(attributeList); err != nil {
-			return err
-		}
-		attributes = append(attributes, attribute)
-	}
-	extensions, err := decodeUnknownFields(contents)
-	if err != nil {
-		return err
-	}
-	*v = AddRequest{
-		Entry:      LDAPDN(string(entry)),
-		Attributes: attributes,
-		Extensions: extensions,
-	}
+	*v = decoded
 	return nil
 }
 
@@ -110,15 +91,12 @@ func (v AddResponse) BERPacket() ber.Packet {
 
 //revive:disable-next-line:exported
 func (v *AddResponse) UnmarshalBER(r *ber.Reader) error {
-	contents, err := r.Constructed(addResponseIdentifier)
-	if err != nil {
+	d := ber.NewDecoder(r)
+	decoded := AddResponse{Result: d.ReadAs[LDAPResult](addResponseIdentifier)}
+	if err := d.Err(); err != nil {
 		return err
 	}
-	result, err := decodeLDAPResultContents(contents)
-	if err != nil {
-		return err
-	}
-	*v = AddResponse{Result: result}
+	*v = decoded
 	return nil
 }
 

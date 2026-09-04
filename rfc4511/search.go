@@ -100,72 +100,43 @@ func (v *SearchRequest) BERPacket() ber.Packet {
 
 //revive:disable-next-line:exported
 func (v *SearchRequest) UnmarshalBER(r *ber.Reader) error {
-	contents, err := r.Constructed(searchRequestIdentifier)
-	if err != nil {
+	d := ber.NewDecoder(r).Constructed(searchRequestIdentifier)
+	decoded := SearchRequest{
+		BaseObject:   d.Read[LDAPDN](),
+		Scope:        d.Enumerated[SearchScope](),
+		DerefAliases: d.Enumerated[DerefAliases](),
+		SizeLimit:    d.Integer[uint32](),
+		TimeLimit:    d.Using(decodeSearchTimeLimit),
+		TypesOnly:    d.Boolean(),
+		Filter:       d.Using(decodeFilter),
+		Attributes:   d.Sequence().All[AttributeSelector](),
+		Extensions:   d.Extensions[UnknownField](),
+	}
+	if err := d.End(); err != nil {
 		return err
 	}
-	baseObject, err := contents.OctetString()
-	if err != nil {
+	if err := validateDerefAliases(decoded.DerefAliases); err != nil {
 		return err
 	}
-	scope, err := contents.Enumerated()
-	if err != nil {
-		return err
+	if decoded.SizeLimit > math.MaxInt32 {
+		return errors.New("arden: search size limit is outside maxInt")
 	}
-	derefAliases, err := contents.Enumerated()
-	if err != nil {
-		return err
-	}
-	if err := validateDerefAliases(DerefAliases(derefAliases)); err != nil {
-		return err
-	}
-	sizeLimit, err := contents.Integer()
-	if err != nil {
-		return err
-	}
-	timeLimit, err := contents.Integer()
-	if err != nil {
-		return err
-	}
-	if sizeLimit < 0 || sizeLimit > math.MaxInt32 || timeLimit > math.MaxInt32 {
-		return errors.New("arden: search size or time limit is outside maxInt")
-	}
-	typesOnly, err := contents.Boolean()
-	if err != nil {
-		return err
-	}
-	filter, err := decodeFilter(contents)
-	if err != nil {
-		return err
-	}
-	attributeList, err := contents.Sequence()
-	if err != nil {
-		return err
-	}
-	var attributes []AttributeSelector
-	for !attributeList.Empty() {
-		attribute, err := attributeList.OctetString()
-		if err != nil {
-			return err
-		}
-		attributes = append(attributes, AttributeSelector(string(attribute)))
-	}
-	extensions, err := decodeUnknownFields(contents)
-	if err != nil {
-		return err
-	}
-	*v = SearchRequest{
-		BaseObject:   LDAPDN(string(baseObject)),
-		Scope:        SearchScope(scope),
-		DerefAliases: DerefAliases(derefAliases),
-		SizeLimit:    uint32(sizeLimit),
-		TimeLimit:    time.Duration(timeLimit) * time.Second,
-		TypesOnly:    typesOnly,
-		Filter:       filter,
-		Attributes:   attributes,
-		Extensions:   extensions,
-	}
+	*v = decoded
 	return nil
+}
+
+// Keep the existing signed, whole-second time-limit policy, but check both
+// the LDAP upper bound and duration representability before multiplication.
+func decodeSearchTimeLimit(r *ber.Reader) (time.Duration, error) {
+	d := ber.NewDecoder(r)
+	seconds := d.Integer[int64]()
+	if err := d.Err(); err != nil {
+		return 0, err
+	}
+	if seconds > math.MaxInt32 || seconds < math.MinInt64/int64(time.Second) {
+		return 0, errors.New("arden: search time limit is outside representable bounds")
+	}
+	return time.Duration(seconds) * time.Second, nil
 }
 
 func validateDerefAliases(value DerefAliases) error {
@@ -195,31 +166,16 @@ func (v SearchResultEntry) BERPacket() ber.Packet {
 
 //revive:disable-next-line:exported
 func (v *SearchResultEntry) UnmarshalBER(r *ber.Reader) error {
-	contents, err := r.Constructed(searchEntryIdentifier)
-	if err != nil {
+	d := ber.NewDecoder(r).Constructed(searchEntryIdentifier)
+	decoded := SearchResultEntry{
+		ObjectName: d.Read[LDAPDN](),
+		Attributes: d.Sequence().All[PartialAttribute](),
+		Extensions: d.Extensions[UnknownField](),
+	}
+	if err := d.End(); err != nil {
 		return err
 	}
-	objectName, err := contents.OctetString()
-	if err != nil {
-		return err
-	}
-	attributeList, err := contents.Sequence()
-	if err != nil {
-		return err
-	}
-	var attributes []PartialAttribute
-	for !attributeList.Empty() {
-		var attribute PartialAttribute
-		if err := attribute.UnmarshalBER(attributeList); err != nil {
-			return err
-		}
-		attributes = append(attributes, attribute)
-	}
-	extensions, err := decodeUnknownFields(contents)
-	if err != nil {
-		return err
-	}
-	*v = SearchResultEntry{ObjectName: LDAPDN(string(objectName)), Attributes: attributes, Extensions: extensions}
+	*v = decoded
 	return nil
 }
 
@@ -242,28 +198,14 @@ func (v SearchResultReference) BERPacket() ber.Packet {
 
 //revive:disable-next-line:exported
 func (v *SearchResultReference) UnmarshalBER(r *ber.Reader) error {
-	contents, err := r.Constructed(searchReferenceIdentifier)
-	if err != nil {
-		return err
-	}
+	d := ber.NewDecoder(r).Constructed(searchReferenceIdentifier)
 	var decoded SearchResultReference
-	for !contents.Empty() {
-		id, err := contents.PeekIdentifier()
-		if err != nil {
-			return err
-		}
-		if id != ber.OctetStringIdentifier {
-			decoded.Extensions, err = decodeUnknownFields(contents)
-			if err != nil {
-				return err
-			}
-			break
-		}
-		uri, err := contents.OctetString()
-		if err != nil {
-			return err
-		}
-		decoded.URIs = append(decoded.URIs, URI(string(uri)))
+	for d.NextIs(ber.OctetStringIdentifier) {
+		decoded.URIs = append(decoded.URIs, d.Read[URI]())
+	}
+	decoded.Extensions = d.Extensions[UnknownField](ber.OctetStringIdentifier)
+	if err := d.End(); err != nil {
+		return err
 	}
 	if len(decoded.URIs) == 0 {
 		return errors.New("arden: search result reference requires at least one URI")
@@ -287,11 +229,12 @@ func (v SearchResultDone) BERPacket() ber.Packet {
 
 //revive:disable-next-line:exported
 func (v *SearchResultDone) UnmarshalBER(r *ber.Reader) error {
-	result, err := decodeResultResponse(r, searchDoneIdentifier)
-	if err != nil {
+	d := ber.NewDecoder(r)
+	decoded := SearchResultDone{Result: d.ReadAs[LDAPResult](searchDoneIdentifier)}
+	if err := d.Err(); err != nil {
 		return err
 	}
-	*v = SearchResultDone{Result: result}
+	*v = decoded
 	return nil
 }
 
@@ -311,32 +254,21 @@ type SearchResult struct {
 // UnmarshalBER decodes one SearchResult alternative based on its application
 // identifier. The receiver is unchanged if decoding fails.
 func (v *SearchResult) UnmarshalBER(r *ber.Reader) error {
-	id, err := r.PeekIdentifier()
-	if err != nil {
-		return err
-	}
+	d := ber.NewDecoder(r)
+	id := d.PeekIdentifier()
 	var decoded SearchResultValue
 	switch id {
 	case searchEntryIdentifier:
-		var entry SearchResultEntry
-		if err := entry.UnmarshalBER(r); err != nil {
-			return err
-		}
-		decoded = entry
+		decoded = d.Read[SearchResultEntry]()
 	case searchReferenceIdentifier:
-		var reference SearchResultReference
-		if err := reference.UnmarshalBER(r); err != nil {
-			return err
-		}
-		decoded = reference
+		decoded = d.Read[SearchResultReference]()
 	case searchDoneIdentifier:
-		var done SearchResultDone
-		if err := done.UnmarshalBER(r); err != nil {
-			return err
-		}
-		decoded = done
+		decoded = d.Read[SearchResultDone]()
 	default:
-		return fmt.Errorf("arden: unexpected SearchResult identifier %s", id)
+		d.Fail(fmt.Errorf("arden: unexpected SearchResult identifier %s", id))
+	}
+	if err := d.Err(); err != nil {
+		return err
 	}
 	*v = SearchResult{value: decoded}
 	return nil

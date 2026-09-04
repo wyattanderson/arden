@@ -47,12 +47,13 @@ type ldapBytes interface {
 	AttributeValue | AssertionValue
 }
 
-func unmarshalLDAPText[T ldapText](dst *T, r *ber.Reader) error {
+func unmarshalLDAPText[T ldapText](dst *T, r *ber.Reader, id ber.Identifier) error {
 	if dst == nil {
 		return errors.New("arden: nil OCTET STRING receiver")
 	}
-	value, err := r.OctetString()
-	if err != nil {
+	d := ber.NewDecoder(r)
+	value := d.Primitive[[]byte](id)
+	if err := d.Err(); err != nil {
 		return err
 	}
 	if !utf8.Valid(value) {
@@ -62,15 +63,16 @@ func unmarshalLDAPText[T ldapText](dst *T, r *ber.Reader) error {
 	return nil
 }
 
-func unmarshalLDAPBytes[T ldapBytes](dst *T, r *ber.Reader) error {
+func unmarshalLDAPBytes[T ldapBytes](dst *T, r *ber.Reader, id ber.Identifier) error {
 	if dst == nil {
 		return errors.New("arden: nil LDAP byte value receiver")
 	}
-	value, err := r.OctetString()
-	if err != nil {
+	d := ber.NewDecoder(r)
+	value := d.Primitive[T](id)
+	if err := d.Err(); err != nil {
 		return err
 	}
-	*dst = T(bytes.Clone(value))
+	*dst = value
 	return nil
 }
 
@@ -78,53 +80,98 @@ func unmarshalLDAPBytes[T ldapBytes](dst *T, r *ber.Reader) error {
 func (v LDAPString) BERPacket() ber.Packet { return ber.OctetString(v) }
 
 //revive:disable-next-line:exported
-func (v *LDAPString) UnmarshalBER(r *ber.Reader) error { return unmarshalLDAPText(v, r) }
+func (v *LDAPString) UnmarshalBER(r *ber.Reader) error {
+	return v.UnmarshalAs(ber.OctetStringIdentifier).UnmarshalBER(r)
+}
+
+// UnmarshalAs binds the LDAPString decoder to an implicit identifier.
+func (v *LDAPString) UnmarshalAs(id ber.Identifier) ber.Unmarshaler {
+	return ber.UnmarshalFunc(func(r *ber.Reader) error {
+		return unmarshalLDAPText(v, r, id)
+	})
+}
 
 // BERPacket returns v as an OCTET STRING packet.
 func (v LDAPOID) BERPacket() ber.Packet { return ber.OctetString(v) }
 
 //revive:disable-next-line:exported
 func (v *LDAPOID) UnmarshalBER(r *ber.Reader) error {
-	value, err := r.OctetString()
-	if err != nil {
-		return err
-	}
-	if !utf8.Valid(value) {
-		return errors.New("arden: LDAP OID is not valid UTF-8")
-	}
-	if err := validateLDAPOID(string(value)); err != nil {
-		return err
-	}
-	*v = LDAPOID(string(value))
-	return nil
+	return v.UnmarshalAs(ber.OctetStringIdentifier).UnmarshalBER(r)
+}
+
+// UnmarshalAs binds the LDAP OID decoder to an implicit identifier.
+func (v *LDAPOID) UnmarshalAs(id ber.Identifier) ber.Unmarshaler {
+	return ber.UnmarshalFunc(func(r *ber.Reader) error {
+		var decoded LDAPOID
+		if err := unmarshalLDAPText(&decoded, r, id); err != nil {
+			return err
+		}
+		if err := validateLDAPOID(decoded); err != nil {
+			return err
+		}
+		*v = decoded
+		return nil
+	})
 }
 
 // BERPacket returns v as an OCTET STRING packet.
 func (v LDAPDN) BERPacket() ber.Packet { return ber.OctetString(v) }
 
 //revive:disable-next-line:exported
-func (v *LDAPDN) UnmarshalBER(r *ber.Reader) error { return unmarshalLDAPText(v, r) }
+func (v *LDAPDN) UnmarshalBER(r *ber.Reader) error {
+	return v.UnmarshalAs(ber.OctetStringIdentifier).UnmarshalBER(r)
+}
+
+// UnmarshalAs binds the LDAPDN decoder to an implicit identifier.
+func (v *LDAPDN) UnmarshalAs(id ber.Identifier) ber.Unmarshaler {
+	return ber.UnmarshalFunc(func(r *ber.Reader) error {
+		return unmarshalLDAPText(v, r, id)
+	})
+}
 
 // BERPacket returns v as an OCTET STRING packet.
 func (v RelativeLDAPDN) BERPacket() ber.Packet { return ber.OctetString(v) }
 
 //revive:disable-next-line:exported
 func (v *RelativeLDAPDN) UnmarshalBER(r *ber.Reader) error {
-	return unmarshalLDAPText(v, r)
+	return v.UnmarshalAs(ber.OctetStringIdentifier).UnmarshalBER(r)
+}
+
+// UnmarshalAs binds the RelativeLDAPDN decoder to an implicit identifier.
+func (v *RelativeLDAPDN) UnmarshalAs(id ber.Identifier) ber.Unmarshaler {
+	return ber.UnmarshalFunc(func(r *ber.Reader) error {
+		return unmarshalLDAPText(v, r, id)
+	})
 }
 
 // BERPacket returns v as an OCTET STRING packet.
 func (v URI) BERPacket() ber.Packet { return ber.OctetString(v) }
 
 //revive:disable-next-line:exported
-func (v *URI) UnmarshalBER(r *ber.Reader) error { return unmarshalLDAPText(v, r) }
+func (v *URI) UnmarshalBER(r *ber.Reader) error {
+	return v.UnmarshalAs(ber.OctetStringIdentifier).UnmarshalBER(r)
+}
+
+// UnmarshalAs binds the URI decoder to an implicit identifier.
+func (v *URI) UnmarshalAs(id ber.Identifier) ber.Unmarshaler {
+	return ber.UnmarshalFunc(func(r *ber.Reader) error {
+		return unmarshalLDAPText(v, r, id)
+	})
+}
 
 // BERPacket returns v as an OCTET STRING packet.
 func (v AttributeDescription) BERPacket() ber.Packet { return ber.OctetString(v) }
 
 //revive:disable-next-line:exported
 func (v *AttributeDescription) UnmarshalBER(r *ber.Reader) error {
-	return unmarshalLDAPText(v, r)
+	return v.UnmarshalAs(ber.OctetStringIdentifier).UnmarshalBER(r)
+}
+
+// UnmarshalAs binds the AttributeDescription decoder to an implicit identifier.
+func (v *AttributeDescription) UnmarshalAs(id ber.Identifier) ber.Unmarshaler {
+	return ber.UnmarshalFunc(func(r *ber.Reader) error {
+		return unmarshalLDAPText(v, r, id)
+	})
 }
 
 // BERPacket returns v as an OCTET STRING packet.
@@ -132,7 +179,14 @@ func (v AttributeSelector) BERPacket() ber.Packet { return ber.OctetString(v) }
 
 //revive:disable-next-line:exported
 func (v *AttributeSelector) UnmarshalBER(r *ber.Reader) error {
-	return unmarshalLDAPText(v, r)
+	return v.UnmarshalAs(ber.OctetStringIdentifier).UnmarshalBER(r)
+}
+
+// UnmarshalAs binds the AttributeSelector decoder to an implicit identifier.
+func (v *AttributeSelector) UnmarshalAs(id ber.Identifier) ber.Unmarshaler {
+	return ber.UnmarshalFunc(func(r *ber.Reader) error {
+		return unmarshalLDAPText(v, r, id)
+	})
 }
 
 // BERPacket returns v as an OCTET STRING packet.
@@ -140,7 +194,14 @@ func (v MatchingRuleID) BERPacket() ber.Packet { return ber.OctetString(v) }
 
 //revive:disable-next-line:exported
 func (v *MatchingRuleID) UnmarshalBER(r *ber.Reader) error {
-	return unmarshalLDAPText(v, r)
+	return v.UnmarshalAs(ber.OctetStringIdentifier).UnmarshalBER(r)
+}
+
+// UnmarshalAs binds the MatchingRuleID decoder to an implicit identifier.
+func (v *MatchingRuleID) UnmarshalAs(id ber.Identifier) ber.Unmarshaler {
+	return ber.UnmarshalFunc(func(r *ber.Reader) error {
+		return unmarshalLDAPText(v, r, id)
+	})
 }
 
 // BERPacket returns v as an OCTET STRING packet.
@@ -148,7 +209,14 @@ func (v AttributeValue) BERPacket() ber.Packet { return ber.OctetString(v) }
 
 //revive:disable-next-line:exported
 func (v *AttributeValue) UnmarshalBER(r *ber.Reader) error {
-	return unmarshalLDAPBytes(v, r)
+	return v.UnmarshalAs(ber.OctetStringIdentifier).UnmarshalBER(r)
+}
+
+// UnmarshalAs binds the AttributeValue decoder to an implicit identifier.
+func (v *AttributeValue) UnmarshalAs(id ber.Identifier) ber.Unmarshaler {
+	return ber.UnmarshalFunc(func(r *ber.Reader) error {
+		return unmarshalLDAPBytes(v, r, id)
+	})
 }
 
 // BERPacket returns v as an OCTET STRING packet.
@@ -156,7 +224,14 @@ func (v AssertionValue) BERPacket() ber.Packet { return ber.OctetString(v) }
 
 //revive:disable-next-line:exported
 func (v *AssertionValue) UnmarshalBER(r *ber.Reader) error {
-	return unmarshalLDAPBytes(v, r)
+	return v.UnmarshalAs(ber.OctetStringIdentifier).UnmarshalBER(r)
+}
+
+// UnmarshalAs binds the AssertionValue decoder to an implicit identifier.
+func (v *AssertionValue) UnmarshalAs(id ber.Identifier) ber.Unmarshaler {
+	return ber.UnmarshalFunc(func(r *ber.Reader) error {
+		return unmarshalLDAPBytes(v, r, id)
+	})
 }
 
 // UnknownField preserves one complete, allowed trailing BER field from an
@@ -180,16 +255,15 @@ func unknownField(e ber.Element) UnknownField {
 	return UnknownField{identifier: e.Identifier, raw: bytes.Clone(e.Raw)}
 }
 
-func decodeUnknownFields(r *ber.Reader) ([]UnknownField, error) {
-	var fields []UnknownField
-	for !r.Empty() {
-		e, err := r.SkipElement()
-		if err != nil {
-			return nil, err
-		}
-		fields = append(fields, unknownField(e))
+// UnmarshalBER preserves a complete unknown field, validating its nested BER
+// contents and copying all retained bytes.
+func (f *UnknownField) UnmarshalBER(r *ber.Reader) error {
+	e, err := r.SkipElement()
+	if err != nil {
+		return err
 	}
-	return fields, nil
+	*f = unknownField(e)
+	return nil
 }
 
 // validateLDAPOID implements RFC 4512 section 1.4's numericoid grammar. It

@@ -89,12 +89,44 @@ func (v LDAPResult) BERPacket() ber.Packet {
 
 //revive:disable-next-line:exported
 func (v *LDAPResult) UnmarshalBER(r *ber.Reader) error {
-	contents, err := r.Sequence()
-	if err != nil {
+	return v.UnmarshalAs(ber.SequenceIdentifier).UnmarshalBER(r)
+}
+
+// UnmarshalAs binds the complete LDAPResult decoder to id.
+func (v *LDAPResult) UnmarshalAs(id ber.Identifier) ber.Unmarshaler {
+	return ber.UnmarshalFunc(func(r *ber.Reader) error {
+		d := ber.NewDecoder(r).Constructed(id)
+		decoded := d.Embed[LDAPResult]()
+		decoded.Extensions = d.Extensions[UnknownField]()
+		if err := d.End(); err != nil {
+			return err
+		}
+		*v = decoded
+		return nil
+	})
+}
+
+// UnmarshalBERFields decodes the known LDAPResult components without an
+// envelope or trailing extensions. The enclosing scope owns both. Referral
+// identifiers are reserved so an enclosing response rejects duplicate or
+// out-of-order referrals without knowing LDAPResult's internal schema.
+func (v *LDAPResult) UnmarshalBERFields(d *ber.Decoder) error {
+	d.Reserve(referralIdentifier)
+	decoded := LDAPResult{
+		ResultCode:        d.Enumerated[ResultCode](),
+		MatchedDN:         d.Read[LDAPDN](),
+		DiagnosticMessage: d.Read[LDAPString](),
+	}
+	if d.NextIs(referralIdentifier) {
+		decoded.Referrals = d.Constructed(referralIdentifier).All[URI]()
+		if len(decoded.Referrals) == 0 {
+			d.Fail(errors.New("arden: referral requires at least one URI"))
+		}
+	}
+	if err := d.Err(); err != nil {
 		return err
 	}
-	decoded, err := decodeLDAPResultContents(contents)
-	if err != nil {
+	if err := decoded.validateReferral(); err != nil {
 		return err
 	}
 	*v = decoded
@@ -120,85 +152,6 @@ func (v LDAPResult) validateReferral() error {
 	}
 	if v.ResultCode != ResultReferral && len(v.Referrals) != 0 {
 		return errors.New("arden: referral URIs require the referral result code")
-	}
-	return nil
-}
-
-func decodeLDAPResultContents(r *ber.Reader) (LDAPResult, error) {
-	decoded, err := decodeLDAPResultPrefix(r)
-	if err != nil {
-		return LDAPResult{}, err
-	}
-	if err := decodeLDAPResultExtensions(r, &decoded); err != nil {
-		return LDAPResult{}, err
-	}
-	return decoded, nil
-}
-
-// decodeLDAPResultPrefix consumes the LDAPResult fields shared by response
-// types that append their own fields after COMPONENTS OF LDAPResult. It leaves
-// trailing fields unread for the enclosing response to interpret.
-func decodeLDAPResultPrefix(r *ber.Reader) (LDAPResult, error) {
-	code, err := r.Enumerated()
-	if err != nil {
-		return LDAPResult{}, err
-	}
-	matchedDN, err := r.OctetString()
-	if err != nil {
-		return LDAPResult{}, err
-	}
-	diagnostic, err := r.OctetString()
-	if err != nil {
-		return LDAPResult{}, err
-	}
-	decoded := LDAPResult{
-		ResultCode:        ResultCode(code),
-		MatchedDN:         LDAPDN(string(matchedDN)),
-		DiagnosticMessage: LDAPString(string(diagnostic)),
-	}
-
-	if !r.Empty() {
-		id, err := r.PeekIdentifier()
-		if err != nil {
-			return LDAPResult{}, err
-		}
-		if id == referralIdentifier {
-			referrals, err := r.Constructed(referralIdentifier)
-			if err != nil {
-				return LDAPResult{}, err
-			}
-			for !referrals.Empty() {
-				uri, err := referrals.OctetString()
-				if err != nil {
-					return LDAPResult{}, err
-				}
-				decoded.Referrals = append(decoded.Referrals, URI(string(uri)))
-			}
-		}
-	}
-	if err := decoded.validateReferral(); err != nil {
-		return LDAPResult{}, err
-	}
-	return decoded, nil
-}
-
-func decodeLDAPResultExtensions(r *ber.Reader, decoded *LDAPResult) error {
-	if !r.Empty() {
-		id, err := r.PeekIdentifier()
-		if err != nil {
-			return err
-		}
-		if id == referralIdentifier {
-			return errors.New("arden: duplicate referral field")
-		}
-		fields, err := decodeUnknownFields(r)
-		if err != nil {
-			return err
-		}
-		decoded.Extensions = fields
-	}
-	if err := decoded.validateReferral(); err != nil {
-		return err
 	}
 	return nil
 }

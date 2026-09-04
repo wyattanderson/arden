@@ -41,23 +41,16 @@ func (v *CompareRequest) BERPacket() ber.Packet {
 
 //revive:disable-next-line:exported
 func (v *CompareRequest) UnmarshalBER(r *ber.Reader) error {
-	contents, err := r.Constructed(compareRequestIdentifier)
-	if err != nil {
+	d := ber.NewDecoder(r).Constructed(compareRequestIdentifier)
+	decoded := CompareRequest{
+		Entry:      d.Read[LDAPDN](),
+		Assertion:  d.Read[AttributeValueAssertion](),
+		Extensions: d.Extensions[UnknownField](),
+	}
+	if err := d.End(); err != nil {
 		return err
 	}
-	entry, err := contents.OctetString()
-	if err != nil {
-		return err
-	}
-	var assertion AttributeValueAssertion
-	if err := assertion.UnmarshalBER(contents); err != nil {
-		return err
-	}
-	extensions, err := decodeUnknownFields(contents)
-	if err != nil {
-		return err
-	}
-	*v = CompareRequest{Entry: LDAPDN(string(entry)), Assertion: assertion, Extensions: extensions}
+	*v = decoded
 	return nil
 }
 
@@ -75,11 +68,12 @@ func (v CompareResponse) BERPacket() ber.Packet {
 
 //revive:disable-next-line:exported
 func (v *CompareResponse) UnmarshalBER(r *ber.Reader) error {
-	result, err := decodeResultResponse(r, compareResponseIdentifier)
-	if err != nil {
+	d := ber.NewDecoder(r)
+	decoded := CompareResponse{Result: d.ReadAs[LDAPResult](compareResponseIdentifier)}
+	if err := d.Err(); err != nil {
 		return err
 	}
-	*v = CompareResponse{Result: result}
+	*v = decoded
 	return nil
 }
 

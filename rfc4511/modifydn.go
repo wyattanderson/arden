@@ -2,7 +2,6 @@ package rfc4511
 
 import (
 	"errors"
-	"fmt"
 	"slices"
 
 	"github.com/wyattanderson/arden/ber"
@@ -50,49 +49,19 @@ func (v *ModifyDNRequest) BERPacket() ber.Packet {
 
 //revive:disable-next-line:exported
 func (v *ModifyDNRequest) UnmarshalBER(r *ber.Reader) error {
-	contents, err := r.Constructed(modifyDNRequestIdentifier)
-	if err != nil {
+	d := ber.NewDecoder(r).Constructed(modifyDNRequestIdentifier)
+	decoded := ModifyDNRequest{
+		Entry:        d.Read[LDAPDN](),
+		NewRDN:       d.Read[RelativeLDAPDN](),
+		DeleteOldRDN: d.Boolean(),
+	}
+	if d.NextIs(modifyDNNewSuperiorIdentifier) {
+		newSuperior := d.ReadAs[LDAPDN](modifyDNNewSuperiorIdentifier)
+		decoded.NewSuperior = &newSuperior
+	}
+	decoded.Extensions = d.Extensions[UnknownField](modifyDNNewSuperiorIdentifier)
+	if err := d.End(); err != nil {
 		return err
-	}
-	entry, err := contents.OctetString()
-	if err != nil {
-		return err
-	}
-	newRDN, err := contents.OctetString()
-	if err != nil {
-		return err
-	}
-	deleteOldRDN, err := contents.Boolean()
-	if err != nil {
-		return err
-	}
-	decoded := ModifyDNRequest{Entry: LDAPDN(string(entry)), NewRDN: RelativeLDAPDN(string(newRDN)), DeleteOldRDN: deleteOldRDN}
-	if !contents.Empty() {
-		id, err := contents.PeekIdentifier()
-		if err != nil {
-			return err
-		}
-		if id == modifyDNNewSuperiorIdentifier {
-			value, err := readImplicitOctets(contents, modifyDNNewSuperiorIdentifier)
-			if err != nil {
-				return err
-			}
-			newSuperior := LDAPDN(value)
-			decoded.NewSuperior = &newSuperior
-		}
-	}
-	if !contents.Empty() {
-		id, err := contents.PeekIdentifier()
-		if err != nil {
-			return err
-		}
-		if id == modifyDNNewSuperiorIdentifier {
-			return fmt.Errorf("arden: duplicate ModifyDN newSuperior field %s", id)
-		}
-		decoded.Extensions, err = decodeUnknownFields(contents)
-		if err != nil {
-			return err
-		}
 	}
 	*v = decoded
 	return nil
@@ -111,11 +80,12 @@ func (v ModifyDNResponse) BERPacket() ber.Packet {
 
 //revive:disable-next-line:exported
 func (v *ModifyDNResponse) UnmarshalBER(r *ber.Reader) error {
-	result, err := decodeResultResponse(r, modifyDNResponseIdentifier)
-	if err != nil {
+	d := ber.NewDecoder(r)
+	decoded := ModifyDNResponse{Result: d.ReadAs[LDAPResult](modifyDNResponseIdentifier)}
+	if err := d.Err(); err != nil {
 		return err
 	}
-	*v = ModifyDNResponse{Result: result}
+	*v = decoded
 	return nil
 }
 
