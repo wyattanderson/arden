@@ -1,10 +1,9 @@
 package gssapi
 
 import (
-	"bytes"
 	"context"
 	"errors"
-	"reflect"
+	"reflect" //nolint:depguard // Authentication setup only: detect typed-nil handles from external GSS providers before calling their methods.
 	"slices"
 	"strings"
 	"sync"
@@ -26,7 +25,7 @@ const (
 type ProviderFactory func() (gogssapi.Provider, error)
 
 type options struct {
-	authorizationID []byte
+	authorizationID string
 	maxRounds       int
 }
 
@@ -44,7 +43,7 @@ func WithAuthorizationID(id string) Option {
 		if strings.IndexByte(id, 0) >= 0 {
 			return errors.New("arden/auth/gssapi: authorization identity contains U+0000")
 		}
-		o.authorizationID = []byte(id)
+		o.authorizationID = id
 		return nil
 	}
 }
@@ -67,7 +66,7 @@ func WithMaxContextRounds(rounds int) Option {
 type Authentication struct {
 	identity        arden.Identity
 	providerFactory ProviderFactory
-	authorizationID []byte
+	authorizationID string
 	maxRounds       int
 }
 
@@ -94,7 +93,7 @@ func NewWithProviderFactory(stableID string, factory ProviderFactory, opts ...Op
 	return &Authentication{
 		identity:        identity,
 		providerFactory: factory,
-		authorizationID: bytes.Clone(configuration.authorizationID),
+		authorizationID: configuration.authorizationID,
 		maxRounds:       configuration.maxRounds,
 	}, nil
 }
@@ -141,7 +140,7 @@ func (a *Authentication) Begin(ctx context.Context, endpoint arden.Endpoint) (ar
 		identity:        a.identity,
 		provider:        provider,
 		target:          ldapServiceName + "@" + endpoint.ServerName,
-		authorizationID: bytes.Clone(a.authorizationID),
+		authorizationID: a.authorizationID,
 		maxRounds:       a.maxRounds,
 	}, nil
 }
@@ -152,7 +151,7 @@ type authenticator struct {
 	identity        arden.Identity
 	provider        gogssapi.Provider
 	target          string
-	authorizationID []byte
+	authorizationID string
 	maxRounds       int
 
 	targetName gogssapi.GssName
@@ -406,8 +405,7 @@ func (a *authenticator) Close() error {
 			errs = append(errs, gssError(OperationReleaseProvider, err))
 		}
 	}
-	clear(a.authorizationID)
-	a.authorizationID = nil
+	a.authorizationID = ""
 	a.target = ""
 	return errors.Join(errs...)
 }

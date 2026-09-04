@@ -14,6 +14,34 @@ import (
 
 func limits() ber.Limits { return ber.DefaultLimits() }
 
+func TestPacketEncodingOwnsOutputAndBorrowsInput(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		packet func([]byte) ber.Packet
+	}{
+		{"primitive", func(value []byte) ber.Packet { return ber.Primitive(ber.OctetStringIdentifier, value) }},
+		{"contents", func(value []byte) ber.Packet { return ber.WithContents(ber.OctetStringIdentifier, value) }},
+		{"encoded", ber.Encoded},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			input := []byte{0x04, 0x01, 'a'}
+			packet := test.packet(input)
+			encoded := packet.Encode()
+			input[2] = 'b'
+			assert.Equal(t, byte('a'), encoded[len(encoded)-1])
+			updated := packet.Encode()
+			assert.Equal(t, byte('b'), updated[len(updated)-1])
+		})
+	}
+}
+
+func BenchmarkPacketEncode(b *testing.B) {
+	value := bytes.Repeat([]byte{'a'}, 1024)
+	for b.Loop() {
+		_ = ber.Sequence().Add(ber.Integer(7), ber.OctetString(value)).BERPacket().Encode()
+	}
+}
+
 func TestIdentifierBoundaries(t *testing.T) {
 	tests := []struct {
 		name string

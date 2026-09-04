@@ -47,16 +47,19 @@ func DeleteValues(attribute string, values ...string) Change {
 }
 
 // ReplaceBytes constructs a binary-valued replace change.
+// The change shares the supplied value bytes.
 func ReplaceBytes(attribute string, values ...[]byte) Change {
 	return changeBytes(ModifyReplace, attribute, values)
 }
 
 // AddBytes constructs a binary-valued add change.
+// The change shares the supplied value bytes.
 func AddBytes(attribute string, values ...[]byte) Change {
 	return changeBytes(ModifyAdd, attribute, values)
 }
 
 // DeleteBytes constructs a binary-valued delete change.
+// The change shares the supplied value bytes.
 func DeleteBytes(attribute string, values ...[]byte) Change {
 	return changeBytes(ModifyDelete, attribute, values)
 }
@@ -73,7 +76,7 @@ func changeText(operation ModifyOperation, attribute string, values []string) Ch
 
 func changeBytes(operation ModifyOperation, attribute string, values [][]byte) Change {
 	return Change{Operation: operation, Modification: PartialAttribute{
-		Type: AttributeDescription(attribute), Values: cloneAttributeValues(values),
+		Type: AttributeDescription(attribute), Values: attributeValues(values),
 	}}
 }
 

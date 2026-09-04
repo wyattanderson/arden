@@ -470,9 +470,8 @@ func TestSuccessfulShortWritesProduceOneCompleteEnvelope(t *testing.T) {
 	_, err = stream.Next(context.Background())
 	require.ErrorIs(t, err, io.EOF)
 	transport.mu.Lock()
-	written := bytes.Clone(transport.written.Bytes())
+	_, err = ParseResponse(transport.written.Bytes(), ber.DefaultLimits())
 	transport.mu.Unlock()
-	_, err = ParseResponse(written, ber.DefaultLimits())
 	assert.NoError(t, err)
 }
 

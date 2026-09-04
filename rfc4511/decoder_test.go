@@ -184,3 +184,17 @@ func TestCompositeDecodersUseNamedTextValidation(t *testing.T) {
 	decode(t, input.BERPacket().Encode(), &output)
 	assert.Equal(t, input, output)
 }
+
+func BenchmarkLDAPTextDecode(b *testing.B) {
+	encoded := LDAPDN("uid=alice,ou=people,dc=example,dc=com").BERPacket().Encode()
+	for b.Loop() {
+		r, err := ber.NewReader(encoded, ber.DefaultLimits())
+		if err != nil {
+			b.Fatal(err)
+		}
+		var value LDAPDN
+		if err := value.UnmarshalBER(r); err != nil {
+			b.Fatal(err)
+		}
+	}
+}

@@ -18,16 +18,19 @@ func DeleteValues(attribute string, values ...string) Change {
 }
 
 // ReplaceBytes constructs a binary-valued replace change.
+// The change shares the supplied value bytes.
 func ReplaceBytes(attribute string, values ...[]byte) Change {
 	return rfc4511.ReplaceBytes(attribute, values...)
 }
 
 // AddBytes constructs a binary-valued add change.
+// The change shares the supplied value bytes.
 func AddBytes(attribute string, values ...[]byte) Change {
 	return rfc4511.AddBytes(attribute, values...)
 }
 
 // DeleteBytes constructs a binary-valued delete change.
+// The change shares the supplied value bytes.
 func DeleteBytes(attribute string, values ...[]byte) Change {
 	return rfc4511.DeleteBytes(attribute, values...)
 }

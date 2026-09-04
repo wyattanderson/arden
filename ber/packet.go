@@ -1,7 +1,5 @@
 package ber
 
-import "bytes"
-
 type integer interface {
 	~int | ~int8 | ~int16 | ~int32 | ~int64 |
 		~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64 | ~uintptr
@@ -17,7 +15,8 @@ type Packeter interface {
 }
 
 // Packet is one complete BER element. Packets are created with the primitive,
-// constructed, or encoded constructors in this package.
+// constructed, or encoded constructors in this package. Byte-slice inputs are
+// retained without copying and must remain unchanged until encoding completes.
 type Packet struct {
 	identifier Identifier
 	value      []byte
@@ -26,9 +25,9 @@ type Packet struct {
 	opaque     bool
 }
 
-// Primitive constructs a primitive packet with id and value.
+// Primitive constructs a primitive packet with id and value, retaining value.
 func Primitive(id Identifier, value []byte) Packet {
-	return primitive(id, bytes.Clone(value))
+	return primitive(id, value)
 }
 
 func primitive(id Identifier, value []byte) Packet {
@@ -38,14 +37,15 @@ func primitive(id Identifier, value []byte) Packet {
 
 // WithContents constructs a packet with id and already-encoded contents. It is
 // intended for preserved or deliberately malformed values that cannot be
-// expressed as a packet tree.
+// expressed as a packet tree. It retains value without copying.
 func WithContents(id Identifier, value []byte) Packet {
-	return Packet{identifier: id, value: bytes.Clone(value), opaque: true}
+	return Packet{identifier: id, value: value, opaque: true}
 }
 
 // Encoded constructs an opaque packet from an existing complete BER encoding.
+// It retains value without copying.
 func Encoded(value []byte) Packet {
-	return Packet{value: bytes.Clone(value), encoded: true}
+	return Packet{value: value, encoded: true}
 }
 
 // OctetString constructs a universal OCTET STRING packet.
@@ -98,6 +98,7 @@ func (p Packet) Encode() []byte {
 
 // AppendTo appends the packet's complete BER encoding to dst. It may reuse
 // dst's capacity but does not retain dst or modify its existing prefix.
+// dst's backing array must not overlap the packet's retained inputs.
 func (p Packet) AppendTo(dst []byte) []byte {
 	if p.encoded {
 		return append(dst, p.value...)
@@ -179,7 +180,7 @@ func integerBytes[T integer](value T) []byte {
 		for start < len(raw)-1 && raw[start] == 0xff && raw[start+1]&0x80 != 0 {
 			start++
 		}
-		return bytes.Clone(raw[start:])
+		return raw[start:]
 	}
 
 	var raw [9]byte
@@ -197,7 +198,7 @@ func integerBytes[T integer](value T) []byte {
 		start--
 		raw[start] = 0
 	}
-	return bytes.Clone(raw[start:])
+	return raw[start:]
 }
 
 func identifierLength(id Identifier) int {

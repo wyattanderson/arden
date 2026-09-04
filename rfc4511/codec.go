@@ -1,7 +1,6 @@
 package rfc4511
 
 import (
-	"bytes"
 	"fmt"
 
 	"github.com/wyattanderson/arden/ber"
@@ -48,10 +47,10 @@ func requireNonEmpty[T ~string | ~[]byte](name string, value T) error {
 	return nil
 }
 
-func cloneAttributeValues[T ~[]byte](values []T) []AttributeValue {
-	cloned := make([]AttributeValue, len(values))
+func attributeValues[T ~[]byte](values []T) []AttributeValue {
+	converted := make([]AttributeValue, len(values))
 	for i := range values {
-		cloned[i] = bytes.Clone(values[i])
+		converted[i] = AttributeValue(values[i])
 	}
-	return cloned
+	return converted
 }

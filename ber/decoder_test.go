@@ -26,6 +26,19 @@ func (v *decoderInt) UnmarshalBER(r *ber.Reader) error {
 
 type decoderText string
 
+func TestDecoderNamedOctetsSurviveInputReuse(t *testing.T) {
+	encoded := ber.Sequence().Add(ber.OctetString("text"), ber.OctetString([]byte{0, 0xff})).BERPacket().Encode()
+	r, err := ber.NewReader(encoded, ber.DefaultLimits())
+	require.NoError(t, err)
+	d := ber.NewDecoder(r).Sequence()
+	text := d.OctetString[decoderText]()
+	raw := d.OctetString[decoderRaw]()
+	require.NoError(t, d.End())
+	clear(encoded)
+	assert.Equal(t, decoderText("text"), text)
+	assert.Equal(t, decoderRaw{0, 0xff}, raw)
+}
+
 func (v *decoderText) UnmarshalBER(r *ber.Reader) error {
 	d := ber.NewDecoder(r)
 	decoded := d.OctetString[decoderText]()

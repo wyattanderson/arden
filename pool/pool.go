@@ -6,7 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"math/rand/v2"
-	"reflect"
+	"reflect" //nolint:depguard // Connection setup only: compare arbitrary profiles when no typed validator is supplied.
 	"sync"
 	"time"
 

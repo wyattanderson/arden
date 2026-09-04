@@ -7,8 +7,8 @@ import (
 )
 
 // Element is a view of one complete BER element. Value and Raw alias the
-// caller-owned input passed to NewReader; use Clone when the bytes must outlive
-// that input.
+// caller-owned input passed to NewReader; use Clone when retaining bytes
+// across reuse or mutation of that input.
 type Element struct {
 	Identifier Identifier
 	Value      []byte

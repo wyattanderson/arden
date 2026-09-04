@@ -26,11 +26,12 @@ func (e *Entry) Set(name string, values ...string) {
 	e.setRaw(name, raw)
 }
 
-// SetBytes replaces name with independently owned raw values.
+// SetBytes replaces name with raw values. The entry shares the supplied value
+// bytes; callers may copy them first when they need independent storage.
 func (e *Entry) SetBytes(name string, values ...[]byte) { e.setRaw(name, values) }
 
 func (e *Entry) setRaw(name string, values [][]byte) {
-	attribute := Attribute{Type: rfc4511.AttributeDescription(name), Values: cloneAttributeValues(values)}
+	attribute := Attribute{Type: rfc4511.AttributeDescription(name), Values: attributeValues(values)}
 	for i := range e.Attributes {
 		if strings.EqualFold(string(e.Attributes[i].Type), name) {
 			e.Attributes[i] = attribute
@@ -57,22 +58,28 @@ func (e Entry) Values(name string) []string {
 	return values
 }
 
-// RawValue returns an independent copy of the first value, or nil when absent.
+// RawValue returns the first value's bytes, or nil when absent. Mutating the
+// returned bytes changes the entry.
 func (e Entry) RawValue(name string) []byte {
-	values := e.RawValues(name)
-	if len(values) == 0 {
-		return nil
+	for _, attribute := range e.Attributes {
+		if strings.EqualFold(string(attribute.Type), name) {
+			if len(attribute.Values) > 0 {
+				return attribute.Values[0]
+			}
+			return nil
+		}
 	}
-	return values[0]
+	return nil
 }
 
-// RawValues returns independent copies of all values for name.
+// RawValues returns a new slice containing the value slices for name.
+// Mutating their bytes changes the entry; replacing a slice does not.
 func (e Entry) RawValues(name string) [][]byte {
 	for _, attribute := range e.Attributes {
 		if strings.EqualFold(string(attribute.Type), name) {
 			values := make([][]byte, len(attribute.Values))
 			for i := range attribute.Values {
-				values[i] = bytes.Clone(attribute.Values[i])
+				values[i] = attribute.Values[i]
 			}
 			return values
 		}
@@ -90,12 +97,12 @@ func (e Entry) Contains(name, value string) bool {
 	return false
 }
 
-func cloneAttributeValues[T ~[]byte](values []T) []rfc4511.AttributeValue {
-	cloned := make([]rfc4511.AttributeValue, len(values))
+func attributeValues[T ~[]byte](values []T) []rfc4511.AttributeValue {
+	converted := make([]rfc4511.AttributeValue, len(values))
 	for i := range values {
-		cloned[i] = bytes.Clone(values[i])
+		converted[i] = rfc4511.AttributeValue(values[i])
 	}
-	return cloned
+	return converted
 }
 
 func entryFromSearchResult(wire rfc4511.SearchResultEntry) Entry {

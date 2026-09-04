@@ -296,6 +296,7 @@ func (d *Decoder) Extensions[T any, P interface {
 func (d *Decoder) Primitive[T octets](id Identifier) T {
 	return d.Using(func(r *Reader) (T, error) {
 		value, err := r.Primitive(id)
+		// Byte values must survive reuse or clearing of the input buffer.
 		return T(bytes.Clone(value)), err
 	})
 }

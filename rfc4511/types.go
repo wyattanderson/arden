@@ -51,15 +51,15 @@ func unmarshalLDAPText[T ldapText](dst *T, r *ber.Reader, id ber.Identifier) err
 	if dst == nil {
 		return errors.New("arden: nil OCTET STRING receiver")
 	}
-	d := ber.NewDecoder(r)
-	value := d.Primitive[[]byte](id)
-	if err := d.Err(); err != nil {
+	value, err := r.Primitive(id)
+	if err != nil {
 		return err
 	}
 	if !utf8.Valid(value) {
 		return errors.New("arden: LDAP text is not valid UTF-8")
 	}
-	*dst = T(string(value))
+	// Conversion gives the text its own storage without an intermediate clone.
+	*dst = T(value)
 	return nil
 }
 

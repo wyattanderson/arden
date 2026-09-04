@@ -1,7 +1,6 @@
 package arden
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -561,7 +560,8 @@ func pagedResultsCookie(controls []rfc4511.Control, limits ber.Limits) ([]byte, 
 		if err := reader.RequireEmpty(); err != nil {
 			return nil, err
 		}
-		return bytes.Clone(cookie), nil
+		// The caller encodes the next page synchronously, before exposing controls.
+		return cookie, nil
 	}
 	return nil, errors.New("arden: paged-results response control is missing")
 }

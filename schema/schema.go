@@ -3,7 +3,6 @@
 package schema
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 
@@ -22,7 +21,8 @@ type Codec[T any] struct {
 	DecodeFunc func([]byte) (T, error)
 }
 
-// Encode converts value to independently owned LDAP wire bytes.
+// Encode converts value to LDAP wire bytes. The codec determines whether the
+// result shares storage with value.
 func (c Codec[T]) Encode(value T) ([]byte, error) {
 	if c.EncodeFunc == nil {
 		return nil, errors.New("schema: codec has no encoder")
@@ -105,8 +105,9 @@ var StringCodec ValueCodec[string] = Codec[string]{
 	DecodeFunc: func(value []byte) (string, error) { return string(value), nil },
 }
 
-// BytesCodec preserves arbitrary bytes with independent ownership.
+// BytesCodec passes arbitrary bytes through without copying. Encoded and
+// decoded values share storage with the input.
 var BytesCodec ValueCodec[[]byte] = Codec[[]byte]{
-	EncodeFunc: func(value []byte) ([]byte, error) { return bytes.Clone(value), nil },
-	DecodeFunc: func(value []byte) ([]byte, error) { return bytes.Clone(value), nil },
+	EncodeFunc: func(value []byte) ([]byte, error) { return value, nil },
+	DecodeFunc: func(value []byte) ([]byte, error) { return value, nil },
 }

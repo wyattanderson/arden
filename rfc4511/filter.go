@@ -45,9 +45,10 @@ func Equal(attribute, value string) Filter {
 }
 
 // EqualBytes constructs an equality filter for a binary assertion value.
+// The filter shares value's bytes.
 func EqualBytes(attribute string, value []byte) Filter {
 	return EqualityMatch{Assertion: AttributeValueAssertion{
-		Type: AttributeDescription(attribute), Value: bytes.Clone(value),
+		Type: AttributeDescription(attribute), Value: value,
 	}}
 }
 

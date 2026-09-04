@@ -25,6 +25,10 @@ standard-library-only.
 
 ## Public shapes
 
+Byte sharing and the rationale for retained copies are documented in the
+[byte ownership audit](byte-ownership.md). Request and entry byte helpers share
+their backing data; typed decoding produces independent retained values.
+
 The compile-checked definitions live in `ber/packet.go`, `ber/identifier.go`,
 `operation.go`, `endpoint.go`, `errors.go`, `trace.go`, and
 `pool/selection.go`.

@@ -87,6 +87,11 @@ func TestAuthenticationOnlyGSSAPIExchange(t *testing.T) {
 		assert.Empty(t, request.Name)
 		assert.Equal(t, "ldap.bind", operation.Metadata.Label)
 	}
+	// The exchange borrows provider outputs; authentication clears them once
+	// sent. Recorded inputs above must still retain their pre-clear contents.
+	assert.Equal(t, make([]byte, len(securityContext.continues[0].output)), securityContext.continues[0].output)
+	assert.Equal(t, make([]byte, len(securityContext.unwrapped)), securityContext.unwrapped)
+	assert.Equal(t, make([]byte, len(securityContext.wrappedOutput)), securityContext.wrappedOutput)
 
 	require.NoError(t, authenticatorValue.Close())
 	require.NoError(t, authenticatorValue.Close())
@@ -118,7 +123,7 @@ func TestGSSAPIReplacementConversationUsesNewProviderAndStableIdentity(t *testin
 		}
 		providers = append(providers, provider)
 		return provider, nil
-	})
+	}, WithAuthorizationID("dn:uid=delegate,dc=example"))
 	require.NoError(t, err)
 
 	for range 2 {
@@ -139,6 +144,7 @@ func TestGSSAPIReplacementConversationUsesNewProviderAndStableIdentity(t *testin
 	for _, provider := range providers {
 		assert.Equal(t, 1, provider.releases)
 		assert.Equal(t, 1, provider.securityContext.deletes)
+		assert.Equal(t, append([]byte{layerNone, 0, 0, 0}, "dn:uid=delegate,dc=example"...), provider.securityContext.wrapSeen)
 	}
 }
 
@@ -359,7 +365,7 @@ func completedFakeContext(offer []byte) *fakeSecurityContext {
 			},
 		}},
 		unwrapInput:   []byte("offer"),
-		unwrapped:     bytes.Clone(offer),
+		unwrapped:     offer,
 		wrappedOutput: []byte("selection"),
 	}
 }
@@ -451,7 +457,7 @@ func (c *fakeSecurityContext) Continue(token []byte) ([]byte, gogssapi.SecContex
 	}
 	result := c.continues[index]
 	c.continueNeeded = result.needed
-	return bytes.Clone(result.output), result.info, result.err
+	return result.output, result.info, result.err
 }
 
 func (c *fakeSecurityContext) ContinueNeeded() bool {
@@ -467,7 +473,7 @@ func (c *fakeSecurityContext) Unwrap(token []byte) ([]byte, bool, gogssapi.QoP, 
 	if c.unwrapInput != nil && !bytes.Equal(token, c.unwrapInput) {
 		return nil, false, 0, errors.New("unexpected Unwrap input")
 	}
-	return bytes.Clone(c.unwrapped), c.unwrapConfidential, c.unwrapQoP, c.unwrapErr
+	return c.unwrapped, c.unwrapConfidential, c.unwrapQoP, c.unwrapErr
 }
 
 func (c *fakeSecurityContext) Wrap(message []byte, confidential bool, qop gogssapi.QoP) ([]byte, bool, error) {
@@ -476,7 +482,7 @@ func (c *fakeSecurityContext) Wrap(message []byte, confidential bool, qop gogssa
 	c.wrapSeen = bytes.Clone(message)
 	c.wrapConfidential = confidential
 	c.wrapQoP = qop
-	return bytes.Clone(c.wrappedOutput), confidential, c.wrapErr
+	return c.wrappedOutput, confidential, c.wrapErr
 }
 
 func (c *fakeSecurityContext) Delete() ([]byte, error) {
@@ -550,7 +556,7 @@ func bindResponse(t *testing.T, code rfc4511.ResultCode, hasCredentials bool, cr
 			DiagnosticMessage: rfc4511.LDAPString(string(diagnostic)),
 		},
 		HasServerSASLCredentials: hasCredentials,
-		ServerSASLCredentials:    bytes.Clone(credentials),
+		ServerSASLCredentials:    credentials,
 	}
 	message := ber.Sequence().
 		Add(ber.Integer(1)).

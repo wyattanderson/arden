@@ -25,7 +25,39 @@ func TestEntryTextAndRawAccess(t *testing.T) {
 
 	raw := entry.RawValue("jpegPhoto")
 	raw[0] = 0x7f
-	assert.Equal(t, []byte{0x00, 0xff}, entry.RawValue("jpegPhoto"))
+	assert.Equal(t, []byte{0x7f, 0xff}, entry.RawValue("jpegPhoto"))
+}
+
+func TestEntryByteStorageIsSharedButTextValuesAreSnapshots(t *testing.T) {
+	value := []byte("Alice")
+	input := [][]byte{value, []byte("Bob")}
+	entry := NewEntry("cn=Alice")
+	entry.SetBytes("cn", input...)
+	text := entry.Value("cn")
+	texts := entry.Values("cn")
+	input[0] = []byte("replacement")
+	value[0] = 'a'
+	assert.Equal(t, "alice", entry.Value("CN"))
+	assert.Equal(t, "Alice", text)
+	assert.Equal(t, []string{"Alice", "Bob"}, texts)
+
+	raw := entry.RawValues("CN")
+	raw[1][0] = 'b'
+	raw[0] = nil
+	assert.Equal(t, []string{"alice", "bob"}, entry.Values("cn"))
+	assert.Nil(t, entry.RawValue("missing"))
+	entry.SetBytes("cn")
+	assert.Nil(t, entry.RawValue("cn"))
+}
+
+var benchmarkEntryValue string
+
+func BenchmarkEntryValue(b *testing.B) {
+	entry := NewEntry("cn=Alice")
+	entry.Set("cn", "Alice Example", "Another Name", "Third Name")
+	for b.Loop() {
+		benchmarkEntryValue = entry.Value("cn")
+	}
 }
 
 func TestClientAddReturnsTypedLDAPResultError(t *testing.T) {

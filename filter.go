@@ -6,6 +6,7 @@ import "github.com/wyattanderson/arden/rfc4511"
 func Equal(attribute, value string) Filter { return rfc4511.Equal(attribute, value) }
 
 // EqualBytes constructs an equality filter for a binary assertion value.
+// The filter shares value's bytes.
 func EqualBytes(attribute string, value []byte) Filter {
 	return rfc4511.EqualBytes(attribute, value)
 }

@@ -2,6 +2,7 @@ version: "2"
 linters:
   default: standard
   enable:
+    - depguard
     - gocritic
     - modernize
     - noctx
@@ -9,6 +10,15 @@ linters:
     - prealloc
     - revive
     - testifylint
+  settings:
+    depguard:
+      rules:
+        production:
+          files:
+            - "!$test"
+          deny:
+            - pkg: "reflect$"
+              desc: "Avoid reflection in production code for performance; use typed operations or a justified import-line nolint:depguard exception."
 formatters:
   enable:
     - gci

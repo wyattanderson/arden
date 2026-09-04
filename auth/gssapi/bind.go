@@ -1,7 +1,6 @@
 package gssapi
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -25,13 +24,12 @@ type bindResult struct {
 }
 
 func exchangeBind(ctx context.Context, session arden.InitializationSession, token []byte) (bindResult, error) {
-	credentials := bytes.Clone(token)
-	defer clear(credentials)
+	// The caller keeps token alive for this exchange and clears it afterward.
 	request := &rfc4511.BindRequest{
 		Version: 3,
 		Authentication: rfc4511.SASLAuthentication{
 			Mechanism:      rfc4511.LDAPString("GSSAPI"),
-			Credentials:    credentials,
+			Credentials:    token,
 			HasCredentials: true,
 		},
 	}
