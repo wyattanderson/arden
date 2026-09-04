@@ -44,7 +44,7 @@ func TestAbandonRequestTargetBoundariesAreAtomic(t *testing.T) {
 		assert.Equal(t, dst, got)
 	}
 
-	encoded, err := ber.AppendIntegerWithIdentifier(nil, AbandonRequestIdentifier(), 0)
+	encoded, err := ber.IntegerWithIdentifier(AbandonRequestIdentifier(), 0).AppendBER(nil)
 	require.NoError(t, err)
 	prior := AbandonRequest{Target: 7}
 	requireDecodeError(t, encoded, &prior)
@@ -82,18 +82,16 @@ func TestModifyDNOptionalNewSuperiorAndDuplicateRejection(t *testing.T) {
 		assert.Equal(t, request, got)
 	}
 
-	contents, err := ber.AppendOctetString(nil, []byte("cn=Jane"))
-	require.NoError(t, err)
-	contents, err = ber.AppendOctetString(contents, []byte("cn=Janet"))
-	require.NoError(t, err)
-	contents, err = ber.AppendBoolean(contents, true)
-	require.NoError(t, err)
 	newSuperiorID := ber.Identifier{Class: ber.ClassContextSpecific, Number: 0}
-	contents, err = ber.AppendPrimitive(contents, newSuperiorID, []byte("ou=one"))
-	require.NoError(t, err)
-	contents, err = ber.AppendPrimitive(contents, newSuperiorID, []byte("ou=two"))
-	require.NoError(t, err)
-	encoded, err := ber.AppendConstructed(nil, ModifyDNRequestIdentifier(), contents)
+	encoded, err := ber.Constructed(ModifyDNRequestIdentifier()).
+		Add(
+			ber.OctetString("cn=Jane"),
+			ber.OctetString("cn=Janet"),
+			ber.Boolean(true),
+			ber.Primitive(newSuperiorID, []byte("ou=one")),
+			ber.Primitive(newSuperiorID, []byte("ou=two")),
+		).
+		AppendBER(nil)
 	require.NoError(t, err)
 	requireDecodeError(t, encoded, &ModifyDNRequest{})
 }

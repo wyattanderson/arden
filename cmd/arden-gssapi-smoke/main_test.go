@@ -113,10 +113,10 @@ func extendedResponse(t *testing.T, response rfc4511.ExtendedResponse) arden.Res
 	t.Helper()
 	protocol, err := response.AppendBER(nil)
 	require.NoError(t, err)
-	contents, err := ber.AppendInteger(nil, 1)
-	require.NoError(t, err)
-	contents = append(contents, protocol...)
-	message, err := ber.AppendSequence(nil, contents)
+	message, err := ber.Sequence().
+		Add(ber.Integer(1)).
+		Add(ber.Encoded(protocol)).
+		AppendBER(nil)
 	require.NoError(t, err)
 	decoded, err := arden.ParseResponse(message, ber.DefaultLimits())
 	require.NoError(t, err)

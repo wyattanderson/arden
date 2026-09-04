@@ -46,7 +46,7 @@ func TestFilterAlternativesDispatchToConcreteTypes(t *testing.T) {
 	}
 }
 
-func TestFilterExtensionBoundaryAndDeclaredIdentifierValidation(t *testing.T) {
+func TestFilterExtensionBoundary(t *testing.T) {
 	unknownWire := []byte{0xbf, 0x2a, 0x00}
 	requestWire := searchRequestWithFilter(t, unknownWire)
 	var request SearchRequest
@@ -58,67 +58,42 @@ func TestFilterExtensionBoundaryAndDeclaredIdentifierValidation(t *testing.T) {
 	reencoded, err := request.AppendBER(nil)
 	require.NoError(t, err)
 	assert.Equal(t, requestWire, reencoded)
-
-	for _, filter := range []Filter{
-		badFilter{declared: ber.Identifier{Class: ber.ClassApplication, Constructed: true, Number: 42}, encoded: unknownWire},
-		badFilter{declared: ber.Identifier{Class: ber.ClassContextSpecific, Constructed: true, Number: 41}, encoded: unknownWire},
-	} {
-		dst := []byte{0xde, 0xad}
-		got, err := (&SearchRequest{Filter: filter}).AppendBER(dst)
-		require.Error(t, err)
-		assert.Equal(t, dst, got)
-	}
 }
 
 func TestSubstringFilterOrderingRejections(t *testing.T) {
-	typePrefix, err := ber.AppendOctetString(nil, []byte("cn"))
-	require.NoError(t, err)
-	context := func(number uint32, value string) []byte {
-		encoded, appendErr := ber.AppendPrimitive(nil, ber.Identifier{Class: ber.ClassContextSpecific, Number: number}, []byte(value))
-		require.NoError(t, appendErr)
-		return encoded
+	context := func(number uint32, value string) ber.Packet {
+		return ber.Primitive(ber.Identifier{Class: ber.ClassContextSpecific, Number: number}, []byte(value))
 	}
-	tests := [][]byte{
+	tests := [][]ber.Packet{
 		{},
-		append(context(0, "a"), context(0, "b")...),
-		append(context(2, "z"), context(1, "a")...),
-		append(context(2, "z"), context(2, "x")...),
+		{context(0, "a"), context(0, "b")},
+		{context(2, "z"), context(1, "a")},
+		{context(2, "z"), context(2, "x")},
 	}
 	for _, parts := range tests {
-		sequence, err := ber.AppendSequence(typePrefix, parts)
-		require.NoError(t, err)
-		encoded, err := ber.AppendConstructed(nil, ber.Identifier{Class: ber.ClassContextSpecific, Constructed: true, Number: 4}, sequence)
+		encoded, err := ber.Constructed(ber.Identifier{Class: ber.ClassContextSpecific, Number: 4}).
+			Add(ber.OctetString("cn")).
+			Add(ber.Sequence().Add(parts...)).
+			AppendBER(nil)
 		require.NoError(t, err)
 		requireDecodeError(t, encoded, &SubstringFilter{})
 	}
 }
 
-type badFilter struct {
-	declared ber.Identifier
-	encoded  []byte
-}
-
-func (f badFilter) FilterIdentifier() ber.Identifier     { return f.declared }
-func (f badFilter) AppendBER(dst []byte) ([]byte, error) { return append(dst, f.encoded...), nil }
-
 func searchRequestWithFilter(t *testing.T, filter []byte) []byte {
 	t.Helper()
-	contents, err := ber.AppendOctetString(nil, nil)
-	require.NoError(t, err)
-	contents, err = ber.AppendEnumerated(contents, 0)
-	require.NoError(t, err)
-	contents, err = ber.AppendEnumerated(contents, 0)
-	require.NoError(t, err)
-	contents, err = ber.AppendInteger(contents, 0)
-	require.NoError(t, err)
-	contents, err = ber.AppendInteger(contents, 0)
-	require.NoError(t, err)
-	contents, err = ber.AppendBoolean(contents, false)
-	require.NoError(t, err)
-	contents = append(contents, filter...)
-	contents, err = ber.AppendSequence(contents, nil)
-	require.NoError(t, err)
-	encoded, err := ber.AppendConstructed(nil, SearchRequestIdentifier(), contents)
+	encoded, err := ber.Constructed(SearchRequestIdentifier()).
+		Add(
+			ber.OctetString([]byte(nil)),
+			ber.Enumerated(0),
+			ber.Enumerated(0),
+			ber.Integer(0),
+			ber.Integer(0),
+			ber.Boolean(false),
+		).
+		Add(ber.Encoded(filter)).
+		Add(ber.Sequence()).
+		AppendBER(nil)
 	require.NoError(t, err)
 	return encoded
 }

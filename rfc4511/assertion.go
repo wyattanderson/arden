@@ -16,16 +16,18 @@ type AttributeValueAssertion struct {
 
 //revive:disable-next-line:exported
 func (v AttributeValueAssertion) AppendBER(dst []byte) ([]byte, error) {
-	start := len(dst)
-	contents, err := v.appendContents(nil)
-	if err != nil {
-		return dst[:start], err
+	if err := requireNonEmpty("attribute description", v.Type); err != nil {
+		return dst, err
 	}
-	encoded, err := ber.AppendSequence(dst, contents)
-	if err != nil {
-		return dst[:start], err
-	}
-	return encoded, nil
+	return v.BERPacket().AppendBER(dst)
+}
+
+// BERPacket returns the attribute-value assertion packet.
+func (v AttributeValueAssertion) BERPacket() ber.Packet {
+	return ber.Sequence().
+		Add(ber.OctetString(v.Type), ber.OctetString(v.Value)).
+		Add(v.Extensions...).
+		BERPacket()
 }
 
 //revive:disable-next-line:exported
@@ -40,24 +42,6 @@ func (v *AttributeValueAssertion) UnmarshalBER(r *ber.Reader) error {
 	}
 	*v = decoded
 	return nil
-}
-
-func (v AttributeValueAssertion) appendContents(dst []byte) ([]byte, error) {
-	start := len(dst)
-	if err := requireNonEmpty("attribute description", v.Type); err != nil {
-		return dst, err
-	}
-	var err error
-	if dst, err = ber.AppendOctetString(dst, []byte(v.Type)); err != nil {
-		return dst[:start], err
-	}
-	if dst, err = ber.AppendOctetString(dst, v.Value); err != nil {
-		return dst[:start], err
-	}
-	if dst, err = appendUnknownFields(dst, v.Extensions); err != nil {
-		return dst[:start], err
-	}
-	return dst, nil
 }
 
 func decodeAssertionContents(r *ber.Reader) (AttributeValueAssertion, error) {

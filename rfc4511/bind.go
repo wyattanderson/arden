@@ -34,8 +34,7 @@ func UnbindRequestIdentifier() ber.Identifier { return unbindRequestIdentifier }
 
 // AuthenticationChoice is an unsealed BindRequest authentication CHOICE.
 type AuthenticationChoice interface {
-	ber.Marshaler
-	AuthenticationIdentifier() ber.Identifier
+	ber.Packeter
 }
 
 // SimpleAuthentication is the [0] OCTET STRING simple Bind choice. It is a
@@ -49,7 +48,12 @@ func (v SimpleAuthentication) AuthenticationIdentifier() ber.Identifier {
 
 //revive:disable-next-line:exported
 func (v SimpleAuthentication) AppendBER(dst []byte) ([]byte, error) {
-	return ber.AppendPrimitive(dst, simpleAuthenticationIdentifier, v)
+	return v.BERPacket().AppendBER(dst)
+}
+
+// BERPacket returns the simple-authentication packet.
+func (v SimpleAuthentication) BERPacket() ber.Packet {
+	return ber.Primitive(simpleAuthenticationIdentifier, v)
 }
 
 //revive:disable-next-line:exported
@@ -78,29 +82,20 @@ func (SASLAuthentication) AuthenticationIdentifier() ber.Identifier {
 
 //revive:disable-next-line:exported
 func (v SASLAuthentication) AppendBER(dst []byte) ([]byte, error) {
-	start := len(dst)
 	if err := requireNonEmpty("SASL mechanism", v.Mechanism); err != nil {
 		return dst, err
 	}
-	contents, err := ber.AppendOctetString(nil, []byte(v.Mechanism))
-	if err != nil {
-		return dst[:start], err
-	}
+	return v.BERPacket().AppendBER(dst)
+}
+
+// BERPacket returns the SASL-authentication packet.
+func (v SASLAuthentication) BERPacket() ber.Packet {
+	authentication := ber.Constructed(saslAuthenticationIdentifier).
+		Add(ber.OctetString(v.Mechanism))
 	if v.HasCredentials {
-		contents, err = ber.AppendOctetString(contents, v.Credentials)
-		if err != nil {
-			return dst[:start], err
-		}
+		authentication.Add(ber.OctetString(v.Credentials))
 	}
-	contents, err = appendUnknownFields(contents, v.Extensions)
-	if err != nil {
-		return dst[:start], err
-	}
-	encoded, err := ber.AppendConstructed(dst, saslAuthenticationIdentifier, contents)
-	if err != nil {
-		return dst[:start], err
-	}
-	return encoded, nil
+	return authentication.Add(v.Extensions...).BERPacket()
 }
 
 //revive:disable-next-line:exported
@@ -162,8 +157,11 @@ func (v UnknownAuthentication) AppendBER(dst []byte) ([]byte, error) {
 	if len(v.raw) == 0 {
 		return dst, errors.New("arden: unknown authentication was not decoded")
 	}
-	return append(dst, v.raw...), nil
+	return v.BERPacket().AppendBER(dst)
 }
+
+// BERPacket returns the preserved authentication packet.
+func (v UnknownAuthentication) BERPacket() ber.Packet { return ber.Encoded(v.raw) }
 
 // Raw returns an independent copy of the complete preserved BER encoding.
 func (v UnknownAuthentication) Raw() []byte { return bytes.Clone(v.raw) }
@@ -181,31 +179,27 @@ func (*BindRequest) ProtocolIdentifier() ber.Identifier { return bindRequestIden
 
 //revive:disable-next-line:exported
 func (v *BindRequest) AppendBER(dst []byte) ([]byte, error) {
-	start := len(dst)
 	if v.Version < 1 || v.Version > 127 {
 		return dst, fmt.Errorf("arden: BindRequest version %d is outside [1, 127]", v.Version)
 	}
 	if v.Authentication == nil {
 		return dst, errors.New("arden: BindRequest has no authentication choice")
 	}
-	contents, err := ber.AppendInteger(nil, v.Version)
-	if err != nil {
-		return dst[:start], err
+	if authentication, ok := v.Authentication.(SASLAuthentication); ok {
+		if err := requireNonEmpty("SASL mechanism", authentication.Mechanism); err != nil {
+			return dst, err
+		}
 	}
-	if contents, err = ber.AppendOctetString(contents, []byte(v.Name)); err != nil {
-		return dst[:start], err
-	}
-	if contents, err = appendAuthentication(contents, v.Authentication); err != nil {
-		return dst[:start], err
-	}
-	if contents, err = appendUnknownFields(contents, v.Extensions); err != nil {
-		return dst[:start], err
-	}
-	encoded, err := ber.AppendConstructed(dst, bindRequestIdentifier, contents)
-	if err != nil {
-		return dst[:start], err
-	}
-	return encoded, nil
+	return v.BERPacket().AppendBER(dst)
+}
+
+// BERPacket returns the bind-request packet.
+func (v *BindRequest) BERPacket() ber.Packet {
+	return ber.Constructed(bindRequestIdentifier).
+		Add(ber.Integer(v.Version), ber.OctetString(v.Name)).
+		Add(v.Authentication).
+		Add(v.Extensions...).
+		BERPacket()
 }
 
 //revive:disable-next-line:exported
@@ -250,29 +244,23 @@ func (v BindResponse) LDAPResult() LDAPResult { return v.Result }
 
 //revive:disable-next-line:exported
 func (v BindResponse) AppendBER(dst []byte) ([]byte, error) {
-	start := len(dst)
 	if len(v.Result.Extensions) != 0 {
 		return dst, errors.New("arden: BindResponse result extensions must be response extensions")
 	}
-	contents, err := v.Result.appendPrefix(nil)
-	if err != nil {
-		return dst[:start], err
+	if err := v.Result.validateReferral(); err != nil {
+		return dst, err
 	}
+	return v.BERPacket().AppendBER(dst)
+}
+
+// BERPacket returns the bind-response packet.
+func (v BindResponse) BERPacket() ber.Packet {
+	response := ber.Constructed(bindResponseIdentifier)
+	v.Result.addPrefix(response)
 	if v.HasServerSASLCredentials {
-		contents, err = appendImplicitOctets(contents, serverSASLCredentialsIdentifier, v.ServerSASLCredentials)
-		if err != nil {
-			return dst[:start], err
-		}
+		response.Add(implicitOctetsPacket(serverSASLCredentialsIdentifier, v.ServerSASLCredentials))
 	}
-	contents, err = appendUnknownFields(contents, v.Extensions)
-	if err != nil {
-		return dst[:start], err
-	}
-	encoded, err := ber.AppendConstructed(dst, bindResponseIdentifier, contents)
-	if err != nil {
-		return dst[:start], err
-	}
-	return encoded, nil
+	return response.Add(v.Extensions...).BERPacket()
 }
 
 //revive:disable-next-line:exported
@@ -324,7 +312,12 @@ func (*UnbindRequest) ProtocolIdentifier() ber.Identifier { return unbindRequest
 
 //revive:disable-next-line:exported
 func (*UnbindRequest) AppendBER(dst []byte) ([]byte, error) {
-	return ber.AppendPrimitive(dst, unbindRequestIdentifier, nil)
+	return ber.Primitive(unbindRequestIdentifier, nil).AppendBER(dst)
+}
+
+// BERPacket returns the unbind-request packet.
+func (*UnbindRequest) BERPacket() ber.Packet {
+	return ber.Primitive(unbindRequestIdentifier, nil)
 }
 
 //revive:disable-next-line:exported
@@ -382,29 +375,6 @@ func NewUnbindOperation(request *UnbindRequest, controls []ber.Marshaler) (proto
 		return protocol.Operation[protocol.NoResponse]{}, err
 	}
 	return op, nil
-}
-
-func appendAuthentication(dst []byte, value AuthenticationChoice) ([]byte, error) {
-	start := len(dst)
-	if value == nil {
-		return dst, errors.New("arden: nil authentication choice")
-	}
-	id := value.AuthenticationIdentifier()
-	if !id.Valid() || id.Class != ber.ClassContextSpecific {
-		return dst, fmt.Errorf("arden: authentication identifier %s is not context-specific", id)
-	}
-	encoded, err := value.AppendBER(dst)
-	if err != nil {
-		return dst[:start], err
-	}
-	e, err := ber.DecodeElement(encoded[start:], validationLimits())
-	if err != nil {
-		return dst[:start], err
-	}
-	if e.Identifier != id {
-		return dst[:start], fmt.Errorf("arden: authentication encoded %s, declared %s", e.Identifier, id)
-	}
-	return encoded, nil
 }
 
 func decodeAuthentication(r *ber.Reader) (AuthenticationChoice, error) {

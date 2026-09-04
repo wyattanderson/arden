@@ -53,31 +53,22 @@ func (*AddRequest) ProtocolIdentifier() ber.Identifier { return addRequestIdenti
 //
 //revive:disable-next-line:exported
 func (v *AddRequest) AppendBER(dst []byte) ([]byte, error) {
-	start := len(dst)
-	contents, err := ber.AppendOctetString(nil, []byte(v.Entry))
-	if err != nil {
-		return dst[:start], err
-	}
-	attributeList := make([]byte, 0)
 	for i := range v.Attributes {
-		attributeList, err = v.Attributes[i].AppendBER(attributeList)
-		if err != nil {
-			return dst[:start], fmt.Errorf("arden: AddRequest attribute %d: %w", i, err)
+		attribute := &v.Attributes[i]
+		if err := validateAttribute(attribute.Type, attribute.Values, true); err != nil {
+			return dst, fmt.Errorf("arden: add attribute %d: %w", i, err)
 		}
 	}
-	contents, err = ber.AppendSequence(contents, attributeList)
-	if err != nil {
-		return dst[:start], err
-	}
-	contents, err = appendUnknownFields(contents, v.Extensions)
-	if err != nil {
-		return dst[:start], err
-	}
-	encoded, err := ber.AppendConstructed(dst, addRequestIdentifier, contents)
-	if err != nil {
-		return dst[:start], err
-	}
-	return encoded, nil
+	return v.BERPacket().AppendBER(dst)
+}
+
+// BERPacket returns the add-request packet.
+func (v *AddRequest) BERPacket() ber.Packet {
+	return ber.Constructed(addRequestIdentifier).
+		Add(ber.OctetString(v.Entry)).
+		Add(ber.Sequence().Add(v.Attributes...)).
+		Add(v.Extensions...).
+		BERPacket()
 }
 
 // UnmarshalBER decodes one AddRequest protocolOp. Retained value bytes are
@@ -129,16 +120,12 @@ func (v AddResponse) LDAPResult() LDAPResult { return v.Result }
 
 //revive:disable-next-line:exported
 func (v AddResponse) AppendBER(dst []byte) ([]byte, error) {
-	start := len(dst)
-	contents, err := v.Result.appendContents(nil)
-	if err != nil {
-		return dst[:start], err
-	}
-	encoded, err := ber.AppendConstructed(dst, addResponseIdentifier, contents)
-	if err != nil {
-		return dst[:start], err
-	}
-	return encoded, nil
+	return appendResultResponse(dst, addResponseIdentifier, v.Result)
+}
+
+// BERPacket returns the add-response packet.
+func (v AddResponse) BERPacket() ber.Packet {
+	return resultResponsePacket(addResponseIdentifier, v.Result)
 }
 
 //revive:disable-next-line:exported

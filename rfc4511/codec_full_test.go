@@ -172,6 +172,9 @@ var externalFilterIdentifier = ber.Identifier{Class: ber.ClassContextSpecific, C
 type externalFilter struct{}
 
 func (externalFilter) FilterIdentifier() ber.Identifier { return externalFilterIdentifier }
+func (externalFilter) BERPacket() ber.Packet {
+	return ber.Constructed(externalFilterIdentifier).BERPacket()
+}
 func (externalFilter) AppendBER(dst []byte) ([]byte, error) {
-	return ber.AppendConstructed(dst, externalFilterIdentifier, nil)
+	return (externalFilter{}).BERPacket().AppendBER(dst)
 }

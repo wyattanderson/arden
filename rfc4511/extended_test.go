@@ -163,7 +163,7 @@ func TestNoticeOfDisconnectionOID(t *testing.T) {
 
 func implicit(t *testing.T, number uint32, value []byte) []byte {
 	t.Helper()
-	encoded, err := ber.AppendPrimitive(nil, ber.Identifier{Class: ber.ClassContextSpecific, Number: number}, value)
+	encoded, err := ber.Primitive(ber.Identifier{Class: ber.ClassContextSpecific, Number: number}, value).AppendBER(nil)
 	require.NoError(t, err)
 	return encoded
 }
@@ -190,7 +190,7 @@ func constructedFields(t *testing.T, id ber.Identifier, prefix []byte, fields ..
 	for _, field := range fields {
 		contents = append(contents, field...)
 	}
-	encoded, err := ber.AppendConstructed(nil, id, contents)
+	encoded, err := ber.WithContents(id, contents).AppendBER(nil)
 	require.NoError(t, err)
 	return encoded
 }

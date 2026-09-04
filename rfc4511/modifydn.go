@@ -36,31 +36,21 @@ func (*ModifyDNRequest) ProtocolIdentifier() ber.Identifier { return modifyDNReq
 
 //revive:disable-next-line:exported
 func (v *ModifyDNRequest) AppendBER(dst []byte) ([]byte, error) {
-	start := len(dst)
-	contents, err := ber.AppendOctetString(nil, []byte(v.Entry))
-	if err != nil {
-		return dst[:start], err
-	}
-	if contents, err = ber.AppendOctetString(contents, []byte(v.NewRDN)); err != nil {
-		return dst[:start], err
-	}
-	if contents, err = ber.AppendBoolean(contents, v.DeleteOldRDN); err != nil {
-		return dst[:start], err
-	}
+	return v.BERPacket().AppendBER(dst)
+}
+
+// BERPacket returns the modify-DN request packet.
+func (v *ModifyDNRequest) BERPacket() ber.Packet {
+	request := ber.Constructed(modifyDNRequestIdentifier).
+		Add(
+			ber.OctetString(v.Entry),
+			ber.OctetString(v.NewRDN),
+			ber.Boolean(v.DeleteOldRDN),
+		)
 	if v.NewSuperior != nil {
-		contents, err = appendImplicitOctets(contents, modifyDNNewSuperiorIdentifier, *v.NewSuperior)
-		if err != nil {
-			return dst[:start], err
-		}
+		request.Add(implicitOctetsPacket(modifyDNNewSuperiorIdentifier, *v.NewSuperior))
 	}
-	if contents, err = appendUnknownFields(contents, v.Extensions); err != nil {
-		return dst[:start], err
-	}
-	encoded, err := ber.AppendConstructed(dst, modifyDNRequestIdentifier, contents)
-	if err != nil {
-		return dst[:start], err
-	}
-	return encoded, nil
+	return request.Add(v.Extensions...).BERPacket()
 }
 
 //revive:disable-next-line:exported
@@ -122,6 +112,11 @@ func (v ModifyDNResponse) LDAPResult() LDAPResult { return v.Result }
 //revive:disable-next-line:exported
 func (v ModifyDNResponse) AppendBER(dst []byte) ([]byte, error) {
 	return appendResultResponse(dst, modifyDNResponseIdentifier, v.Result)
+}
+
+// BERPacket returns the modify-DN response packet.
+func (v ModifyDNResponse) BERPacket() ber.Packet {
+	return resultResponsePacket(modifyDNResponseIdentifier, v.Result)
 }
 
 //revive:disable-next-line:exported

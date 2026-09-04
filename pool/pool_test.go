@@ -33,8 +33,11 @@ type testResponse struct{}
 func (*testResponse) UnmarshalBER(*ber.Reader) error { return nil }
 
 func (testProtocol) ProtocolIdentifier() ber.Identifier { return requestID }
+func (testProtocol) BERPacket() ber.Packet {
+	return ber.Constructed(requestID).BERPacket()
+}
 func (testProtocol) AppendBER(dst []byte) ([]byte, error) {
-	return ber.AppendConstructed(dst, requestID, nil)
+	return (testProtocol{}).BERPacket().AppendBER(dst)
 }
 
 func testOperation(t testing.TB) arden.Operation[testResponse] {
@@ -172,10 +175,10 @@ func (s *testServer) serve(connection net.Conn, ordinal int) {
 				if i == s.responses-1 {
 					identifier = responseID
 				}
-				protocol, _ := ber.AppendConstructed(nil, identifier, nil)
-				contents, _ := ber.AppendInteger(nil, int64(messageID))
-				contents = append(contents, protocol...)
-				response, _ := ber.AppendSequence(nil, contents)
+				response, _ := ber.Sequence().
+					Add(ber.Integer(messageID)).
+					Add(ber.Constructed(identifier)).
+					AppendBER(nil)
 				_, _ = connection.Write(response)
 			}
 			writeMu.Unlock()

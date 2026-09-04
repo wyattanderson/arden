@@ -533,15 +533,9 @@ func decodeControls(elements []ber.Element, limits ber.Limits) ([]rfc4511.Contro
 }
 
 func newPagedResultsControl(size uint32, cookie []byte) (rfc4511.Control, error) {
-	contents, err := ber.AppendInteger(nil, int64(size))
-	if err != nil {
-		return rfc4511.Control{}, err
-	}
-	contents, err = ber.AppendOctetString(contents, cookie)
-	if err != nil {
-		return rfc4511.Control{}, err
-	}
-	value, err := ber.AppendSequence(nil, contents)
+	value, err := ber.Sequence().
+		Add(ber.Integer(size), ber.OctetString(cookie)).
+		AppendBER(nil)
 	if err != nil {
 		return rfc4511.Control{}, err
 	}

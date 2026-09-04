@@ -234,15 +234,9 @@ func protocolResponseWithControls(
 
 func emptyPageControl(t *testing.T) rfc4511.Control {
 	t.Helper()
-	contents, err := ber.AppendInteger(nil, 0)
-	if err != nil {
-		t.Fatalf("encode page size: %v", err)
-	}
-	contents, err = ber.AppendOctetString(contents, nil)
-	if err != nil {
-		t.Fatalf("encode page cookie: %v", err)
-	}
-	value, err := ber.AppendSequence(nil, contents)
+	value, err := ber.Sequence().
+		Add(ber.Integer(0), ber.OctetString([]byte(nil))).
+		AppendBER(nil)
 	if err != nil {
 		t.Fatalf("encode page control: %v", err)
 	}

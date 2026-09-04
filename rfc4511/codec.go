@@ -23,17 +23,8 @@ func applicationConstructed(number uint32) ber.Identifier {
 	return ber.Identifier{Class: ber.ClassApplication, Constructed: true, Number: number}
 }
 
-// validationLimits only checks a locally produced complete top-level value.
-// Wire-size policy belongs to the connection's explicit BER limits, not an RFC
-// encoder's self-consistency check.
-func validationLimits() ber.Limits {
-	limits := ber.DefaultLimits()
-	limits.MaxFrameBytes = int(^uint(0) >> 1)
-	return limits
-}
-
-func appendImplicitOctets[T ~string | ~[]byte](dst []byte, id ber.Identifier, value T) ([]byte, error) {
-	return ber.AppendPrimitive(dst, id, []byte(value))
+func implicitOctetsPacket[T ~string | ~[]byte](id ber.Identifier, value T) ber.Packet {
+	return ber.Primitive(id, []byte(value))
 }
 
 func readImplicitOctets(r *ber.Reader, id ber.Identifier) ([]byte, error) {
@@ -44,12 +35,12 @@ func readImplicitOctets(r *ber.Reader, id ber.Identifier) ([]byte, error) {
 	return bytes.Clone(value), nil
 }
 
-func appendImplicitBoolean(dst []byte, id ber.Identifier, value bool) ([]byte, error) {
+func implicitBooleanPacket(id ber.Identifier, value bool) ber.Packet {
 	b := byte(0)
 	if value {
 		b = 0xff
 	}
-	return ber.AppendPrimitive(dst, id, []byte{b})
+	return ber.Primitive(id, []byte{b})
 }
 
 func readImplicitBoolean(r *ber.Reader, id ber.Identifier) (bool, error) {
@@ -64,16 +55,16 @@ func readImplicitBoolean(r *ber.Reader, id ber.Identifier) (bool, error) {
 }
 
 func appendResultResponse(dst []byte, id ber.Identifier, result LDAPResult) ([]byte, error) {
-	start := len(dst)
-	contents, err := result.appendContents(nil)
-	if err != nil {
-		return dst[:start], err
+	if err := result.validateReferral(); err != nil {
+		return dst, err
 	}
-	encoded, err := ber.AppendConstructed(dst, id, contents)
-	if err != nil {
-		return dst[:start], err
-	}
-	return encoded, nil
+	return resultResponsePacket(id, result).AppendBER(dst)
+}
+
+func resultResponsePacket(id ber.Identifier, result LDAPResult) ber.Packet {
+	response := ber.Constructed(id)
+	result.addPrefix(response)
+	return response.Add(result.Extensions...).BERPacket()
 }
 
 func decodeResultResponse(r *ber.Reader, id ber.Identifier) (LDAPResult, error) {

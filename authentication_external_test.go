@@ -252,12 +252,10 @@ func authenticationBindMessage(id arden.MessageID, code rfc4511.ResultCode, diag
 	if err != nil {
 		return nil, err
 	}
-	contents, err := ber.AppendInteger(nil, int64(id))
-	if err != nil {
-		return nil, err
-	}
-	contents = append(contents, protocol...)
-	return ber.AppendSequence(nil, contents)
+	return ber.Sequence().
+		Add(ber.Integer(id)).
+		Add(ber.Encoded(protocol)).
+		AppendBER(nil)
 }
 
 func authenticationTestCertificate(t *testing.T, serverName string) (tls.Certificate, *x509.CertPool) {

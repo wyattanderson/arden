@@ -35,13 +35,14 @@ type testResponse struct{}
 func (*testResponse) UnmarshalBER(*ber.Reader) error { return nil }
 
 func (p testProtocol) ProtocolIdentifier() ber.Identifier { return p.id }
+func (p testProtocol) BERPacket() ber.Packet              { return ber.Encoded(p.encoded) }
 func (p testProtocol) AppendBER(dst []byte) ([]byte, error) {
 	return append(dst, p.encoded...), nil
 }
 
 func newTestOperation(t *testing.T, request ber.Identifier, pattern ResponseSpec, mode CancellationMode) Operation[testResponse] {
 	t.Helper()
-	encoded, err := ber.AppendElement(nil, request, nil)
+	encoded, err := ber.WithContents(request, nil).AppendBER(nil)
 	require.NoError(t, err)
 	responses, err := NewResponsePattern[testResponse](pattern)
 	require.NoError(t, err)
@@ -90,7 +91,7 @@ func readTestMessage(t *testing.T, framer *ber.Framer) Response {
 
 func testLDAPMessage(t *testing.T, id MessageID, protocolID ber.Identifier, value []byte) []byte {
 	t.Helper()
-	protocol, err := ber.AppendElement(nil, protocolID, value)
+	protocol, err := ber.WithContents(protocolID, value).AppendBER(nil)
 	if err != nil {
 		assert.NoError(t, err)
 		return nil
@@ -411,9 +412,9 @@ func TestMalformedFrameAndEnvelopeRetireConnection(t *testing.T) {
 func TestUnsolicitedResponseAndNoticeOfDisconnection(t *testing.T) {
 	t.Run("ordinary", func(t *testing.T) {
 		conn, peer := newPipeConnection(t, ConnectionOptions{}, MaxMessageID)
-		contents, _ := ber.AppendEnumerated(nil, 0)
-		contents, _ = ber.AppendOctetString(contents, nil)
-		contents, _ = ber.AppendOctetString(contents, nil)
+		contents, _ := ber.Enumerated(0).AppendBER(nil)
+		contents, _ = ber.OctetString([]byte(nil)).AppendBER(contents)
+		contents, _ = ber.OctetString([]byte(nil)).AppendBER(contents)
 		writeTestMessage(t, peer, testLDAPMessage(t, 0, rfc4511.ExtendedResponseIdentifier(), contents))
 		response, err := conn.NextUnsolicited(context.Background())
 		require.NoError(t, err)
@@ -422,10 +423,10 @@ func TestUnsolicitedResponseAndNoticeOfDisconnection(t *testing.T) {
 
 	t.Run("notice", func(t *testing.T) {
 		conn, peer := newPipeConnection(t, ConnectionOptions{}, MaxMessageID)
-		contents, _ := ber.AppendEnumerated(nil, 52)
-		contents, _ = ber.AppendOctetString(contents, nil)
-		contents, _ = ber.AppendOctetString(contents, []byte("server shutdown"))
-		contents, _ = ber.AppendPrimitive(contents, ber.Identifier{Class: ber.ClassContextSpecific, Number: 10}, []byte(noticeOfDisconnectionOID))
+		contents, _ := ber.Enumerated(52).AppendBER(nil)
+		contents, _ = ber.OctetString([]byte(nil)).AppendBER(contents)
+		contents, _ = ber.OctetString("server shutdown").AppendBER(contents)
+		contents, _ = ber.Primitive(ber.Identifier{Class: ber.ClassContextSpecific, Number: 10}, []byte(noticeOfDisconnectionOID)).AppendBER(contents)
 		writeTestMessage(t, peer, testLDAPMessage(t, 0, rfc4511.ExtendedResponseIdentifier(), contents))
 		_, err := conn.NextUnsolicited(context.Background())
 		var notice *NoticeError

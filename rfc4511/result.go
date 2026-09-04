@@ -2,7 +2,6 @@ package rfc4511
 
 import (
 	"errors"
-	"fmt"
 
 	"github.com/wyattanderson/arden/ber"
 )
@@ -83,16 +82,17 @@ type ResultResponse interface {
 
 //revive:disable-next-line:exported
 func (v LDAPResult) AppendBER(dst []byte) ([]byte, error) {
-	start := len(dst)
-	contents, err := v.appendContents(nil)
-	if err != nil {
-		return dst[:start], err
+	if err := v.validateReferral(); err != nil {
+		return dst, err
 	}
-	encoded, err := ber.AppendSequence(dst, contents)
-	if err != nil {
-		return dst[:start], err
-	}
-	return encoded, nil
+	return v.BERPacket().AppendBER(dst)
+}
+
+// BERPacket returns the LDAP result packet.
+func (v LDAPResult) BERPacket() ber.Packet {
+	result := ber.Sequence()
+	v.addPrefix(result)
+	return result.Add(v.Extensions...).BERPacket()
 }
 
 //revive:disable-next-line:exported
@@ -109,48 +109,17 @@ func (v *LDAPResult) UnmarshalBER(r *ber.Reader) error {
 	return nil
 }
 
-func (v LDAPResult) appendContents(dst []byte) ([]byte, error) {
-	start := len(dst)
-	var err error
-	if dst, err = v.appendPrefix(dst); err != nil {
-		return dst[:start], err
-	}
-	if dst, err = appendUnknownFields(dst, v.Extensions); err != nil {
-		return dst[:start], err
-	}
-	return dst, nil
-}
-
 // appendPrefix encodes only the LDAPResult fields which can be embedded into
 // BindResponse and ExtendedResponse before their operation-specific fields.
-func (v LDAPResult) appendPrefix(dst []byte) ([]byte, error) {
-	start := len(dst)
-	if err := v.validateReferral(); err != nil {
-		return dst, err
-	}
-	var err error
-	if dst, err = ber.AppendEnumerated(dst, int64(v.ResultCode)); err != nil {
-		return dst[:start], err
-	}
-	if dst, err = ber.AppendOctetString(dst, []byte(v.MatchedDN)); err != nil {
-		return dst[:start], err
-	}
-	if dst, err = ber.AppendOctetString(dst, []byte(v.DiagnosticMessage)); err != nil {
-		return dst[:start], err
-	}
+func (v LDAPResult) addPrefix(dst *ber.Envelope) {
+	dst.Add(
+		ber.Enumerated(v.ResultCode),
+		ber.OctetString(v.MatchedDN),
+		ber.OctetString(v.DiagnosticMessage),
+	)
 	if len(v.Referrals) > 0 {
-		referrals := make([]byte, 0)
-		for i, uri := range v.Referrals {
-			referrals, err = ber.AppendOctetString(referrals, []byte(uri))
-			if err != nil {
-				return dst[:start], fmt.Errorf("arden: referral URI %d: %w", i, err)
-			}
-		}
-		if dst, err = ber.AppendConstructed(dst, referralIdentifier, referrals); err != nil {
-			return dst[:start], err
-		}
+		dst.Add(ber.Constructed(referralIdentifier).Add(v.Referrals...))
 	}
-	return dst, nil
 }
 
 func (v LDAPResult) validateReferral() error {

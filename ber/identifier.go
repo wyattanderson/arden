@@ -22,6 +22,17 @@ type Identifier struct {
 	Number      uint32
 }
 
+// Universal BER identifiers used by the packet encoder and typed reader.
+var (
+	BooleanIdentifier     = Identifier{Class: ClassUniversal, Number: 1}
+	IntegerIdentifier     = Identifier{Class: ClassUniversal, Number: 2}
+	OctetStringIdentifier = Identifier{Class: ClassUniversal, Number: 4}
+	NullIdentifier        = Identifier{Class: ClassUniversal, Number: 5}
+	EnumeratedIdentifier  = Identifier{Class: ClassUniversal, Number: 10}
+	SequenceIdentifier    = Identifier{Class: ClassUniversal, Constructed: true, Number: 16}
+	SetIdentifier         = Identifier{Class: ClassUniversal, Constructed: true, Number: 17}
+)
+
 // Valid reports whether the identifier class can be encoded in BER.
 func (id Identifier) Valid() bool {
 	return id.Class <= ClassPrivate
@@ -72,13 +83,16 @@ func AppendIdentifier(dst []byte, id Identifier, maxTagNumber uint32) ([]byte, e
 	if id.Number > maxTagNumber {
 		return dst, &LimitError{Limit: "tag number", Value: uint64(id.Number), Max: uint64(maxTagNumber)}
 	}
+	return appendIdentifier(dst, id), nil
+}
 
+func appendIdentifier(dst []byte, id Identifier) []byte {
 	first := byte(id.Class << 6)
 	if id.Constructed {
 		first |= 0x20
 	}
 	if id.Number < 31 {
-		return append(dst, first|byte(id.Number)), nil
+		return append(dst, first|byte(id.Number))
 	}
 
 	first |= 0x1f
@@ -96,5 +110,5 @@ func AppendIdentifier(dst []byte, id Identifier, maxTagNumber uint32) ([]byte, e
 	for i := n; i < len(encoded)-1; i++ {
 		encoded[i] |= 0x80
 	}
-	return append(append(dst, first), encoded[n:]...), nil
+	return append(append(dst, first), encoded[n:]...)
 }

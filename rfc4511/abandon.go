@@ -29,7 +29,12 @@ func (v *AbandonRequest) AppendBER(dst []byte) ([]byte, error) {
 	if v.Target <= 0 || v.Target > protocol.MaxMessageID {
 		return dst, errors.New("arden: AbandonRequest target is outside [1, MaxMessageID]")
 	}
-	return ber.AppendIntegerWithIdentifier(dst, abandonRequestIdentifier, int64(v.Target))
+	return v.BERPacket().AppendBER(dst)
+}
+
+// BERPacket returns the abandon-request packet.
+func (v *AbandonRequest) BERPacket() ber.Packet {
+	return ber.IntegerWithIdentifier(abandonRequestIdentifier, v.Target)
 }
 
 //revive:disable-next-line:exported

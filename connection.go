@@ -521,13 +521,11 @@ func encodeLDAPRequest(id MessageID, op UntypedOperation, limits ber.Limits) ([]
 		return nil, fmt.Errorf("arden: encoded request identifier %s does not match declared identifier %s", got, want)
 	}
 
-	contents, err := ber.AppendInteger(nil, int64(id))
-	if err != nil {
-		return nil, err
-	}
-	contents = append(contents, protocol...)
+	message := ber.Sequence().
+		Add(ber.Integer(id)).
+		Add(ber.Encoded(protocol))
 	if len(op.Controls) != 0 {
-		controlContents := make([]byte, 0)
+		controls := ber.Constructed(controlsIdentifier)
 		for i, control := range op.Controls {
 			encoded, err := control.AppendBER(nil)
 			if err != nil {
@@ -540,21 +538,18 @@ func encodeLDAPRequest(id MessageID, op UntypedOperation, limits ber.Limits) ([]
 			if element.Identifier != ber.SequenceIdentifier {
 				return nil, fmt.Errorf("arden: control %d identifier %s is not a SEQUENCE", i, element.Identifier)
 			}
-			controlContents = append(controlContents, encoded...)
+			controls.Add(ber.Encoded(encoded))
 		}
-		contents, err = ber.AppendConstructed(contents, controlsIdentifier, controlContents)
-		if err != nil {
-			return nil, err
-		}
+		message.Add(controls)
 	}
-	message, err := ber.AppendSequence(nil, contents)
+	encoded, err := message.AppendBER(nil)
 	if err != nil {
 		return nil, err
 	}
-	if len(message) > limits.MaxFrameBytes {
-		return nil, &LimitError{Limit: "request frame bytes", Value: uint64(len(message)), Max: uint64(limits.MaxFrameBytes)}
+	if len(encoded) > limits.MaxFrameBytes {
+		return nil, &LimitError{Limit: "request frame bytes", Value: uint64(len(encoded)), Max: uint64(limits.MaxFrameBytes)}
 	}
-	return message, nil
+	return encoded, nil
 }
 
 func (c *Conn) reserveMessageID(ctx context.Context, scope operationScope) (MessageID, error) {
@@ -975,12 +970,10 @@ func encodeAbandonRequest(messageID, target MessageID) ([]byte, error) {
 }
 
 func encodeInternalRequest(messageID MessageID, protocol []byte) ([]byte, error) {
-	contents, err := ber.AppendInteger(nil, int64(messageID))
-	if err != nil {
-		return nil, err
-	}
-	contents = append(contents, protocol...)
-	return ber.AppendSequence(nil, contents)
+	return ber.Sequence().
+		Add(ber.Integer(messageID)).
+		Add(ber.Encoded(protocol)).
+		AppendBER(nil)
 }
 
 func (c *Conn) readLoop() {

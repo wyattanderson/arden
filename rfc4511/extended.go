@@ -47,32 +47,23 @@ func (*ExtendedRequest) ProtocolIdentifier() ber.Identifier { return extendedReq
 
 //revive:disable-next-line:exported
 func (v *ExtendedRequest) AppendBER(dst []byte) ([]byte, error) {
-	start := len(dst)
 	if err := requireNonEmpty("extended request name", v.Name); err != nil {
 		return dst, err
 	}
 	if err := validateLDAPOID(v.Name); err != nil {
 		return dst, err
 	}
-	contents, err := appendImplicitOctets(nil, extendedRequestNameIdentifier, v.Name)
-	if err != nil {
-		return dst[:start], err
-	}
+	return v.BERPacket().AppendBER(dst)
+}
+
+// BERPacket returns the extended-request packet.
+func (v *ExtendedRequest) BERPacket() ber.Packet {
+	request := ber.Constructed(extendedRequestIdentifier).
+		Add(implicitOctetsPacket(extendedRequestNameIdentifier, v.Name))
 	if v.HasValue {
-		contents, err = appendImplicitOctets(contents, extendedRequestValueIdentifier, v.Value)
-		if err != nil {
-			return dst[:start], err
-		}
+		request.Add(implicitOctetsPacket(extendedRequestValueIdentifier, v.Value))
 	}
-	contents, err = appendUnknownFields(contents, v.Extensions)
-	if err != nil {
-		return dst[:start], err
-	}
-	encoded, err := ber.AppendConstructed(dst, extendedRequestIdentifier, contents)
-	if err != nil {
-		return dst[:start], err
-	}
-	return encoded, nil
+	return request.Add(v.Extensions...).BERPacket()
 }
 
 //revive:disable-next-line:exported
@@ -141,7 +132,6 @@ func (v ExtendedResponse) LDAPResult() LDAPResult { return v.Result }
 
 //revive:disable-next-line:exported
 func (v ExtendedResponse) AppendBER(dst []byte) ([]byte, error) {
-	start := len(dst)
 	if len(v.Result.Extensions) != 0 {
 		return dst, errors.New("arden: ExtendedResponse result extensions must be response extensions")
 	}
@@ -153,31 +143,23 @@ func (v ExtendedResponse) AppendBER(dst []byte) ([]byte, error) {
 			return dst, err
 		}
 	}
-	contents, err := v.Result.appendPrefix(nil)
-	if err != nil {
-		return dst[:start], err
+	if err := v.Result.validateReferral(); err != nil {
+		return dst, err
 	}
+	return v.BERPacket().AppendBER(dst)
+}
+
+// BERPacket returns the extended-response packet.
+func (v ExtendedResponse) BERPacket() ber.Packet {
+	response := ber.Constructed(extendedResponseIdentifier)
+	v.Result.addPrefix(response)
 	if v.HasResponseName {
-		contents, err = appendImplicitOctets(contents, extendedResponseNameIdentifier, v.ResponseName)
-		if err != nil {
-			return dst[:start], err
-		}
+		response.Add(implicitOctetsPacket(extendedResponseNameIdentifier, v.ResponseName))
 	}
 	if v.HasResponseValue {
-		contents, err = appendImplicitOctets(contents, extendedResponseValueIdentifier, v.ResponseValue)
-		if err != nil {
-			return dst[:start], err
-		}
+		response.Add(implicitOctetsPacket(extendedResponseValueIdentifier, v.ResponseValue))
 	}
-	contents, err = appendUnknownFields(contents, v.Extensions)
-	if err != nil {
-		return dst[:start], err
-	}
-	encoded, err := ber.AppendConstructed(dst, extendedResponseIdentifier, contents)
-	if err != nil {
-		return dst[:start], err
-	}
-	return encoded, nil
+	return response.Add(v.Extensions...).BERPacket()
 }
 
 //revive:disable-next-line:exported
@@ -253,7 +235,6 @@ func (IntermediateResponse) isExtendedResultValue() {}
 
 //revive:disable-next-line:exported
 func (v IntermediateResponse) AppendBER(dst []byte) ([]byte, error) {
-	start := len(dst)
 	if v.HasResponseName {
 		if err := requireNonEmpty("intermediate response name", v.ResponseName); err != nil {
 			return dst, err
@@ -262,29 +243,19 @@ func (v IntermediateResponse) AppendBER(dst []byte) ([]byte, error) {
 			return dst, err
 		}
 	}
-	contents := make([]byte, 0)
-	var err error
+	return v.BERPacket().AppendBER(dst)
+}
+
+// BERPacket returns the intermediate-response packet.
+func (v IntermediateResponse) BERPacket() ber.Packet {
+	response := ber.Constructed(intermediateResponseIdentifier)
 	if v.HasResponseName {
-		contents, err = appendImplicitOctets(contents, intermediateResponseNameIdentifier, v.ResponseName)
-		if err != nil {
-			return dst[:start], err
-		}
+		response.Add(implicitOctetsPacket(intermediateResponseNameIdentifier, v.ResponseName))
 	}
 	if v.HasResponseValue {
-		contents, err = appendImplicitOctets(contents, intermediateResponseValueIdentifier, v.ResponseValue)
-		if err != nil {
-			return dst[:start], err
-		}
+		response.Add(implicitOctetsPacket(intermediateResponseValueIdentifier, v.ResponseValue))
 	}
-	contents, err = appendUnknownFields(contents, v.Extensions)
-	if err != nil {
-		return dst[:start], err
-	}
-	encoded, err := ber.AppendConstructed(dst, intermediateResponseIdentifier, contents)
-	if err != nil {
-		return dst[:start], err
-	}
-	return encoded, nil
+	return response.Add(v.Extensions...).BERPacket()
 }
 
 //revive:disable-next-line:exported

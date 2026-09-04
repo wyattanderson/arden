@@ -22,38 +22,25 @@ type Control struct {
 
 //revive:disable-next-line:exported
 func (v Control) AppendBER(dst []byte) ([]byte, error) {
-	start := len(dst)
 	if err := requireNonEmpty("control type", v.Type); err != nil {
 		return dst, err
 	}
 	if err := validateLDAPOID(v.Type); err != nil {
 		return dst, err
 	}
-	contents, err := ber.AppendOctetString(nil, []byte(v.Type))
-	if err != nil {
-		return dst[:start], err
-	}
+	return v.BERPacket().AppendBER(dst)
+}
+
+// BERPacket returns the control packet.
+func (v Control) BERPacket() ber.Packet {
+	control := ber.Sequence().Add(ber.OctetString(v.Type))
 	if v.Criticality {
-		contents, err = ber.AppendBoolean(contents, true)
-		if err != nil {
-			return dst[:start], err
-		}
+		control.Add(ber.Boolean(true))
 	}
 	if v.HasValue {
-		contents, err = ber.AppendOctetString(contents, v.Value)
-		if err != nil {
-			return dst[:start], err
-		}
+		control.Add(ber.OctetString(v.Value))
 	}
-	contents, err = appendUnknownFields(contents, v.Extensions)
-	if err != nil {
-		return dst[:start], err
-	}
-	encoded, err := ber.AppendSequence(dst, contents)
-	if err != nil {
-		return dst[:start], err
-	}
-	return encoded, nil
+	return control.Add(v.Extensions...).BERPacket()
 }
 
 //revive:disable-next-line:exported

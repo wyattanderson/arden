@@ -5,8 +5,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/wyattanderson/arden/ber"
 )
 
 func TestBindRequestAuthenticationVariants(t *testing.T) {
@@ -78,7 +76,7 @@ func TestBindRequestRejectsDuplicateSASLCredentialsAtomically(t *testing.T) {
 	assert.Equal(t, "keep", string(prior.Name))
 }
 
-func TestBindAuthenticationExtensionAndIdentifierBoundaries(t *testing.T) {
+func TestBindAuthenticationExtensionBoundary(t *testing.T) {
 	// SASL(PLAIN, trailing extension [5]).
 	encoded := []byte{0x60, 0x14, 0x02, 0x01, 0x03, 0x04, 0x00, 0xa3, 0x0d, 0x04, 0x05, 'P', 'L', 'A', 'I', 'N', 0x85, 0x04, 'e', 'x', 't', 'n'}
 	var request BindRequest
@@ -89,26 +87,6 @@ func TestBindAuthenticationExtensionAndIdentifierBoundaries(t *testing.T) {
 	reencoded, err := request.AppendBER(nil)
 	require.NoError(t, err)
 	assert.Equal(t, encoded, reencoded)
-
-	for _, authentication := range []AuthenticationChoice{
-		badAuthentication{declared: BindRequestIdentifier(), encoded: []byte{0x85, 0x00}},
-		badAuthentication{declared: ber.Identifier{Class: ber.ClassContextSpecific, Number: 4}, encoded: []byte{0x85, 0x00}},
-	} {
-		dst := []byte{0xde, 0xad}
-		got, err := (&BindRequest{Version: 3, Authentication: authentication}).AppendBER(dst)
-		require.Error(t, err)
-		assert.Equal(t, dst, got)
-	}
-}
-
-type badAuthentication struct {
-	declared ber.Identifier
-	encoded  []byte
-}
-
-func (a badAuthentication) AuthenticationIdentifier() ber.Identifier { return a.declared }
-func (a badAuthentication) AppendBER(dst []byte) ([]byte, error) {
-	return append(dst, a.encoded...), nil
 }
 
 func TestBindResponseServerCredentialsPresence(t *testing.T) {

@@ -2,7 +2,6 @@ package rfc4511
 
 import (
 	"errors"
-	"fmt"
 	"slices"
 
 	"github.com/wyattanderson/arden/ber"
@@ -87,22 +86,19 @@ type Change struct {
 
 //revive:disable-next-line:exported
 func (v Change) AppendBER(dst []byte) ([]byte, error) {
-	start := len(dst)
-	contents, err := ber.AppendEnumerated(nil, int64(v.Operation))
-	if err != nil {
-		return dst[:start], err
+	if len(v.Modification.Type) == 0 {
+		return dst, errors.New("arden: attribute type is empty")
 	}
-	if contents, err = v.Modification.AppendBER(contents); err != nil {
-		return dst[:start], err
-	}
-	if contents, err = appendUnknownFields(contents, v.Extensions); err != nil {
-		return dst[:start], err
-	}
-	encoded, err := ber.AppendSequence(dst, contents)
-	if err != nil {
-		return dst[:start], err
-	}
-	return encoded, nil
+	return v.BERPacket().AppendBER(dst)
+}
+
+// BERPacket returns the modify change packet.
+func (v Change) BERPacket() ber.Packet {
+	return ber.Sequence().
+		Add(ber.Enumerated(v.Operation)).
+		Add(v.Modification).
+		Add(v.Extensions...).
+		BERPacket()
 }
 
 //revive:disable-next-line:exported
@@ -139,29 +135,16 @@ func (*ModifyRequest) ProtocolIdentifier() ber.Identifier { return modifyRequest
 
 //revive:disable-next-line:exported
 func (v *ModifyRequest) AppendBER(dst []byte) ([]byte, error) {
-	start := len(dst)
-	contents, err := ber.AppendOctetString(nil, []byte(v.Object))
-	if err != nil {
-		return dst[:start], err
-	}
-	changes := make([]byte, 0)
-	for i := range v.Changes {
-		changes, err = v.Changes[i].AppendBER(changes)
-		if err != nil {
-			return dst[:start], fmt.Errorf("arden: ModifyRequest change %d: %w", i, err)
-		}
-	}
-	if contents, err = ber.AppendSequence(contents, changes); err != nil {
-		return dst[:start], err
-	}
-	if contents, err = appendUnknownFields(contents, v.Extensions); err != nil {
-		return dst[:start], err
-	}
-	encoded, err := ber.AppendConstructed(dst, modifyRequestIdentifier, contents)
-	if err != nil {
-		return dst[:start], err
-	}
-	return encoded, nil
+	return v.BERPacket().AppendBER(dst)
+}
+
+// BERPacket returns the modify-request packet.
+func (v *ModifyRequest) BERPacket() ber.Packet {
+	return ber.Constructed(modifyRequestIdentifier).
+		Add(ber.OctetString(v.Object)).
+		Add(ber.Sequence().Add(v.Changes...)).
+		Add(v.Extensions...).
+		BERPacket()
 }
 
 //revive:disable-next-line:exported
@@ -203,6 +186,11 @@ func (v ModifyResponse) LDAPResult() LDAPResult { return v.Result }
 //revive:disable-next-line:exported
 func (v ModifyResponse) AppendBER(dst []byte) ([]byte, error) {
 	return appendResultResponse(dst, modifyResponseIdentifier, v.Result)
+}
+
+// BERPacket returns the modify-response packet.
+func (v ModifyResponse) BERPacket() ber.Packet {
+	return resultResponsePacket(modifyResponseIdentifier, v.Result)
 }
 
 //revive:disable-next-line:exported

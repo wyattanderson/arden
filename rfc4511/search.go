@@ -82,7 +82,6 @@ func (*SearchRequest) ProtocolIdentifier() ber.Identifier { return searchRequest
 
 //revive:disable-next-line:exported
 func (v *SearchRequest) AppendBER(dst []byte) ([]byte, error) {
-	start := len(dst)
 	if err := validateDerefAliases(v.DerefAliases); err != nil {
 		return dst, err
 	}
@@ -93,46 +92,26 @@ func (v *SearchRequest) AppendBER(dst []byte) ([]byte, error) {
 	if v.Filter == nil {
 		return dst, errors.New("arden: SearchRequest has no filter")
 	}
-	contents, err := ber.AppendOctetString(nil, []byte(v.BaseObject))
-	if err != nil {
-		return dst[:start], err
-	}
-	if contents, err = ber.AppendEnumerated(contents, int64(v.Scope)); err != nil {
-		return dst[:start], err
-	}
-	if contents, err = ber.AppendEnumerated(contents, int64(v.DerefAliases)); err != nil {
-		return dst[:start], err
-	}
-	if contents, err = ber.AppendInteger(contents, int64(v.SizeLimit)); err != nil {
-		return dst[:start], err
-	}
-	if contents, err = ber.AppendInteger(contents, int64(timeLimit)); err != nil {
-		return dst[:start], err
-	}
-	if contents, err = ber.AppendBoolean(contents, v.TypesOnly); err != nil {
-		return dst[:start], err
-	}
-	if contents, err = appendFilter(contents, v.Filter); err != nil {
-		return dst[:start], err
-	}
-	attributeList := make([]byte, 0)
-	for i, attribute := range v.Attributes {
-		attributeList, err = ber.AppendOctetString(attributeList, []byte(attribute))
-		if err != nil {
-			return dst[:start], fmt.Errorf("arden: search attribute selector %d: %w", i, err)
-		}
-	}
-	if contents, err = ber.AppendSequence(contents, attributeList); err != nil {
-		return dst[:start], err
-	}
-	if contents, err = appendUnknownFields(contents, v.Extensions); err != nil {
-		return dst[:start], err
-	}
-	encoded, err := ber.AppendConstructed(dst, searchRequestIdentifier, contents)
-	if err != nil {
-		return dst[:start], err
-	}
-	return encoded, nil
+
+	return v.BERPacket().AppendBER(dst)
+}
+
+// BERPacket returns the search-request packet.
+func (v *SearchRequest) BERPacket() ber.Packet {
+	timeLimit := v.TimeLimit / time.Second
+	return ber.Constructed(searchRequestIdentifier).
+		Add(
+			ber.OctetString(v.BaseObject),
+			ber.Enumerated(v.Scope),
+			ber.Enumerated(v.DerefAliases),
+			ber.Integer(v.SizeLimit),
+			ber.Integer(timeLimit),
+			ber.Boolean(v.TypesOnly),
+		).
+		Add(v.Filter).
+		Add(ber.Sequence().Add(v.Attributes...)).
+		Add(v.Extensions...).
+		BERPacket()
 }
 
 //revive:disable-next-line:exported
@@ -223,29 +202,16 @@ func (SearchResultEntry) isSearchResultValue() {}
 
 //revive:disable-next-line:exported
 func (v SearchResultEntry) AppendBER(dst []byte) ([]byte, error) {
-	start := len(dst)
-	contents, err := ber.AppendOctetString(nil, []byte(v.ObjectName))
-	if err != nil {
-		return dst[:start], err
-	}
-	attributeList := make([]byte, 0)
-	for i := range v.Attributes {
-		attributeList, err = v.Attributes[i].AppendBER(attributeList)
-		if err != nil {
-			return dst[:start], fmt.Errorf("arden: search result attribute %d: %w", i, err)
-		}
-	}
-	if contents, err = ber.AppendSequence(contents, attributeList); err != nil {
-		return dst[:start], err
-	}
-	if contents, err = appendUnknownFields(contents, v.Extensions); err != nil {
-		return dst[:start], err
-	}
-	encoded, err := ber.AppendConstructed(dst, searchEntryIdentifier, contents)
-	if err != nil {
-		return dst[:start], err
-	}
-	return encoded, nil
+	return v.BERPacket().AppendBER(dst)
+}
+
+// BERPacket returns the search-result entry packet.
+func (v SearchResultEntry) BERPacket() ber.Packet {
+	return ber.Constructed(searchEntryIdentifier).
+		Add(ber.OctetString(v.ObjectName)).
+		Add(ber.Sequence().Add(v.Attributes...)).
+		Add(v.Extensions...).
+		BERPacket()
 }
 
 //revive:disable-next-line:exported
@@ -289,26 +255,18 @@ func (SearchResultReference) isSearchResultValue() {}
 
 //revive:disable-next-line:exported
 func (v SearchResultReference) AppendBER(dst []byte) ([]byte, error) {
-	start := len(dst)
 	if len(v.URIs) == 0 {
 		return dst, errors.New("arden: search result reference requires at least one URI")
 	}
-	contents := make([]byte, 0)
-	var err error
-	for i, uri := range v.URIs {
-		contents, err = ber.AppendOctetString(contents, []byte(uri))
-		if err != nil {
-			return dst[:start], fmt.Errorf("arden: search result reference URI %d: %w", i, err)
-		}
-	}
-	if contents, err = appendUnknownFields(contents, v.Extensions); err != nil {
-		return dst[:start], err
-	}
-	encoded, err := ber.AppendConstructed(dst, searchReferenceIdentifier, contents)
-	if err != nil {
-		return dst[:start], err
-	}
-	return encoded, nil
+	return v.BERPacket().AppendBER(dst)
+}
+
+// BERPacket returns the search-result reference packet.
+func (v SearchResultReference) BERPacket() ber.Packet {
+	return ber.Constructed(searchReferenceIdentifier).
+		Add(v.URIs...).
+		Add(v.Extensions...).
+		BERPacket()
 }
 
 //revive:disable-next-line:exported
@@ -354,6 +312,11 @@ func (v SearchResultDone) LDAPResult() LDAPResult { return v.Result }
 //revive:disable-next-line:exported
 func (v SearchResultDone) AppendBER(dst []byte) ([]byte, error) {
 	return appendResultResponse(dst, searchDoneIdentifier, v.Result)
+}
+
+// BERPacket returns the search-result done packet.
+func (v SearchResultDone) BERPacket() ber.Packet {
+	return resultResponsePacket(searchDoneIdentifier, v.Result)
 }
 
 //revive:disable-next-line:exported

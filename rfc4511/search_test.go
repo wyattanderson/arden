@@ -80,15 +80,16 @@ func TestSearchResultReferenceRequiresURIAndPreservesExtensions(t *testing.T) {
 	require.Error(t, err)
 	assert.Equal(t, dst, got)
 
-	empty, err := ber.AppendConstructed(nil, SearchResultReferenceIdentifier(), nil)
+	empty, err := ber.Constructed(SearchResultReferenceIdentifier()).AppendBER(nil)
 	require.NoError(t, err)
 	requireDecodeError(t, empty, &SearchResultReference{})
 
-	contents, err := ber.AppendOctetString(nil, []byte("ldap://example"))
-	require.NoError(t, err)
-	contents, err = ber.AppendPrimitive(contents, ber.Identifier{Class: ber.ClassContextSpecific, Number: 5}, []byte{0x7f})
-	require.NoError(t, err)
-	encoded, err := ber.AppendConstructed(nil, SearchResultReferenceIdentifier(), contents)
+	encoded, err := ber.Constructed(SearchResultReferenceIdentifier()).
+		Add(
+			ber.OctetString("ldap://example"),
+			ber.Primitive(ber.Identifier{Class: ber.ClassContextSpecific, Number: 5}, []byte{0x7f}),
+		).
+		AppendBER(nil)
 	require.NoError(t, err)
 	var reference SearchResultReference
 	decode(t, encoded, &reference)
@@ -139,7 +140,7 @@ func TestSearchResultChoiceRejectsUnknownIdentifierAtomically(t *testing.T) {
 	var result SearchResult
 	decode(t, encoded, &result)
 
-	unknown, err := ber.AppendConstructed(nil, applicationConstructed(30), nil)
+	unknown, err := ber.Constructed(applicationConstructed(30)).AppendBER(nil)
 	require.NoError(t, err)
 	requireDecodeError(t, unknown, &result)
 	entry, ok := result.Value().(SearchResultEntry)
@@ -149,23 +150,18 @@ func TestSearchResultChoiceRejectsUnknownIdentifierAtomically(t *testing.T) {
 
 func searchRequestEncoding(t *testing.T, scope, deref, size, timeLimit int64) []byte {
 	t.Helper()
-	contents, err := ber.AppendOctetString(nil, nil)
-	require.NoError(t, err)
-	contents, err = ber.AppendEnumerated(contents, scope)
-	require.NoError(t, err)
-	contents, err = ber.AppendEnumerated(contents, deref)
-	require.NoError(t, err)
-	contents, err = ber.AppendInteger(contents, size)
-	require.NoError(t, err)
-	contents, err = ber.AppendInteger(contents, timeLimit)
-	require.NoError(t, err)
-	contents, err = ber.AppendBoolean(contents, false)
-	require.NoError(t, err)
-	contents, err = (Present{Attribute: AttributeDescription("cn")}).AppendBER(contents)
-	require.NoError(t, err)
-	contents, err = ber.AppendSequence(contents, nil)
-	require.NoError(t, err)
-	encoded, err := ber.AppendConstructed(nil, SearchRequestIdentifier(), contents)
+	encoded, err := ber.Constructed(SearchRequestIdentifier()).
+		Add(
+			ber.OctetString([]byte(nil)),
+			ber.Enumerated(scope),
+			ber.Enumerated(deref),
+			ber.Integer(size),
+			ber.Integer(timeLimit),
+			ber.Boolean(false),
+		).
+		Add(Present{Attribute: AttributeDescription("cn")}).
+		Add(ber.Sequence()).
+		AppendBER(nil)
 	require.NoError(t, err)
 	return encoded
 }

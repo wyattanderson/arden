@@ -30,15 +30,11 @@ func TestAttributeAndPartialAttributeCardinality(t *testing.T) {
 }
 
 func TestAttributeCopiesBinaryValuesAndPreservesExtension(t *testing.T) {
-	contents, err := ber.AppendOctetString(nil, []byte("jpegPhoto"))
-	require.NoError(t, err)
-	values, err := ber.AppendOctetString(nil, []byte{0x00, 0xff})
-	require.NoError(t, err)
-	contents, err = ber.AppendSet(contents, values)
-	require.NoError(t, err)
-	contents, err = ber.AppendPrimitive(contents, ber.Identifier{Class: ber.ClassContextSpecific, Number: 5}, []byte{0x7f})
-	require.NoError(t, err)
-	encoded, err := ber.AppendSequence(nil, contents)
+	encoded, err := ber.Sequence().
+		Add(ber.OctetString("jpegPhoto")).
+		Add(ber.Set().Add(ber.OctetString([]byte{0x00, 0xff}))).
+		Add(ber.Primitive(ber.Identifier{Class: ber.ClassContextSpecific, Number: 5}, []byte{0x7f})).
+		AppendBER(nil)
 	require.NoError(t, err)
 
 	var attribute Attribute

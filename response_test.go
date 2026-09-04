@@ -76,38 +76,33 @@ func TestParseResponseRejectsMalformedEnvelopeShapes(t *testing.T) {
 
 func ldapMessage(t *testing.T, messageID int64, protocol []byte, controlsAndExtensions ...[]byte) []byte {
 	t.Helper()
-	messageIDElement, err := ber.AppendInteger(nil, messageID)
-	require.NoError(t, err)
-	contents := append([]byte(nil), messageIDElement...)
-	contents = append(contents, protocol...)
+	message := ber.Sequence().
+		Add(ber.Integer(messageID)).
+		Add(ber.Encoded(protocol))
 	if len(controlsAndExtensions) > 0 {
-		controls := make([]byte, 0)
-		for _, control := range controlsAndExtensions[:1] {
-			controls = append(controls, control...)
-		}
-		contents, err = ber.AppendConstructed(contents, ber.Identifier{
+		controls := ber.Constructed(ber.Identifier{
 			Class:       ber.ClassContextSpecific,
 			Constructed: true,
 			Number:      0,
-		}, controls)
-		require.NoError(t, err)
+		}).Add(ber.Encoded(controlsAndExtensions[0]))
+		message.Add(controls)
 		for _, extension := range controlsAndExtensions[1:] {
-			contents = append(contents, extension...)
+			message.Add(ber.Encoded(extension))
 		}
 	}
-	message, err := ber.AppendSequence(nil, contents)
+	encoded, err := message.AppendBER(nil)
 	require.NoError(t, err)
-	return message
+	return encoded
 }
 
 func ldapMessageRaw(parts ...[]byte) []byte {
-	contents := make([]byte, 0)
+	message := ber.Sequence()
 	for _, part := range parts {
-		contents = append(contents, part...)
+		message.Add(ber.Encoded(part))
 	}
-	message, err := ber.AppendSequence(nil, contents)
+	encoded, err := message.AppendBER(nil)
 	if err != nil {
 		panic(err)
 	}
-	return message
+	return encoded
 }

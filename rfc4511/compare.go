@@ -32,22 +32,19 @@ func (*CompareRequest) ProtocolIdentifier() ber.Identifier { return compareReque
 
 //revive:disable-next-line:exported
 func (v *CompareRequest) AppendBER(dst []byte) ([]byte, error) {
-	start := len(dst)
-	contents, err := ber.AppendOctetString(nil, []byte(v.Entry))
-	if err != nil {
-		return dst[:start], err
+	if err := requireNonEmpty("attribute description", v.Assertion.Type); err != nil {
+		return dst, err
 	}
-	if contents, err = v.Assertion.AppendBER(contents); err != nil {
-		return dst[:start], err
-	}
-	if contents, err = appendUnknownFields(contents, v.Extensions); err != nil {
-		return dst[:start], err
-	}
-	encoded, err := ber.AppendConstructed(dst, compareRequestIdentifier, contents)
-	if err != nil {
-		return dst[:start], err
-	}
-	return encoded, nil
+	return v.BERPacket().AppendBER(dst)
+}
+
+// BERPacket returns the compare-request packet.
+func (v *CompareRequest) BERPacket() ber.Packet {
+	return ber.Constructed(compareRequestIdentifier).
+		Add(ber.OctetString(v.Entry)).
+		Add(v.Assertion).
+		Add(v.Extensions...).
+		BERPacket()
 }
 
 //revive:disable-next-line:exported
@@ -82,6 +79,11 @@ func (v CompareResponse) LDAPResult() LDAPResult { return v.Result }
 //revive:disable-next-line:exported
 func (v CompareResponse) AppendBER(dst []byte) ([]byte, error) {
 	return appendResultResponse(dst, compareResponseIdentifier, v.Result)
+}
+
+// BERPacket returns the compare-response packet.
+func (v CompareResponse) BERPacket() ber.Packet {
+	return resultResponsePacket(compareResponseIdentifier, v.Result)
 }
 
 //revive:disable-next-line:exported

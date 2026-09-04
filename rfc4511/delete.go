@@ -28,7 +28,12 @@ func (*DeleteRequest) ProtocolIdentifier() ber.Identifier { return deleteRequest
 
 //revive:disable-next-line:exported
 func (v *DeleteRequest) AppendBER(dst []byte) ([]byte, error) {
-	return ber.AppendPrimitive(dst, deleteRequestIdentifier, []byte(v.Entry))
+	return v.BERPacket().AppendBER(dst)
+}
+
+// BERPacket returns the delete-request packet.
+func (v *DeleteRequest) BERPacket() ber.Packet {
+	return ber.Primitive(deleteRequestIdentifier, []byte(v.Entry))
 }
 
 //revive:disable-next-line:exported
@@ -50,6 +55,11 @@ func (v DeleteResponse) LDAPResult() LDAPResult { return v.Result }
 //revive:disable-next-line:exported
 func (v DeleteResponse) AppendBER(dst []byte) ([]byte, error) {
 	return appendResultResponse(dst, deleteResponseIdentifier, v.Result)
+}
+
+// BERPacket returns the delete-response packet.
+func (v DeleteResponse) BERPacket() ber.Packet {
+	return resultResponsePacket(deleteResponseIdentifier, v.Result)
 }
 
 //revive:disable-next-line:exported

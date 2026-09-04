@@ -3,7 +3,6 @@ package rfc4511
 import (
 	"bytes"
 	"errors"
-	"fmt"
 
 	"github.com/wyattanderson/arden/ber"
 )
@@ -35,6 +34,11 @@ func (a PartialAttribute) AppendBER(dst []byte) ([]byte, error) {
 	return appendAttribute(dst, a.Type, a.Values, a.Extensions, false)
 }
 
+// BERPacket returns the partial-attribute packet.
+func (a PartialAttribute) BERPacket() ber.Packet {
+	return attributePacket(a.Type, a.Values, a.Extensions)
+}
+
 //revive:disable-next-line:exported
 func (a *PartialAttribute) UnmarshalBER(r *ber.Reader) error {
 	typeValue, values, extensions, err := decodeAttribute(r, false)
@@ -48,6 +52,11 @@ func (a *PartialAttribute) UnmarshalBER(r *ber.Reader) error {
 //revive:disable-next-line:exported
 func (a Attribute) AppendBER(dst []byte) ([]byte, error) {
 	return appendAttribute(dst, a.Type, a.Values, a.Extensions, true)
+}
+
+// BERPacket returns the attribute packet.
+func (a Attribute) BERPacket() ber.Packet {
+	return attributePacket(a.Type, a.Values, a.Extensions)
 }
 
 //revive:disable-next-line:exported
@@ -67,38 +76,36 @@ func appendAttribute(
 	extensions []UnknownField,
 	requireValue bool,
 ) ([]byte, error) {
-	start := len(dst)
+	if err := validateAttribute(typeValue, values, requireValue); err != nil {
+		return dst, err
+	}
+	return attributePacket(typeValue, values, extensions).AppendBER(dst)
+}
+
+func validateAttribute(
+	typeValue AttributeDescription,
+	values []AttributeValue,
+	requireValue bool,
+) error {
 	if len(typeValue) == 0 {
-		return dst, errors.New("arden: attribute type is empty")
+		return errors.New("arden: attribute type is empty")
 	}
 	if requireValue && len(values) == 0 {
-		return dst, errors.New("arden: Attribute requires at least one value")
+		return errors.New("arden: Attribute requires at least one value")
 	}
+	return nil
+}
 
-	contents, err := ber.AppendOctetString(nil, []byte(typeValue))
-	if err != nil {
-		return dst[:start], err
-	}
-	setContents := make([]byte, 0)
-	for i, value := range values {
-		setContents, err = ber.AppendOctetString(setContents, value)
-		if err != nil {
-			return dst[:start], fmt.Errorf("arden: attribute value %d: %w", i, err)
-		}
-	}
-	contents, err = ber.AppendSet(contents, setContents)
-	if err != nil {
-		return dst[:start], err
-	}
-	contents, err = appendUnknownFields(contents, extensions)
-	if err != nil {
-		return dst[:start], err
-	}
-	encoded, err := ber.AppendSequence(dst, contents)
-	if err != nil {
-		return dst[:start], err
-	}
-	return encoded, nil
+func attributePacket(
+	typeValue AttributeDescription,
+	values []AttributeValue,
+	extensions []UnknownField,
+) ber.Packet {
+	return ber.Sequence().
+		Add(ber.OctetString(typeValue)).
+		Add(ber.Set().Add(values...)).
+		Add(extensions...).
+		BERPacket()
 }
 
 func decodeAttribute(r *ber.Reader, requireValue bool) (
