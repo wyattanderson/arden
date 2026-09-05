@@ -17,7 +17,7 @@ must not be mutated concurrently with encoding or other reads.
 | --- | ---: | --- |
 | `ber.Primitive`, `WithContents`, `Encoded` | 3 | Packet construction retains inputs; `Encode` already writes a new output buffer. These copies duplicated every binary value on the request path and copied string conversions a second time. Keep inputs stable during encoding. `AppendTo` requires a destination that does not overlap retained inputs. |
 | `ber.integerBytes` | 2 | Each branch creates its own local array. Returning a slice keeps that array alive through Go's escape analysis; cloning it adds no ownership protection. |
-| `rfc4511.cloneAttributeValues` (now `attributeValues`) | 1 | Binary change helpers expose mutable `PartialAttribute.Values` anyway. Retain each value's backing bytes; the outer slice is still newly allocated for type conversion. |
+| `rfc4511.cloneAttributeValues` (now `attributeValues`) | 1 | Binary change helpers expose mutable `Attribute.Values` anyway. Retain each value's backing bytes; the outer slice is still newly allocated for type conversion. |
 | `rfc4511.EqualBytes` | 1 | Retain the assertion bytes, matching direct construction of `EqualityMatch`. A caller retaining a filter must copy a scratch buffer before reusing it. |
 | Entry `cloneAttributeValues` (now `attributeValues`) | 1 | `SetBytes` shares the supplied bytes, consistent with the exported `Attributes`. Text `Set` already allocates bytes during string conversion. |
 | `Entry.RawValues` | 1 | Return shared value bytes in a new outer slice. `RawValue` now looks up only the first value instead of copying every value. Text access still converts to independent strings. |

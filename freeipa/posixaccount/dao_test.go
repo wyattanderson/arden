@@ -177,9 +177,9 @@ func (*scriptedStream) Close() error { return nil }
 
 func searchEntryResponse(t *testing.T, entry arden.Entry) arden.Response {
 	t.Helper()
-	attributes := make([]rfc4511.PartialAttribute, len(entry.Attributes))
+	attributes := make([]rfc4511.Attribute, len(entry.Attributes))
 	for i, attribute := range entry.Attributes {
-		attributes[i] = rfc4511.PartialAttribute{
+		attributes[i] = rfc4511.Attribute{
 			Type:       attribute.Type,
 			Values:     attribute.Values,
 			Extensions: attribute.Extensions,

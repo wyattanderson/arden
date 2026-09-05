@@ -149,7 +149,7 @@ func validateDerefAliases(value DerefAliases) error {
 // SearchResultEntry is a nonterminal RFC 4511 search response.
 type SearchResultEntry struct {
 	ObjectName LDAPDN
-	Attributes []PartialAttribute
+	Attributes []Attribute
 	Extensions []UnknownField
 }
 
@@ -169,7 +169,7 @@ func (v *SearchResultEntry) UnmarshalBER(r *ber.Reader) error {
 	d := ber.NewDecoder(r).Constructed(searchEntryIdentifier)
 	decoded := SearchResultEntry{
 		ObjectName: d.Read[LDAPDN](),
-		Attributes: d.Sequence().All[PartialAttribute](),
+		Attributes: d.Sequence().All[Attribute](),
 		Extensions: d.Extensions[UnknownField](),
 	}
 	if err := d.End(); err != nil {

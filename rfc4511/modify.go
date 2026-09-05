@@ -69,13 +69,13 @@ func changeText(operation ModifyOperation, attribute string, values []string) Ch
 	for i, value := range values {
 		raw[i] = AttributeValue(value)
 	}
-	return Change{Operation: operation, Modification: PartialAttribute{
+	return Change{Operation: operation, Modification: Attribute{
 		Type: AttributeDescription(attribute), Values: raw,
 	}}
 }
 
 func changeBytes(operation ModifyOperation, attribute string, values [][]byte) Change {
-	return Change{Operation: operation, Modification: PartialAttribute{
+	return Change{Operation: operation, Modification: Attribute{
 		Type: AttributeDescription(attribute), Values: attributeValues(values),
 	}}
 }
@@ -83,7 +83,7 @@ func changeBytes(operation ModifyOperation, attribute string, values [][]byte) C
 // Change is one ModifyRequest change record.
 type Change struct {
 	Operation    ModifyOperation
-	Modification PartialAttribute
+	Modification Attribute
 	Extensions   []UnknownField
 }
 
@@ -101,7 +101,7 @@ func (v *Change) UnmarshalBER(r *ber.Reader) error {
 	d := ber.NewDecoder(r).Sequence()
 	decoded := Change{
 		Operation:    d.Enumerated[ModifyOperation](),
-		Modification: d.Read[PartialAttribute](),
+		Modification: d.Read[Attribute](),
 		Extensions:   d.Extensions[UnknownField](),
 	}
 	if err := d.End(); err != nil {

@@ -53,7 +53,7 @@ func TestModifyPreservesExtensibleOperationValue(t *testing.T) {
 		Object: LDAPDN("cn=Jane"),
 		Changes: []Change{{
 			Operation: ModifyOperation(99),
-			Modification: PartialAttribute{
+			Modification: Attribute{
 				Type:   AttributeDescription("description"),
 				Values: []AttributeValue{AttributeValue("updated")},
 			},

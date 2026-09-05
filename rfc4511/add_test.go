@@ -44,7 +44,10 @@ func TestAddRequestRoundTripsAttributesAndCopiesValues(t *testing.T) {
 
 func TestAddRequestRejectsInvalidAttributeAtomically(t *testing.T) {
 	request := &AddRequest{
-		Attributes: []Attribute{{Type: AttributeDescription("cn")}},
+		Attributes: []Attribute{
+			{Type: AttributeDescription("objectClass"), Values: []AttributeValue{AttributeValue("person")}},
+			{Type: AttributeDescription("cn")},
+		},
 	}
 	prior := AddRequest{Entry: LDAPDN("cn=keep")}
 	requireDecodeError(t, request.BERPacket().Encode(), &prior)

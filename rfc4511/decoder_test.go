@@ -142,13 +142,13 @@ func TestSearchDecoderRejectsTruncationsAtomically(t *testing.T) {
 
 	entry := SearchResultEntry{
 		ObjectName: "cn=Smith,dc=example",
-		Attributes: []PartialAttribute{{Type: "cn", Values: []AttributeValue{[]byte("Smith"), {0, 0xff}}}},
+		Attributes: []Attribute{{Type: "cn", Values: []AttributeValue{[]byte("Smith"), {0, 0xff}}}},
 	}
 	encoded = entry.BERPacket().Encode()
 	for length := range len(encoded) {
-		prior := SearchResultEntry{ObjectName: "keep", Attributes: []PartialAttribute{{Type: "keep"}}}
+		prior := SearchResultEntry{ObjectName: "keep", Attributes: []Attribute{{Type: "keep"}}}
 		requireDecodeError(t, encoded[:length], &prior)
-		assert.Equal(t, SearchResultEntry{ObjectName: "keep", Attributes: []PartialAttribute{{Type: "keep"}}}, prior)
+		assert.Equal(t, SearchResultEntry{ObjectName: "keep", Attributes: []Attribute{{Type: "keep"}}}, prior)
 	}
 	var decoded SearchResultEntry
 	decode(t, encoded, &decoded)

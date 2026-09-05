@@ -9,22 +9,22 @@ import (
 	"github.com/wyattanderson/arden/ber"
 )
 
-func TestAttributeAndPartialAttributeCardinality(t *testing.T) {
-	partial := PartialAttribute{Type: AttributeDescription("description")}
-	encoded := partial.BERPacket().Encode()
-	var partialGot PartialAttribute
-	decode(t, encoded, &partialGot)
-	assert.Equal(t, partial, partialGot)
+func TestAttributeAllowsEmptyValues(t *testing.T) {
+	attribute := Attribute{Type: AttributeDescription("description")}
+	encoded := attribute.BERPacket().Encode()
+	var got Attribute
+	decode(t, encoded, &got)
+	assert.Equal(t, attribute, got)
+}
 
-	for _, value := range []interface {
-		ber.Packeter
-		ber.Unmarshaler
-	}{
-		&PartialAttribute{},
-		&Attribute{Type: AttributeDescription("cn")},
-		&Attribute{Values: []AttributeValue{AttributeValue("Jane")}},
+func TestAttributeRejectsEmptyTypeAtomically(t *testing.T) {
+	for _, value := range []Attribute{
+		{},
+		{Values: []AttributeValue{AttributeValue("Jane")}},
 	} {
-		requireDecodeError(t, value.BERPacket().Encode(), value)
+		prior := Attribute{Type: "keep", Values: []AttributeValue{AttributeValue("keep")}}
+		requireDecodeError(t, value.BERPacket().Encode(), &prior)
+		assert.Equal(t, Attribute{Type: "keep", Values: []AttributeValue{AttributeValue("keep")}}, prior)
 	}
 }
 

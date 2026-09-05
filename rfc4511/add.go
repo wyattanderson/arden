@@ -70,6 +70,12 @@ func (v *AddRequest) UnmarshalBER(r *ber.Reader) error {
 	if err := d.End(); err != nil {
 		return err
 	}
+	// RFC 4511 section 4.7 requires at least one value per added attribute.
+	for _, attribute := range decoded.Attributes {
+		if len(attribute.Values) == 0 {
+			return errors.New("arden: AddRequest attribute requires at least one value")
+		}
+	}
 	*v = decoded
 	return nil
 }

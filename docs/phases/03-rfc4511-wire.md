@@ -55,7 +55,7 @@ production:
 ```text
 package rfc4511
     types.go       string-first LDAP text and raw value types
-    attribute.go   Attribute and PartialAttribute
+    attribute.go   Attribute
     result.go      ResultCode, LDAPResult, Referral
     control.go     Control wire value
     bind.go
@@ -160,7 +160,7 @@ neither consume input nor invoke custom decoders.
 d := ber.NewDecoder(r).Constructed(searchEntryIdentifier)
 decoded := SearchResultEntry{
     ObjectName: d.Read[LDAPDN](),
-    Attributes: d.Sequence().All[PartialAttribute](),
+    Attributes: d.Sequence().All[Attribute](),
     Extensions: d.Extensions[UnknownField](),
 }
 if err := d.End(); err != nil {
@@ -444,23 +444,20 @@ Wire codecs validate only their specified wire grammar and structure. They do
 not normalize DNs, parse filter strings, discover schema, infer attribute
 syntax, or convert attribute values through Go strings.
 
-`Attribute` and `PartialAttribute` are separate concrete values:
+`Attribute` represents both RFC attribute forms with one concrete value:
 
 ```go
-type PartialAttribute struct {
+type Attribute struct {
     Type   AttributeDescription
     Values []AttributeValue
 }
-
-type Attribute struct {
-    Type   AttributeDescription
-    Values []AttributeValue // at least one
-}
 ```
 
-The RFC decoder enforces the nonempty `Attribute` rule. It cannot generically
-decide schema equivalence between values or whether an attribute is
-NO-USER-MODIFICATION; schema-aware application code owns those checks.
+Empty value sets are allowed for search results and modifications.
+`AddRequest.UnmarshalBER` enforces at least one value per attribute, as
+required by the RFC's constrained Attribute form. The decoder cannot
+generically decide schema equivalence between values or whether an attribute
+is NO-USER-MODIFICATION; schema-aware application code owns those checks.
 
 ## Add vertical slice
 
@@ -557,7 +554,7 @@ Responses are:
 ```go
 type SearchResultEntry struct {
     ObjectName LDAPDN
-    Attributes []PartialAttribute
+    Attributes []Attribute
 }
 
 type SearchResultReference struct {

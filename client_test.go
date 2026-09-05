@@ -192,14 +192,14 @@ func TestClientSearchFollowsPagedResultsCookies(t *testing.T) {
 		{
 			protocolResponse(t, rfc4511.SearchResultEntryIdentifier(), rfc4511.SearchResultEntry{
 				ObjectName: "uid=one,dc=example",
-				Attributes: []rfc4511.PartialAttribute{{Type: "uid", Values: []rfc4511.AttributeValue{rfc4511.AttributeValue("one")}}},
+				Attributes: []rfc4511.Attribute{{Type: "uid", Values: []rfc4511.AttributeValue{rfc4511.AttributeValue("one")}}},
 			}),
 			protocolResponseWithControls(t, rfc4511.SearchResultDoneIdentifier(), rfc4511.SearchResultDone{Result: rfc4511.LDAPResult{ResultCode: rfc4511.ResultSuccess}}, firstControl),
 		},
 		{
 			protocolResponse(t, rfc4511.SearchResultEntryIdentifier(), rfc4511.SearchResultEntry{
 				ObjectName: "uid=two,dc=example",
-				Attributes: []rfc4511.PartialAttribute{{Type: "uid", Values: []rfc4511.AttributeValue{rfc4511.AttributeValue("two")}}},
+				Attributes: []rfc4511.Attribute{{Type: "uid", Values: []rfc4511.AttributeValue{rfc4511.AttributeValue("two")}}},
 			}),
 			protocolResponseWithControls(t, rfc4511.SearchResultDoneIdentifier(), rfc4511.SearchResultDone{Result: rfc4511.LDAPResult{ResultCode: rfc4511.ResultSuccess}}, secondControl),
 		},
