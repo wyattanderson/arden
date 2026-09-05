@@ -200,15 +200,11 @@ type SearchRequest struct {
 	TimeLimit    time.Duration
 	TypesOnly    bool
 	Filter       Filter
-	Attributes   []string
+	Attributes   AttributeSelectors
 	PageSize     uint32
 }
 
 func (r SearchRequest) protocolRequest() rfc4511.SearchRequest {
-	attributes := make([]rfc4511.AttributeSelector, len(r.Attributes))
-	for i, attribute := range r.Attributes {
-		attributes[i] = rfc4511.AttributeSelector(attribute)
-	}
 	return rfc4511.SearchRequest{
 		BaseObject:   r.BaseDN,
 		Scope:        r.Scope,
@@ -217,7 +213,7 @@ func (r SearchRequest) protocolRequest() rfc4511.SearchRequest {
 		TimeLimit:    r.TimeLimit,
 		TypesOnly:    r.TypesOnly,
 		Filter:       r.Filter,
-		Attributes:   attributes,
+		Attributes:   r.Attributes,
 	}
 }
 
@@ -243,7 +239,7 @@ func (c *Client) Search(ctx context.Context, request SearchRequest, options ...R
 func (c *Client) Get(ctx context.Context, dn LDAPDN, attributes ...string) (Entry, error) {
 	rows, err := c.Search(ctx, SearchRequest{
 		BaseDN: dn, Scope: ScopeBase, SizeLimit: 1,
-		Filter: Has("objectClass"), Attributes: slices.Clone(attributes),
+		Filter: Has("objectClass"), Attributes: NewAttributeSelectors(attributes...),
 	})
 	if err != nil {
 		return Entry{}, err

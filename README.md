@@ -144,7 +144,9 @@ Streaming Search responses decode as `rfc4511.SearchResult`; its
 `SearchResultDone` through a type switch. Abandon and Unbind use the standard
 `protocol.NoResponse` response type.
 
-Search returns an iterator and follows RFC 2696 cookies when `PageSize` is set:
+Search returns an iterator and follows RFC 2696 cookies when `PageSize` is set.
+`NewAttributeSelectors` copies and pre-encodes the selection once; keep the result
+for reuse across searches. The zero value requests all user attributes.
 
 ```go
 client := arden.NewClient(conn)
@@ -152,7 +154,7 @@ rows, err := client.Search(ctx, arden.SearchRequest{
 	BaseDN:     "ou=people,dc=example",
 	Scope:      arden.ScopeSubtree,
 	Filter:     arden.Equal("departmentNumber", "engineering"),
-	Attributes: []string{"uid", "cn", "jpegPhoto"},
+	Attributes: arden.NewAttributeSelectors("uid", "cn", "jpegPhoto"),
 	PageSize:   100,
 })
 if err != nil {

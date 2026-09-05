@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/wyattanderson/arden"
 	"github.com/wyattanderson/arden/schema"
 )
 
@@ -43,7 +44,7 @@ var UserAttributes = struct {
 	EmailAddresses: schema.NewAttribute("mail", schema.StringCodec),
 }
 
-var userProjection = []string{
+var userProjection = arden.NewAttributeSelectors(
 	UserAttributes.AccountName.Name,
 	UserAttributes.CommonName.Name,
 	UserAttributes.UIDNumber.Name,
@@ -52,4 +53,4 @@ var userProjection = []string{
 	UserAttributes.GECOS.Name,
 	UserAttributes.LoginShell.Name,
 	UserAttributes.EmailAddresses.Name,
-}
+)

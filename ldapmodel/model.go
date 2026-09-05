@@ -9,24 +9,25 @@ type Model[T any] struct {
 	baseDN     arden.LDAPDN
 	scope      arden.SearchScope
 	filter     arden.Filter
-	attributes []string
+	attributes arden.AttributeSelectors
 	decode     func(arden.Entry) (T, error)
 }
 
 // NewModel constructs an immutable model description. Its arguments are
-// expected to come from generated or handwritten model code.
+// expected to come from generated or handwritten model code. Attribute selectors
+// may be initialized once and shared by models with different search bases.
 func NewModel[T any](
 	baseDN arden.LDAPDN,
 	scope arden.SearchScope,
 	filter arden.Filter,
-	attributes []string,
+	attributes arden.AttributeSelectors,
 	decode func(arden.Entry) (T, error),
 ) Model[T] {
 	return Model[T]{
 		baseDN:     baseDN,
 		scope:      scope,
 		filter:     filter,
-		attributes: append([]string(nil), attributes...),
+		attributes: attributes,
 		decode:     decode,
 	}
 }

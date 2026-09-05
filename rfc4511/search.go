@@ -73,7 +73,7 @@ type SearchRequest struct {
 	TimeLimit    time.Duration
 	TypesOnly    bool
 	Filter       Filter
-	Attributes   []AttributeSelector
+	Attributes   AttributeSelectors
 	Extensions   []UnknownField
 }
 
@@ -93,7 +93,7 @@ func (v *SearchRequest) BERPacket() ber.Packet {
 			ber.Boolean(v.TypesOnly),
 		).
 		Add(v.Filter).
-		Add(ber.Sequence().Add(v.Attributes...)).
+		Add(v.Attributes).
 		Add(v.Extensions...).
 		BERPacket()
 }
@@ -109,7 +109,7 @@ func (v *SearchRequest) UnmarshalBER(r *ber.Reader) error {
 		TimeLimit:    d.Using(decodeSearchTimeLimit),
 		TypesOnly:    d.Boolean(),
 		Filter:       d.Using(decodeFilter),
-		Attributes:   d.Sequence().All[AttributeSelector](),
+		Attributes:   d.Read[AttributeSelectors](),
 		Extensions:   d.Extensions[UnknownField](),
 	}
 	if err := d.End(); err != nil {

@@ -23,7 +23,7 @@ func FuzzRFC4511Unmarshalers(f *testing.F) {
 	f.Fuzz(func(t *testing.T, data []byte) {
 		for _, decoder := range []ber.Unmarshaler{
 			new(LDAPString), new(LDAPOID), new(LDAPDN), new(RelativeLDAPDN), new(URI),
-			new(AttributeDescription), new(AttributeSelector), new(MatchingRuleID), new(AttributeValue), new(AssertionValue),
+			new(AttributeDescription), new(AttributeSelector), new(AttributeSelectors), new(MatchingRuleID), new(AttributeValue), new(AssertionValue),
 			new(PartialAttribute), new(Attribute), new(AttributeValueAssertion), new(LDAPResult), new(Control),
 			new(SimpleAuthentication), new(SASLAuthentication), new(BindRequest), new(BindResponse), new(UnbindRequest),
 			new(And), new(Or), new(Not), new(EqualityMatch), new(GreaterOrEqual), new(LessOrEqual), new(Present), new(ApproximateMatch), new(SubstringFilter), new(ExtensibleMatch),

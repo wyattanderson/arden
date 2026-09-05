@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -204,12 +205,15 @@ func TestClientSearchFollowsPagedResultsCookies(t *testing.T) {
 		},
 	}}
 
+	attributes := []string{"uid"}
+	selectors := NewAttributeSelectors(attributes...)
 	rows, err := NewClient(executor).Search(context.Background(), SearchRequest{
 		BaseDN: "dc=example", Scope: ScopeSubtree, Filter: Has("uid"),
-		Attributes: []string{"uid"}, PageSize: 2,
+		Attributes: selectors, PageSize: 2,
 	})
 	require.NoError(t, err)
 	defer func() { require.NoError(t, rows.Close()) }()
+	attributes[0] = "changed after first page"
 
 	var values []string
 	for rows.Next() {
@@ -218,6 +222,15 @@ func TestClientSearchFollowsPagedResultsCookies(t *testing.T) {
 	require.NoError(t, rows.Err())
 	assert.Equal(t, []string{"one", "two"}, values)
 	require.Len(t, executor.operations, 2)
+	for _, operation := range executor.operations {
+		encoded := operation.Protocol.BERPacket().Encode()
+		reader, err := ber.NewReader(encoded, ber.DefaultLimits())
+		require.NoError(t, err)
+		var request rfc4511.SearchRequest
+		require.NoError(t, request.UnmarshalBER(reader))
+		require.NoError(t, reader.RequireEmpty())
+		assert.Equal(t, []rfc4511.AttributeSelector{"uid"}, slices.Collect(request.Attributes.All()))
+	}
 	require.Len(t, executor.streams, 2)
 	assert.True(t, executor.streams[0].closed, "first page stream was not closed before paging")
 	assert.True(t, executor.streams[1].closed, "final page stream was not closed")

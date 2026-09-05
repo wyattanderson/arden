@@ -41,7 +41,7 @@ func TestRFC4511CodecRoundTrips(t *testing.T) {
 		{"approximate", ApproximateMatch{Assertion: AttributeValueAssertion{Type: AttributeDescription("cn"), Value: AssertionValue("Jane")}}, &ApproximateMatch{}},
 		{"substring", SubstringFilter{Type: AttributeDescription("cn"), Initial: &initial, Any: []AssertionValue{AssertionValue("a")}, Final: &final}, &SubstringFilter{}},
 		{"extensible", ExtensibleMatch{MatchingRule: &matchingRule, Type: &attributeType, MatchValue: AssertionValue("Jane"), DNAttributes: true}, &ExtensibleMatch{}},
-		{"search", &SearchRequest{BaseObject: LDAPDN("dc=example,dc=com"), Scope: ScopeWholeSubtree, DerefAliases: DerefNever, SizeLimit: 100, TimeLimit: 5 * time.Second, Filter: Present{Attribute: AttributeDescription("cn")}, Attributes: []AttributeSelector{AttributeSelector("cn")}}, &SearchRequest{}},
+		{"search", &SearchRequest{BaseObject: LDAPDN("dc=example,dc=com"), Scope: ScopeWholeSubtree, DerefAliases: DerefNever, SizeLimit: 100, TimeLimit: 5 * time.Second, Filter: Present{Attribute: AttributeDescription("cn")}, Attributes: NewAttributeSelectors([]AttributeSelector{AttributeSelector("cn")})}, &SearchRequest{}},
 		{"search entry", SearchResultEntry{ObjectName: LDAPDN("cn=Jane"), Attributes: []PartialAttribute{partial}}, &SearchResultEntry{}},
 		{"search reference", SearchResultReference{URIs: []URI{URI("ldap://example/dc=example,dc=com")}}, &SearchResultReference{}},
 		{"search done", SearchResultDone{Result: result}, &SearchResultDone{}},

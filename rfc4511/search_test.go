@@ -20,7 +20,7 @@ func TestSearchRequestRoundTripsBoundariesAndExtensibleScope(t *testing.T) {
 		TimeLimit:    math.MaxInt32 * time.Second,
 		TypesOnly:    true,
 		Filter:       Present{Attribute: AttributeDescription("objectClass")},
-		Attributes:   []AttributeSelector{AttributeSelector("cn"), AttributeSelector("+")},
+		Attributes:   NewAttributeSelectors([]AttributeSelector{AttributeSelector("cn"), AttributeSelector("+")}),
 	}
 	encoded := request.BERPacket().Encode()
 	var got SearchRequest

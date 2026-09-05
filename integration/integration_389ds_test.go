@@ -143,7 +143,7 @@ func Test389DSDirectoryOperationsAndPagedSearch(t *testing.T) {
 	seen := make(map[string]struct{}, recordCount)
 	rows, err := client.Search(ctx, arden.SearchRequest{
 		BaseDN: arden.LDAPDN(peopleDN), Scope: arden.ScopeSubtree, Filter: arden.Has("uid"),
-		Attributes: []string{"uid"}, PageSize: 7,
+		Attributes: arden.NewAttributeSelectors("uid"), PageSize: 7,
 	})
 	require.NoError(t, err)
 	defer func() { require.NoError(t, rows.Close()) }()
@@ -170,10 +170,10 @@ func Test389DSDirectoryOperationsAndPagedSearch(t *testing.T) {
 		DerefAliases: arden.DerefNever,
 		Filter:       arden.Has("uid"),
 		PageSize:     7,
-		Attributes: []string{
+		Attributes: arden.NewAttributeSelectors(
 			"uid",
 			"description",
-		},
+		),
 	})
 	require.Len(t, updated, recordCount)
 	for _, entry := range updated {
@@ -187,10 +187,10 @@ func Test389DSDirectoryOperationsAndPagedSearch(t *testing.T) {
 		DerefAliases: arden.DerefNever,
 		Filter:       arden.Equal("departmentNumber", "engineering"),
 		PageSize:     7,
-		Attributes: []string{
+		Attributes: arden.NewAttributeSelectors(
 			"uid",
 			"departmentNumber",
-		},
+		),
 	})
 	require.Len(t, filtered, recordCount/2)
 	for _, entry := range filtered {
@@ -205,7 +205,7 @@ func Test389DSDirectoryOperationsAndPagedSearch(t *testing.T) {
 		Scope:        arden.ScopeSubtree,
 		DerefAliases: arden.DerefNever,
 		Filter:       arden.Has("uid"),
-		Attributes:   []string{"uid"},
+		Attributes:   arden.NewAttributeSelectors("uid"),
 		PageSize:     7,
 	})
 	require.Empty(t, remaining)

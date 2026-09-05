@@ -131,13 +131,13 @@ func TestSearchDecoderRejectsTruncationsAtomically(t *testing.T) {
 	request := SearchRequest{
 		BaseObject: "dc=example", Scope: ScopeSubtree, DerefAliases: DerefAlways,
 		SizeLimit: 10, TimeLimit: time.Second, Filter: All(Has("cn"), Equal("sn", "Smith")),
-		Attributes: []AttributeSelector{"cn", "sn"},
+		Attributes: NewAttributeSelectors([]AttributeSelector{"cn", "sn"}),
 	}
 	encoded := request.BERPacket().Encode()
 	for length := range len(encoded) {
-		prior := SearchRequest{BaseObject: "keep", Attributes: []AttributeSelector{"keep"}}
+		prior := SearchRequest{BaseObject: "keep", Attributes: NewAttributeSelectors([]AttributeSelector{"keep"})}
 		requireDecodeError(t, encoded[:length], &prior)
-		assert.Equal(t, SearchRequest{BaseObject: "keep", Attributes: []AttributeSelector{"keep"}}, prior)
+		assert.Equal(t, SearchRequest{BaseObject: "keep", Attributes: NewAttributeSelectors([]AttributeSelector{"keep"})}, prior)
 	}
 
 	entry := SearchResultEntry{
@@ -172,7 +172,7 @@ func TestSearchTimeConversionRejectsOverflowButRetainsSignedPolicy(t *testing.T)
 func TestCompositeDecodersUseNamedTextValidation(t *testing.T) {
 	badText := string([]byte{0xff})
 	requireDecodeError(t, (&SearchRequest{BaseObject: LDAPDN(badText), Filter: Has("cn")}).BERPacket().Encode(), &SearchRequest{})
-	requireDecodeError(t, (&SearchRequest{Filter: Has("cn"), Attributes: []AttributeSelector{AttributeSelector(badText)}}).BERPacket().Encode(), &SearchRequest{})
+	requireDecodeError(t, (&SearchRequest{Filter: Has("cn"), Attributes: NewAttributeSelectors([]AttributeSelector{AttributeSelector(badText)})}).BERPacket().Encode(), &SearchRequest{})
 	requireDecodeError(t, (SearchResultEntry{ObjectName: LDAPDN(badText)}).BERPacket().Encode(), &SearchResultEntry{})
 	requireDecodeError(t, (SearchResultDone{Result: LDAPResult{DiagnosticMessage: LDAPString(badText)}}).BERPacket().Encode(), &SearchResultDone{})
 	requireDecodeError(t, (&DeleteRequest{Entry: LDAPDN(badText)}).BERPacket().Encode(), &DeleteRequest{})

@@ -142,7 +142,7 @@ func (r ResultSet[T]) open(sizeLimit, pageSize uint32) (Stream[T], func() error,
 		DerefAliases: arden.DerefNever,
 		SizeLimit:    sizeLimit,
 		Filter:       arden.All(filters...),
-		Attributes:   append([]string(nil), r.dao.model.attributes...),
+		Attributes:   r.dao.model.attributes,
 		PageSize:     pageSize,
 	})
 	if err != nil {

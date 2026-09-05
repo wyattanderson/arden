@@ -12,6 +12,16 @@ type RelativeLDAPDN = rfc4511.RelativeLDAPDN
 // Attribute is a schema-neutral LDAP attribute.
 type Attribute = rfc4511.Attribute
 
+// AttributeSelectors is an immutable search attribute selection with a cached
+// BER encoding. Its zero value requests all user attributes.
+type AttributeSelectors = rfc4511.AttributeSelectors
+
+// NewAttributeSelectors copies attributes and encodes their selection once for
+// reuse across searches. Selectors such as "*", "+", and "1.1" are passed through.
+func NewAttributeSelectors(attributes ...string) AttributeSelectors {
+	return rfc4511.NewAttributeSelectors(attributes)
+}
+
 // Change is one ordered LDAP Modify change.
 type Change = rfc4511.Change
 
