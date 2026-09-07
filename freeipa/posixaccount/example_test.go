@@ -20,6 +20,18 @@ func Example() {
 		posixaccount.Users("cn=users,cn=accounts,dc=arden,dc=test"),
 	).WithContext(ctx)
 
+	a := posixaccount.UserAttributes
+	err := dao.Add("alice",
+		ldapmodel.Set(a.CommonName, "Alice Example"),
+		ldapmodel.Set(a.Surname, "Example"),
+		ldapmodel.Set(a.UIDNumber, 1200),
+		ldapmodel.Set(a.GIDNumber, 1200),
+		ldapmodel.Set(a.HomeDirectory, "/home/alice"),
+	)
+	if err != nil && !errors.Is(err, errExampleOnly) {
+		panic(err)
+	}
+
 	user, err := dao.Where(posixaccount.AccountNameIs("alice")).One()
 	if err != nil && !errors.Is(err, errExampleOnly) {
 		panic(err)

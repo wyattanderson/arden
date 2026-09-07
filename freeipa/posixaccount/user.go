@@ -4,7 +4,7 @@
 // yet. All model-specific code lives here: the projection, attribute mappings,
 // decoder, indexed predicates, and model-specific attributes. Reusable behavior
 // lives in ldapmodel (attributes, codecs, filters, decoding cardinality,
-// change encoding, and DAO lifecycle).
+// assignment/change encoding, and DAO lifecycle).
 package posixaccount
 
 import (
@@ -15,11 +15,13 @@ import (
 )
 
 // UserAttributes is the generated, typed vocabulary shared by model decoding,
-// indexed predicates, and changes. Go field names are application vocabulary;
-// descriptor names are LDAP schema vocabulary.
+// indexed predicates, assignments, and changes. Go field names are application
+// vocabulary; descriptor names are LDAP schema vocabulary. Creation attributes
+// can extend beyond the read projection: Surname is available for writes only.
 var UserAttributes = struct {
 	AccountName    ldapmodel.Attribute[User, string]
 	CommonName     ldapmodel.Attribute[User, string]
+	Surname        ldapmodel.Attribute[User, string]
 	UIDNumber      ldapmodel.Attribute[User, uint32]
 	GIDNumber      ldapmodel.Attribute[User, uint32]
 	HomeDirectory  ldapmodel.Attribute[User, string]
@@ -29,6 +31,7 @@ var UserAttributes = struct {
 }{
 	AccountName:    ldapmodel.NewAttribute[User]("uid", ldapmodel.StringCodec),
 	CommonName:     ldapmodel.NewAttribute[User]("cn", ldapmodel.StringCodec),
+	Surname:        ldapmodel.NewAttribute[User]("sn", ldapmodel.StringCodec),
 	UIDNumber:      ldapmodel.NewAttribute[User]("uidNumber", ldapmodel.Uint32Codec),
 	GIDNumber:      ldapmodel.NewAttribute[User]("gidNumber", ldapmodel.Uint32Codec),
 	HomeDirectory:  ldapmodel.NewAttribute[User]("homeDirectory", ldapmodel.StringCodec),
@@ -117,13 +120,15 @@ func decodeUserError(entry arden.Entry, err error) error {
 	return fmt.Errorf("decode user %q: %w", entry.DN, err)
 }
 
-// Users returns the generated User model bound to a directory search base.
+// Users returns the generated User model bound to a search base and creation
+// parent. Add takes an account name and uses AccountName for its RDN and uid.
 // The generic ldapmodel.DAO supplies query and mutation behavior.
 func Users(baseDN arden.LDAPDN) ldapmodel.Model[User] {
 	return ldapmodel.NewModel(
 		baseDN,
 		arden.ScopeChildren,
-		arden.Equal("objectClass", "posixAccount"),
+		[]string{"top", "person", "organizationalPerson", "inetOrgPerson", "posixAccount"},
+		UserAttributes.AccountName,
 		userProjection,
 		DecodeUser,
 	)

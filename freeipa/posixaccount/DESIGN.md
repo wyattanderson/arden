@@ -8,14 +8,14 @@ generated yet.
 
 [`user.go`](user.go) is the complete, single-file prototype of generated output.
 It contains only model declarations and wiring: `User`, attribute-to-codec
-mappings, the projection and object-class constraint, decoding cardinalities,
+mappings, the projection, base object classes and naming attribute, decoding cardinalities,
 indexed predicates, and model-specific typed attribute descriptors.
 Tests and usage examples remain in separate `_test.go` files.
 
 Reusable implementation belongs to Arden:
 
 - `ldapmodel` owns `Attribute[M, T]`, value codecs (including `Uint32Codec`),
-  equality encoding, cardinality helpers, typed changes, and the generic DAO
+  equality encoding, cardinality helpers, typed assignments and changes, and the generic DAO
   and result-set lifecycle. `Attribute.MustEqual` supports predicates whose
   codecs cannot fail to encode; fallible codecs use `Attribute.Equal`.
 
@@ -55,6 +55,16 @@ err = users.Modify(alice.DN,
     ldapmodel.Delete(posixaccount.UserAttributes.EmailAddresses, "old@example.test"),
     ldapmodel.Replace(posixaccount.UserAttributes.UIDNumber, 1201),
 )
+
+a := posixaccount.UserAttributes
+err = users.Add("bob",
+    ldapmodel.Set(a.CommonName, "Bob Example"),
+    ldapmodel.Set(a.Surname, "Example"),
+    ldapmodel.Set(a.UIDNumber, 1201),
+    ldapmodel.Set(a.GIDNumber, 1200),
+    ldapmodel.Set(a.HomeDirectory, "/home/bob"),
+    ldapmodel.Set(a.EmailAddresses, "bob@example.test"),
+)
 ```
 
 ## Contracts being tested
@@ -66,6 +76,43 @@ err = users.Modify(alice.DN,
 - A model is a fixed projection, not a live object. Required single-valued
   attributes are Go values, optional single-valued attributes are pointers,
   and multi-valued attributes are slices.
+- The model declares base object classes, copied by `NewModel`. Searches AND
+  together an `objectClass` equality for each class with caller criteria; Add
+  supplies the same classes automatically. Entries with additional classes can
+  still match. This user model declares `top`, `person`, `organizationalPerson`,
+  `inetOrgPerson`, and `posixAccount`.
+- The model declares `UserAttributes.AccountName` as its naming attribute.
+  `Add("alice", ...)` creates `uid=alice,<baseDN>` and supplies `uid` automatically.
+  The naming codec runs once, and its output is shared with the initial attribute
+  and escaped for the RDN using RFC 4514. Pass an unescaped name, never a DN.
+  The base is both the search base and the parent for new entries; Add always
+  creates an immediate child. Modify still takes an existing entry's explicit DN.
+  Use `Client.Add` for creation elsewhere in the tree.
+- Naming is a single `Attribute[User, string]` with a short LDAP attribute name
+  and a codec that produces UTF-8. Add rejects missing or invalid naming metadata,
+  encoding errors, and attempts to assign the naming attribute, including case
+  and option variants. Schema alias/OID equivalence is not resolved by attribute
+  keys. No multi-valued RDN or alternate-parent API is provided.
+- Attributes can extend beyond the read projection. `UserAttributes.Surname`
+  maps to `sn` for creation and modification but adds no field to `User` and
+  does not change its search attribute selection or decoder.
+- `Set` returns an opaque `Assignment[M]`; `DAO[M].Add` accepts assignments for
+  that model, with mixed value types. Assignments and modification changes
+  cannot be interchanged. No generated creation struct or entry builder is needed.
+- Assignments use the same encoder as `Attribute.Set`, encoding immediately
+  into the final wire-value slice and retaining codec-produced bytes. Errors
+  surface from Add before any request, including errors in overwritten assignments.
+  Keep shared bytes unchanged until Add returns; the caller's outer values slice
+  is not retained.
+- Repeated assignments replace previous values for equivalent normalized
+  descriptions, preserving the first insertion position, as `Attributes.Set`
+  does. Omit an assignment to omit an attribute. Empty value lists are rejected;
+  an explicit numeric zero or empty string remains a supplied value.
+- Add sends one LDAP Add and returns its error, with no read-back or retry.
+  Invalid assignments, missing base classes, and attempts to assign `objectClass`
+  (including its OID or optioned forms) send no request. Required attributes and
+  schema cardinality remain server-validated, including Add with no assignments.
+  Optional object classes are not supported yet.
 - Decoding validates schema cardinality instead of silently taking the first
   value. It keeps the entry DN in errors and does not include attribute values.
 - `Where(...).One()` replaces generated lookup methods. It uses a size limit of

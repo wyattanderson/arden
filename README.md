@@ -185,7 +185,7 @@ values, err := UID.Values(entry)
 ```
 
 `ldapmodel` builds on those descriptors with a reusable generic `DAO[T]`,
-typed criteria and ordered changes, materialized `All`/`One`/`First` result
+typed criteria, initial assignments and ordered changes, materialized `All`/`One`/`First` result
 paths, and an explicitly closed streaming path. Schema-specific packages provide the
 model projection and decoder without generating a DAO type for every model.
 
@@ -201,6 +201,31 @@ err = users.Modify(user.DN,
 
 The DAO sends one Modify with changes in caller order. Encoding errors prevent
 the request; attribute cardinality and allowed operations are left to the server.
+
+Add uses the same attribute vocabulary with typed initial assignments:
+
+```go
+a := posixaccount.UserAttributes
+err = users.Add("alice",
+    ldapmodel.Set(a.CommonName, "Alice Example"),
+    ldapmodel.Set(a.Surname, "Example"),
+    ldapmodel.Set(a.UIDNumber, 1200),
+    ldapmodel.Set(a.GIDNumber, 1200),
+    ldapmodel.Set(a.HomeDirectory, "/home/alice"),
+)
+```
+
+The model's declared base classes are required by searches and automatically
+supplied as `objectClass` during Add. Its naming attribute (`uid` here) encodes
+the name once for both the escaped RDN and the initial attribute, creating an
+immediate child of the model's base DN. Callers cannot override the classes or
+naming attribute. Use the raw name, without DN escaping; `Client.Add` remains
+available for explicit DNs. Creation
+attributes can extend beyond the read projection (`Surname` above). Repeated
+assignments replace earlier values; omit assignments for absent attributes.
+Empty value lists and encoding errors prevent the request. Add returns an error
+without reading the entry back; required attributes and cardinality are checked
+by the server.
 
 Custom protocol work stays equally direct. The `rfc4532` package is a reference
 extension implemented only against the public `arden.Executor` contract:

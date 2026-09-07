@@ -1,13 +1,14 @@
 package posixaccount_test
 
 import (
-	"bytes"
 	"context"
-	"errors"
 	"io"
+	"slices"
 	"strconv"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/wyattanderson/arden"
 	"github.com/wyattanderson/arden/ber"
 	"github.com/wyattanderson/arden/ldapmodel"
@@ -27,12 +28,10 @@ func TestResultSetAll(t *testing.T) {
 	)
 
 	users, err := dao.Where(posixaccount.GIDNumberIs(1200)).All()
-	if err != nil {
-		t.Fatalf("All: %v", err)
-	}
-	if len(users) != 2 || users[0].AccountName != "alice" || users[1].AccountName != "bob" {
-		t.Fatalf("unexpected users: %#v", users)
-	}
+	require.NoError(t, err)
+	require.Len(t, users, 2)
+	assert.Equal(t, "alice", users[0].AccountName)
+	assert.Equal(t, "bob", users[1].AccountName)
 }
 
 func TestResultSetOne(t *testing.T) {
@@ -44,21 +43,15 @@ func TestResultSetOne(t *testing.T) {
 		)
 
 		user, err := dao.Where(posixaccount.AccountNameIs("alice")).One()
-		if err != nil {
-			t.Fatalf("One: %v", err)
-		}
-		if user.AccountName != "alice" {
-			t.Fatalf("unexpected user: %#v", user)
-		}
+		require.NoError(t, err)
+		assert.Equal(t, "alice", user.AccountName)
 	})
 
 	t.Run("none", func(t *testing.T) {
 		dao := testDAO(t, searchDoneResponse(t))
 
 		_, err := dao.Where(posixaccount.AccountNameIs("missing")).One()
-		if !errors.Is(err, arden.ErrNotFound) {
-			t.Fatalf("got %v, want arden.ErrNotFound", err)
-		}
+		assert.ErrorIs(t, err, arden.ErrNotFound)
 	})
 
 	t.Run("many", func(t *testing.T) {
@@ -70,9 +63,7 @@ func TestResultSetOne(t *testing.T) {
 		)
 
 		_, err := dao.Where(posixaccount.AccountNameIs("alice")).One()
-		if !errors.Is(err, ldapmodel.ErrNotUnique) {
-			t.Fatalf("got %v, want ldapmodel.ErrNotUnique", err)
-		}
+		assert.ErrorIs(t, err, ldapmodel.ErrNotUnique)
 	})
 }
 
@@ -85,12 +76,8 @@ func TestResultSetFirst(t *testing.T) {
 	)
 
 	user, err := dao.Where(posixaccount.GIDNumberIs(1200)).First()
-	if err != nil {
-		t.Fatalf("First: %v", err)
-	}
-	if user.AccountName != "alice" {
-		t.Fatalf("unexpected user: %#v", user)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "alice", user.AccountName)
 }
 
 func TestResultSetStream(t *testing.T) {
@@ -102,25 +89,17 @@ func TestResultSetStream(t *testing.T) {
 	)
 
 	stream, closeStream, err := dao.Where(posixaccount.GIDNumberIs(1200)).Stream()
-	if err != nil {
-		t.Fatalf("Stream: %v", err)
-	}
+	require.NoError(t, err)
 	defer func() {
-		if err := closeStream(); err != nil {
-			t.Errorf("close stream: %v", err)
-		}
+		assert.NoError(t, closeStream())
 	}()
 
 	var names []string
 	for stream.Next() {
 		names = append(names, stream.Value().AccountName)
 	}
-	if err := stream.Err(); err != nil {
-		t.Fatalf("stream.Err: %v", err)
-	}
-	if len(names) != 2 || names[0] != "alice" || names[1] != "bob" {
-		t.Fatalf("unexpected names: %#v", names)
-	}
+	require.NoError(t, stream.Err())
+	assert.Equal(t, []string{"alice", "bob"}, names)
 }
 
 func TestGenericDAOModify(t *testing.T) {
@@ -137,7 +116,7 @@ func TestGenericDAOModify(t *testing.T) {
 	emails := []string{"alice@example.test", "other@example.test"}
 	mailChange := ldapmodel.Replace(attributes.EmailAddresses, emails...)
 	emails[0] = "changed"
-	if err := dao.Modify("uid=alice,"+usersBaseDN,
+	err := dao.Modify("uid=alice,"+usersBaseDN,
 		ldapmodel.Add(attributes.EmailAddresses, "old@example.test"),
 		ldapmodel.Delete(attributes.EmailAddresses, "old@example.test", "another@example.test"),
 		mailChange,
@@ -149,20 +128,13 @@ func TestGenericDAOModify(t *testing.T) {
 		ldapmodel.Replace(attributes.GIDNumber, 1200),
 		ldapmodel.Replace(attributes.UIDNumber, 1201),
 		ldapmodel.Replace(attributes.CommonName, "Alice Example"),
-	); err != nil {
-		t.Fatalf("Modify: %v", err)
-	}
-	if len(operations) != 1 {
-		t.Fatalf("got %d operations, want one Modify", len(operations))
-	}
+	)
+	require.NoError(t, err)
+	require.Len(t, operations, 1)
 	reader, err := ber.NewReader(operations[0].Untyped().Protocol.BERPacket().Encode(), ber.DefaultLimits())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	var request rfc4511.ModifyRequest
-	if err := request.UnmarshalBER(reader); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, request.UnmarshalBER(reader))
 	want := []arden.Change{
 		arden.AddValues("mail", "old@example.test"),
 		arden.DeleteValues("mail", "old@example.test", "another@example.test"),
@@ -177,18 +149,71 @@ func TestGenericDAOModify(t *testing.T) {
 		arden.Replace("cn", "Alice Example"),
 	}
 	// Compare wire encodings so nil and empty value slices are equivalent.
-	if !bytes.Equal(request.BERPacket().Encode(), (&rfc4511.ModifyRequest{
+	assert.Equal(t, (&rfc4511.ModifyRequest{
 		Object: "uid=alice," + usersBaseDN, Changes: want,
-	}).BERPacket().Encode()) {
-		t.Fatalf("unexpected Modify request: %#v", request)
-	}
+	}).BERPacket().Encode(), request.BERPacket().Encode())
 
-	if err := dao.Modify("uid=alice," + usersBaseDN); !errors.Is(err, ldapmodel.ErrEmptyChanges) {
-		t.Fatalf("empty changes: got %v, want ErrEmptyChanges", err)
+	require.ErrorIs(t, dao.Modify("uid=alice,"+usersBaseDN), ldapmodel.ErrEmptyChanges)
+	assert.Len(t, operations, 1, "empty changes must not issue an operation")
+}
+
+func TestGenericDAOAddAndSearchIdentity(t *testing.T) {
+	var operations []arden.AnyOperation
+	executor := &scriptedExecutor{
+		responses: []arden.Response{protocolResponse(t, rfc4511.AddResponseIdentifier(), rfc4511.AddResponse{
+			Result: rfc4511.LDAPResult{ResultCode: rfc4511.ResultSuccess},
+		})},
+		onOperation: func(operation arden.AnyOperation) {
+			operations = append(operations, operation)
+		},
 	}
-	if len(operations) != 1 {
-		t.Fatal("empty changes issued an operation")
+	dao := ldapmodel.NewDAO(arden.NewClient(executor), posixaccount.Users(usersBaseDN))
+	a := posixaccount.UserAttributes
+	dn := arden.LDAPDN("uid=alice," + usersBaseDN)
+	err := dao.Add("alice",
+		ldapmodel.Set(a.CommonName, "Alice Example"),
+		ldapmodel.Set(a.Surname, "Example"),
+		ldapmodel.Set(a.UIDNumber, 1200),
+		ldapmodel.Set(a.GIDNumber, 1200),
+		ldapmodel.Set(a.HomeDirectory, "/home/alice"),
+		ldapmodel.Set(a.EmailAddresses, "alice@example.test", "other@example.test"),
+	)
+	require.NoError(t, err)
+	require.Len(t, operations, 1)
+	reader, err := ber.NewReader(operations[0].Untyped().Protocol.BERPacket().Encode(), ber.DefaultLimits())
+	require.NoError(t, err)
+	var request rfc4511.AddRequest
+	require.NoError(t, request.UnmarshalBER(reader))
+	classes := []string{"top", "person", "organizationalPerson", "inetOrgPerson", "posixAccount"}
+	want := arden.NewEntry(dn)
+	want.Set("objectClass", classes...)
+	want.Set("uid", "alice")
+	want.Set("cn", "Alice Example")
+	want.Set("sn", "Example")
+	want.Set("uidNumber", "1200")
+	want.Set("gidNumber", "1200")
+	want.Set("homeDirectory", "/home/alice")
+	want.Set("mail", "alice@example.test", "other@example.test")
+	assert.Equal(t, dn, request.Entry)
+	assert.Equal(t, slices.Collect(want.Attributes.All()), slices.Collect(request.Attributes.All()))
+	_, err = posixaccount.DecodeUser(arden.Entry{DN: request.Entry, Attributes: request.Attributes})
+	require.NoError(t, err)
+
+	executor.responses = []arden.Response{searchDoneResponse(t)}
+	_, err = dao.Where(posixaccount.AccountNameIs("alice")).First()
+	require.ErrorIs(t, err, arden.ErrNotFound)
+	require.Len(t, operations, 2)
+	require.IsType(t, &rfc4511.SearchRequest{}, operations[1].Untyped().Protocol)
+	search := operations[1].Untyped().Protocol.(*rfc4511.SearchRequest)
+	filters := make([]arden.Filter, len(classes))
+	for i, class := range classes {
+		filters[i] = arden.Equal("objectClass", class)
 	}
+	wantFilter := arden.All(arden.All(filters...), arden.Equal("uid", "alice"))
+	assert.Equal(t, wantFilter, search.Filter, "search must require every creation class and caller criterion")
+	selection := slices.Collect(search.Attributes.All())
+	assert.NotContains(t, selection, rfc4511.AttributeSelector("sn"))
+	assert.NotContains(t, selection, rfc4511.AttributeSelector("objectClass"))
 }
 
 func testDAO(t *testing.T, responses ...arden.Response) ldapmodel.DAO[posixaccount.User] {

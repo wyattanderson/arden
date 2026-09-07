@@ -118,8 +118,34 @@ The write path is:
 Keep an entry and its shared values unchanged until `Client.Add` returns. Decode
 still owns retained bytes independently of the source BER input buffer.
 
+The model-level `ldapmodel.Set(attribute, values...)` returns an opaque
+`Assignment[M]` using the same encoder as `Attribute.Set`.
+`DAO[M].Add(name, assignments...)` automatically supplies the model's naming
+attribute and base object classes, checks every assignment, and inserts their encoded attributes directly
+into the entry collection. This retains the final wire-value slices and codec
+bytes without additional copies. Repeated assignments replace earlier values;
+empty value lists, encoding errors, and class or naming overrides send no request.
+Keep shared bytes unchanged until `DAO.Add` returns.
+
+The naming codec encodes the raw string name once. Its UTF-8 output becomes both
+the stored naming value and the escaped RDN value, following
+[RFC 4514 section 2.4](https://www.rfc-editor.org/rfc/rfc4514.html#section-2.4).
+Add creates an immediate child of the model's base DN; an empty base creates a
+single-RDN DN. The naming descriptor must use a short LDAP attribute name without
+options. Case and option variants of that name cannot be assigned during Add.
+General schema alias/OID equivalence remains unresolved, as with attribute keys.
+
 ## Migration
 
+- `ldapmodel.NewModel` now takes a base-class `[]string` in place of its filter
+  argument. It copies the classes, requires all of them in search filters, and
+  supplies them during Add. Declare a nonempty list. Model attributes used for
+  creation do not have to appear in its read projection.
+- Pass a naming `Attribute[M, string]` after the base classes in `NewModel`.
+  Replace `dao.Add(fullDN, Set(naming, name), ...)` with `dao.Add(name, ...)`;
+  the model constructs the DN and supplies the naming attribute. Names must not
+  be pre-escaped. `Client.Add` still accepts entries with explicit DNs, and
+  `DAO.Modify` still takes an existing entry's DN.
 - `Attributes: []Attribute{...}` becomes `Attributes: NewAttributes(...)`.
 - `len(entry.Attributes)` becomes `entry.Attributes.Len()`.
 - `range entry.Attributes` becomes `range entry.Attributes.All()`.

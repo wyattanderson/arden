@@ -10,11 +10,15 @@ import (
 	"github.com/wyattanderson/arden/rfc4511"
 )
 
-func TestNewModelRetainsAttributeSelection(t *testing.T) {
+func TestNewModelRetainsClassesAndAttributeSelection(t *testing.T) {
 	attributes := []string{"uid", "cn"}
-	model := NewModel("dc=example", arden.ScopeSubtree, arden.Has("uid"), arden.NewAttributeSelectors(attributes...),
+	classes := []string{"person", "posixAccount"}
+	model := NewModel("dc=example", arden.ScopeSubtree, classes, NewAttribute[arden.Entry]("uid", StringCodec), arden.NewAttributeSelectors(attributes...),
 		func(entry arden.Entry) (arden.Entry, error) { return entry, nil })
 	attributes[0] = "changed"
+	classes[0] = "changed"
+	assert.Equal(t, []string{"person", "posixAccount"}, model.classes)
+	assert.Equal(t, arden.All(arden.Equal("objectClass", "person"), arden.Equal("objectClass", "posixAccount")), model.filter)
 	assert.Equal(t, []rfc4511.AttributeSelector{"uid", "cn"}, slices.Collect(model.attributes.All()))
 
 	selection := model.attributes

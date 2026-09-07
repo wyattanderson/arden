@@ -86,6 +86,7 @@ go test -tags=gssapi ./...
 single-file prototype of eventual generated model output. The
 [design notes](posixaccount/DESIGN.md) explain its boundary with the reusable
 `ldapmodel` library. It covers fluent indexed queries, materialized and streaming
-result paths, fixed entry projection, schema cardinality validation, and updates
-using ordered, typed changes. It intentionally does not add a generator or
+result paths, fixed entry projection, schema cardinality validation, creation
+using typed assignments and shared base classes, and updates using ordered,
+typed changes. It intentionally does not add a generator or
 generator input format yet.

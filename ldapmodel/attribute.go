@@ -121,19 +121,27 @@ func (a Attribute[M, T]) Set(entry *arden.Entry, values ...T) error {
 	if entry == nil {
 		return errors.New("ldapmodel: nil entry")
 	}
+	attribute, err := a.encode(values)
+	if err != nil {
+		return err
+	}
+	entry.Attributes.Set(attribute)
+	return nil
+}
+
+func (a Attribute[M, T]) encode(values []T) (arden.Attribute, error) {
 	if a.Codec == nil {
-		return fmt.Errorf("ldapmodel: attribute %q has no codec", a.name)
+		return arden.Attribute{}, fmt.Errorf("ldapmodel: attribute %q has no codec", a.name)
 	}
 	raw := make([]rfc4511.AttributeValue, len(values))
 	for i, value := range values {
 		encoded, err := a.Codec.Encode(value)
 		if err != nil {
-			return fmt.Errorf("ldapmodel: encode %s value %d: %w", a.name, i, err)
+			return arden.Attribute{}, fmt.Errorf("ldapmodel: encode %s value %d: %w", a.name, i, err)
 		}
 		raw[i] = encoded
 	}
-	entry.Attributes.Set(arden.Attribute{Type: rfc4511.AttributeDescription(a.name), Values: raw})
-	return nil
+	return arden.Attribute{Type: rfc4511.AttributeDescription(a.name), Values: raw}, nil
 }
 
 // StringCodec preserves a Go string's bytes.
