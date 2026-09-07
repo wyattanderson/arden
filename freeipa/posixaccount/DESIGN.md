@@ -4,6 +4,26 @@
 generator. It is not a generator input format and no file claims to be
 generated yet.
 
+## Generated code and library boundary
+
+[`user.go`](user.go) is the complete, single-file prototype of generated output.
+It contains only model declarations and wiring: `User`, attribute-to-codec
+mappings, the projection and object-class constraint, decoding cardinalities,
+indexed predicates, and the allowed `UserPatch` methods in schema field order.
+Tests and usage examples remain in separate `_test.go` files.
+
+Reusable implementation belongs to Arden:
+
+- `schema` owns value codecs (including `Uint32Codec`), attribute descriptors,
+  and equality encoding. `Attribute.MustEqual` supports predicates whose
+  codecs cannot fail to encode; fallible codecs use `Attribute.Equal`.
+- `ldapmodel` owns cardinality helpers, `Replacement[T]` state, value-slice
+  copying, clearing and replacement encoding, and the generic DAO, mutation,
+  and result-set lifecycle.
+
+For another model, a generator emits different mappings and field methods in
+the same shape as `user.go`; it does not emit codecs or replacement machinery.
+
 The intended caller-level shape is:
 
 ```go
@@ -76,9 +96,6 @@ err = users.Update(alice.DN, patch)
   caller needs them.
 - POSIX numeric identifiers use `uint32`. This is an application mapping, not a
   general representation of LDAP's unbounded Integer syntax.
-- The small generated decode and patch helpers may eventually move into
-  `schema` if a second model proves that doing so removes meaningful repeated
-  code.
 - Optimistic concurrency is not present. A future version assertion or other
   assertion control should be explicit on `Update`, rather than hidden inside
   the DAO.

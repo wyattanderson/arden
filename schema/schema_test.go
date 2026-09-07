@@ -69,3 +69,18 @@ func TestBytesAttributeSharesStorage(t *testing.T) {
 	assert.Equal(t, value, entry.RawValue("jpegPhoto"))
 	assert.Equal(t, rfc4511.AssertionValue(value), filter.(rfc4511.EqualityMatch).Assertion.Value)
 }
+
+func TestMustEqualUsesAttributeCodec(t *testing.T) {
+	uidNumber := NewAttribute("uidNumber", Uint32Codec)
+	assert.Equal(t, arden.Equal("uidNumber", "4294967295"), uidNumber.MustEqual(1<<32-1))
+	uid := NewAttribute("uid", StringCodec)
+	assert.Equal(t, arden.Equal("uid", "alice*()\\"), uid.MustEqual("alice*()\\"))
+
+	encodeError := errors.New("cannot encode")
+	attribute := NewAttribute("custom", Codec[string]{EncodeFunc: func(string) ([]byte, error) {
+		return nil, encodeError
+	}})
+	_, err := attribute.Equal("value")
+	require.ErrorIs(t, err, encodeError)
+	assert.PanicsWithError(t, err.Error(), func() { attribute.MustEqual("value") })
+}

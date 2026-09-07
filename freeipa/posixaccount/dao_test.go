@@ -1,6 +1,7 @@
 package posixaccount_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -123,14 +124,64 @@ func TestResultSetStream(t *testing.T) {
 }
 
 func TestGenericDAOUpdate(t *testing.T) {
-	dao := testDAO(t, modifyDoneResponse(t))
+	var operations []arden.AnyOperation
+	executor := &scriptedExecutor{
+		responses: []arden.Response{modifyDoneResponse(t)},
+		onOperation: func(operation arden.AnyOperation) {
+			operations = append(operations, operation)
+		},
+	}
+	dao := ldapmodel.NewDAO(arden.NewClient(executor), posixaccount.Users(usersBaseDN))
 
 	var patch posixaccount.UserPatch
-	patch.ClearGECOS()
+	patch.ReplaceEmailAddresses("old@example.test")
+	emails := []string{"alice@example.test", "other@example.test"}
+	patch.ReplaceEmailAddresses(emails...)
+	emails[0] = "changed"
+	patch.SetLoginShell("/bin/bash")
+	patch.ClearLoginShell()
 	patch.SetLoginShell("/bin/zsh")
-	patch.ReplaceEmailAddresses("alice@example.test")
+	patch.SetGECOS("Alice")
+	patch.ClearGECOS()
+	patch.SetHomeDirectory("/home/alice")
+	patch.SetGIDNumber(1200)
+	patch.SetUIDNumber(1201)
+	patch.SetCommonName("Alice Example")
 	if err := dao.Update("uid=alice,"+usersBaseDN, patch); err != nil {
 		t.Fatalf("Update: %v", err)
+	}
+	if len(operations) != 1 {
+		t.Fatalf("got %d operations, want one Modify", len(operations))
+	}
+	reader, err := ber.NewReader(operations[0].Untyped().Protocol.BERPacket().Encode(), ber.DefaultLimits())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var request rfc4511.ModifyRequest
+	if err := request.UnmarshalBER(reader); err != nil {
+		t.Fatal(err)
+	}
+	want := []arden.Change{
+		arden.Replace("cn", "Alice Example"),
+		arden.Replace("uidNumber", "1201"),
+		arden.Replace("gidNumber", "1200"),
+		arden.Replace("homeDirectory", "/home/alice"),
+		arden.Replace("gecos"),
+		arden.Replace("loginShell", "/bin/zsh"),
+		arden.Replace("mail", "alice@example.test", "other@example.test"),
+	}
+	// Compare wire encodings so nil and empty value slices are equivalent.
+	if !bytes.Equal(request.BERPacket().Encode(), (&rfc4511.ModifyRequest{
+		Object: "uid=alice," + usersBaseDN, Changes: want,
+	}).BERPacket().Encode()) {
+		t.Fatalf("unexpected Modify request: %#v", request)
+	}
+
+	if err := dao.Update("uid=alice,"+usersBaseDN, posixaccount.UserPatch{}); !errors.Is(err, ldapmodel.ErrEmptyPatch) {
+		t.Fatalf("empty patch: got %v, want ErrEmptyPatch", err)
+	}
+	if len(operations) != 1 {
+		t.Fatal("empty patch issued an operation")
 	}
 }
 
@@ -153,10 +204,14 @@ func testUserEntry(accountName string, uidNumber, gidNumber uint32) arden.Entry 
 }
 
 type scriptedExecutor struct {
-	responses []arden.Response
+	responses   []arden.Response
+	onOperation func(arden.AnyOperation)
 }
 
-func (e *scriptedExecutor) Do(context.Context, arden.AnyOperation) (arden.ResponseStream, error) {
+func (e *scriptedExecutor) Do(_ context.Context, operation arden.AnyOperation) (arden.ResponseStream, error) {
+	if e.onOperation != nil {
+		e.onOperation(operation)
+	}
 	return &scriptedStream{responses: e.responses}, nil
 }
 

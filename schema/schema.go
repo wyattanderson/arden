@@ -104,6 +104,17 @@ func (a Attribute[T]) Equal(value T) (arden.Filter, error) {
 	return arden.EqualBytes(a.name, encoded), nil
 }
 
+// MustEqual constructs a typed equality filter and panics if encoding fails.
+// Model predicates may use it when their codec encodes every value of T, such
+// as StringCodec or Uint32Codec. Use Equal for codecs that can reject input.
+func (a Attribute[T]) MustEqual(value T) arden.Filter {
+	filter, err := a.Equal(value)
+	if err != nil {
+		panic(err)
+	}
+	return filter
+}
+
 // Set encodes values directly into the entry's final wire-value slice. Bytes
 // returned by the codec are retained without copying. A failed encoding leaves
 // the entry unchanged.
