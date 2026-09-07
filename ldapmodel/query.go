@@ -11,8 +11,8 @@ var (
 	// ErrNotUnique reports that One observed more than one matching entry.
 	ErrNotUnique = errors.New("ldapmodel: result is not unique")
 
-	// ErrEmptyPatch reports an Update with no generated LDAP changes.
-	ErrEmptyPatch = errors.New("ldapmodel: patch contains no changes")
+	// ErrEmptyChanges reports a Modify with no LDAP changes.
+	ErrEmptyChanges = errors.New("ldapmodel: no changes to modify")
 )
 
 // DAO is the generic entry point for one model. It borrows the Arden client

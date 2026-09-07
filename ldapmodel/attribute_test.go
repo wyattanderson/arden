@@ -1,4 +1,4 @@
-package schema
+package ldapmodel
 
 import (
 	"errors"
@@ -11,10 +11,12 @@ import (
 	"github.com/wyattanderson/arden/rfc4511"
 )
 
+type attributeTestModel struct{}
+
 func TestAttributePreparedKeyAndAtomicSet(t *testing.T) {
 	encoded := []byte("new")
 	encodeError := errors.New("cannot encode")
-	attribute := NewAttribute("CN;LANG-EN;lang-de", Codec[string]{
+	attribute := NewAttribute[attributeTestModel]("CN;LANG-EN;lang-de", Codec[string]{
 		EncodeFunc: func(value string) ([]byte, error) {
 			if value == "bad" {
 				return nil, encodeError
@@ -41,7 +43,7 @@ func TestAttributePreparedKeyAndAtomicSet(t *testing.T) {
 }
 
 func TestTypedAttributeRoundTripAndFilter(t *testing.T) {
-	uid := NewAttribute("uid", StringCodec)
+	uid := NewAttribute[attributeTestModel]("uid", StringCodec)
 	entry := arden.NewEntry("uid=alice,dc=example")
 	require.NoError(t, uid.Set(entry, "alice"))
 
@@ -55,7 +57,7 @@ func TestTypedAttributeRoundTripAndFilter(t *testing.T) {
 }
 
 func TestBytesAttributeSharesStorage(t *testing.T) {
-	photo := NewAttribute("jpegPhoto", BytesCodec)
+	photo := NewAttribute[attributeTestModel]("jpegPhoto", BytesCodec)
 	value := []byte{0, 0xff}
 	entry := arden.NewEntry("cn=Alice")
 	require.NoError(t, photo.Set(entry, value))
@@ -71,13 +73,13 @@ func TestBytesAttributeSharesStorage(t *testing.T) {
 }
 
 func TestMustEqualUsesAttributeCodec(t *testing.T) {
-	uidNumber := NewAttribute("uidNumber", Uint32Codec)
+	uidNumber := NewAttribute[attributeTestModel]("uidNumber", Uint32Codec)
 	assert.Equal(t, arden.Equal("uidNumber", "4294967295"), uidNumber.MustEqual(1<<32-1))
-	uid := NewAttribute("uid", StringCodec)
+	uid := NewAttribute[attributeTestModel]("uid", StringCodec)
 	assert.Equal(t, arden.Equal("uid", "alice*()\\"), uid.MustEqual("alice*()\\"))
 
 	encodeError := errors.New("cannot encode")
-	attribute := NewAttribute("custom", Codec[string]{EncodeFunc: func(string) ([]byte, error) {
+	attribute := NewAttribute[attributeTestModel]("custom", Codec[string]{EncodeFunc: func(string) ([]byte, error) {
 		return nil, encodeError
 	}})
 	_, err := attribute.Equal("value")

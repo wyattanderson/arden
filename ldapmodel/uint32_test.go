@@ -1,7 +1,6 @@
-package schema
+package ldapmodel
 
 import (
-	"errors"
 	"strconv"
 	"testing"
 
@@ -22,6 +21,6 @@ func TestUint32Codec(t *testing.T) {
 		_, err := Uint32Codec.Decode([]byte(raw))
 		require.ErrorContains(t, err, "decode unsigned 32-bit integer")
 		var numberError *strconv.NumError
-		assert.True(t, errors.As(err, &numberError))
+		assert.ErrorAs(t, err, &numberError)
 	}
 }

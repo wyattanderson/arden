@@ -9,13 +9,12 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/wyattanderson/arden"
-	"github.com/wyattanderson/arden/schema"
 )
 
 func TestSingleValueDecodeChecksCardinalityBeforeCallingCodec(t *testing.T) {
 	calls := 0
 	codecError := errors.New("bad integer")
-	attribute := schema.NewAttribute("uidNumber", schema.Codec[int]{DecodeFunc: func(raw []byte) (int, error) {
+	attribute := NewAttribute[attributeTestModel]("uidNumber", Codec[int]{DecodeFunc: func(raw []byte) (int, error) {
 		calls++
 		value, err := strconv.Atoi(string(raw))
 		if err != nil {

@@ -1,6 +1,4 @@
-// Package schema provides small, reflection-free contracts for generated LDAP
-// models. It does not perform network operations or maintain object state.
-package schema
+package ldapmodel
 
 import (
 	"errors"
@@ -26,7 +24,7 @@ type Codec[T any] struct {
 // result shares storage with value.
 func (c Codec[T]) Encode(value T) ([]byte, error) {
 	if c.EncodeFunc == nil {
-		return nil, errors.New("schema: codec has no encoder")
+		return nil, errors.New("ldapmodel: codec has no encoder")
 	}
 	return c.EncodeFunc(value)
 }
@@ -35,49 +33,50 @@ func (c Codec[T]) Encode(value T) ([]byte, error) {
 func (c Codec[T]) Decode(value []byte) (T, error) {
 	if c.DecodeFunc == nil {
 		var zero T
-		return zero, errors.New("schema: codec has no decoder")
+		return zero, errors.New("ldapmodel: codec has no decoder")
 	}
 	return c.DecodeFunc(value)
 }
 
-// Attribute is a generated or handwritten typed attribute descriptor. Its name
-// and normalized key are prepared together by NewAttribute and cannot diverge.
-type Attribute[T any] struct {
+// Attribute describes one value type T belonging to model M. Its name and
+// normalized key are prepared together by NewAttribute and cannot diverge.
+type Attribute[M, T any] struct {
 	name  string
 	key   rfc4511.AttributeKey
 	Codec ValueCodec[T]
 }
 
-// NewAttribute constructs a typed attribute descriptor.
-func NewAttribute[T any](name string, codec ValueCodec[T]) Attribute[T] {
-	return Attribute[T]{name: name, key: rfc4511.AttributeDescription(name).Key(), Codec: codec}
+// NewAttribute constructs a model-specific typed attribute descriptor. Model
+// declarations supply M explicitly; T is inferred from the codec.
+func NewAttribute[M, T any](name string, codec ValueCodec[T]) Attribute[M, T] {
+	return Attribute[M, T]{name: name, key: rfc4511.AttributeDescription(name).Key(), Codec: codec}
 }
 
 // Name returns the original, immutable attribute description.
-func (a Attribute[T]) Name() string { return a.name }
+func (a Attribute[M, T]) Name() string { return a.name }
 
 // Key returns the prepared lookup key, shared by every use of this descriptor.
-func (a Attribute[T]) Key() rfc4511.AttributeKey { return a.key }
+func (a Attribute[M, T]) Key() rfc4511.AttributeKey { return a.key }
 
 // Decode decodes one raw value without constructing a temporary value slice.
-func (a Attribute[T]) Decode(raw []byte) (T, error) { return a.decodeAt(raw, 0) }
+func (a Attribute[M, T]) Decode(raw []byte) (T, error) { return a.decodeAt(raw, 0) }
 
-func (a Attribute[T]) decodeAt(raw []byte, index int) (T, error) {
+func (a Attribute[M, T]) decodeAt(raw []byte, index int) (T, error) {
 	var zero T
 	if a.Codec == nil {
-		return zero, fmt.Errorf("schema: attribute %q has no codec", a.name)
+		return zero, fmt.Errorf("ldapmodel: attribute %q has no codec", a.name)
 	}
 	value, err := a.Codec.Decode(raw)
 	if err != nil {
-		return zero, fmt.Errorf("schema: decode %s value %d: %w", a.name, index, err)
+		return zero, fmt.Errorf("ldapmodel: decode %s value %d: %w", a.name, index, err)
 	}
 	return value, nil
 }
 
 // Values decodes every value present on entry.
-func (a Attribute[T]) Values(entry arden.Entry) ([]T, error) {
+func (a Attribute[M, T]) Values(entry arden.Entry) ([]T, error) {
 	if a.Codec == nil {
-		return nil, fmt.Errorf("schema: attribute %q has no codec", a.name)
+		return nil, fmt.Errorf("ldapmodel: attribute %q has no codec", a.name)
 	}
 	attribute, _ := entry.Attributes.LookupKey(a.key)
 	raw := attribute.Values
@@ -93,13 +92,13 @@ func (a Attribute[T]) Values(entry arden.Entry) ([]T, error) {
 }
 
 // Equal constructs a typed equality filter.
-func (a Attribute[T]) Equal(value T) (arden.Filter, error) {
+func (a Attribute[M, T]) Equal(value T) (arden.Filter, error) {
 	if a.Codec == nil {
-		return nil, fmt.Errorf("schema: attribute %q has no codec", a.name)
+		return nil, fmt.Errorf("ldapmodel: attribute %q has no codec", a.name)
 	}
 	encoded, err := a.Codec.Encode(value)
 	if err != nil {
-		return nil, fmt.Errorf("schema: encode %s assertion: %w", a.name, err)
+		return nil, fmt.Errorf("ldapmodel: encode %s assertion: %w", a.name, err)
 	}
 	return arden.EqualBytes(a.name, encoded), nil
 }
@@ -107,7 +106,7 @@ func (a Attribute[T]) Equal(value T) (arden.Filter, error) {
 // MustEqual constructs a typed equality filter and panics if encoding fails.
 // Model predicates may use it when their codec encodes every value of T, such
 // as StringCodec or Uint32Codec. Use Equal for codecs that can reject input.
-func (a Attribute[T]) MustEqual(value T) arden.Filter {
+func (a Attribute[M, T]) MustEqual(value T) arden.Filter {
 	filter, err := a.Equal(value)
 	if err != nil {
 		panic(err)
@@ -118,18 +117,18 @@ func (a Attribute[T]) MustEqual(value T) arden.Filter {
 // Set encodes values directly into the entry's final wire-value slice. Bytes
 // returned by the codec are retained without copying. A failed encoding leaves
 // the entry unchanged.
-func (a Attribute[T]) Set(entry *arden.Entry, values ...T) error {
+func (a Attribute[M, T]) Set(entry *arden.Entry, values ...T) error {
 	if entry == nil {
-		return errors.New("schema: nil entry")
+		return errors.New("ldapmodel: nil entry")
 	}
 	if a.Codec == nil {
-		return fmt.Errorf("schema: attribute %q has no codec", a.name)
+		return fmt.Errorf("ldapmodel: attribute %q has no codec", a.name)
 	}
 	raw := make([]rfc4511.AttributeValue, len(values))
 	for i, value := range values {
 		encoded, err := a.Codec.Encode(value)
 		if err != nil {
-			return fmt.Errorf("schema: encode %s value %d: %w", a.name, i, err)
+			return fmt.Errorf("ldapmodel: encode %s value %d: %w", a.name, i, err)
 		}
 		raw[i] = encoded
 	}

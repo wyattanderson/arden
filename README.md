@@ -173,21 +173,34 @@ if err := rows.Err(); err != nil {
 }
 ```
 
-`schema.Attribute[T]` is the reflection-free seam for generated models. A
+`ldapmodel.Attribute[M, T]` is the reflection-free seam for generated models. A
 generator can publish typed descriptors and ordinary model methods while using
 the same entries, filters, and client underneath:
 
 ```go
-var UID = schema.NewAttribute("uid", schema.StringCodec)
+var UID = ldapmodel.NewAttribute[User]("uid", ldapmodel.StringCodec)
 
 filter, err := UID.Equal("alice")
 values, err := UID.Values(entry)
 ```
 
 `ldapmodel` builds on those descriptors with a reusable generic `DAO[T]`,
-typed criteria and patches, materialized `All`/`One`/`First` result paths, and
-an explicitly closed streaming path. Schema-specific packages provide the
+typed criteria and ordered changes, materialized `All`/`One`/`First` result
+paths, and an explicitly closed streaming path. Schema-specific packages provide the
 model projection and decoder without generating a DAO type for every model.
+
+Changes use the model's attributes to check both the model and value types:
+
+```go
+err = users.Modify(user.DN,
+    ldapmodel.Replace(posixaccount.UserAttributes.HomeDirectory, "/dev/null"),
+    ldapmodel.Delete(posixaccount.UserAttributes.EmailAddresses, "old@example.test"),
+    ldapmodel.Add(posixaccount.UserAttributes.EmailAddresses, "new@example.test"),
+)
+```
+
+The DAO sends one Modify with changes in caller order. Encoding errors prevent
+the request; attribute cardinality and allowed operations are left to the server.
 
 Custom protocol work stays equally direct. The `rfc4532` package is a reference
 extension implemented only against the public `arden.Executor` contract:

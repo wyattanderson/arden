@@ -27,7 +27,7 @@ not the current API surface.
 | `rfc4511.EqualBytes` | 1 | Retain the assertion bytes, matching direct construction of `EqualityMatch`. A caller retaining a filter must copy a scratch buffer before reusing it. |
 | Entry `cloneAttributeValues` (now `attributeValues`) | 1 | `SetBytes` shares the supplied bytes, consistent with the exported `Attributes`. Text `Set` already allocates bytes during string conversion. |
 | `Entry.RawValues` | 1 | Return shared value bytes in a new outer slice. `RawValue` now looks up only the first value instead of copying every value. Text access still converts to independent strings. |
-| `schema.BytesCodec.EncodeFunc`, `DecodeFunc` | 2 | Byte-to-byte conversion has no transformation or private state to protect. Both directions pass through the input, including through typed attribute setters, getters, and filters. |
+| `ldapmodel.BytesCodec.EncodeFunc`, `DecodeFunc` | 2 | Byte-to-byte conversion has no transformation or private state to protect. Both directions pass through the input, including through typed attribute setters, getters, and filters. |
 | `pagedResultsCookie` | 1 | The cookie views an already decoded control. `Entries.Next` encodes the next page synchronously before exposing that page's controls; no buffer reuse or mutation intervenes. |
 | GSSAPI configuration construction and `Begin` | 2 | Authorization ID originates as a string. Store and share that immutable string, copying its contents only into the outgoing security-layer selection. Closing a conversation drops its string reference. |
 | GSSAPI `exchangeBind` | 1 | Callers retain the token throughout the synchronous exchange and clear it afterward on both success and failure. Copying and clearing a second token adds no lifetime protection. |

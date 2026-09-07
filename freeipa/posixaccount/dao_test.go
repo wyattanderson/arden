@@ -123,7 +123,7 @@ func TestResultSetStream(t *testing.T) {
 	}
 }
 
-func TestGenericDAOUpdate(t *testing.T) {
+func TestGenericDAOModify(t *testing.T) {
 	var operations []arden.AnyOperation
 	executor := &scriptedExecutor{
 		responses: []arden.Response{modifyDoneResponse(t)},
@@ -133,22 +133,24 @@ func TestGenericDAOUpdate(t *testing.T) {
 	}
 	dao := ldapmodel.NewDAO(arden.NewClient(executor), posixaccount.Users(usersBaseDN))
 
-	var patch posixaccount.UserPatch
-	patch.ReplaceEmailAddresses("old@example.test")
+	attributes := posixaccount.UserAttributes
 	emails := []string{"alice@example.test", "other@example.test"}
-	patch.ReplaceEmailAddresses(emails...)
+	mailChange := ldapmodel.Replace(attributes.EmailAddresses, emails...)
 	emails[0] = "changed"
-	patch.SetLoginShell("/bin/bash")
-	patch.ClearLoginShell()
-	patch.SetLoginShell("/bin/zsh")
-	patch.SetGECOS("Alice")
-	patch.ClearGECOS()
-	patch.SetHomeDirectory("/home/alice")
-	patch.SetGIDNumber(1200)
-	patch.SetUIDNumber(1201)
-	patch.SetCommonName("Alice Example")
-	if err := dao.Update("uid=alice,"+usersBaseDN, patch); err != nil {
-		t.Fatalf("Update: %v", err)
+	if err := dao.Modify("uid=alice,"+usersBaseDN,
+		ldapmodel.Add(attributes.EmailAddresses, "old@example.test"),
+		ldapmodel.Delete(attributes.EmailAddresses, "old@example.test", "another@example.test"),
+		mailChange,
+		ldapmodel.Replace(attributes.LoginShell, "/bin/bash"),
+		ldapmodel.Delete(attributes.LoginShell),
+		ldapmodel.Replace(attributes.LoginShell, "/bin/zsh"),
+		ldapmodel.Replace(attributes.GECOS),
+		ldapmodel.Replace(attributes.HomeDirectory, "/home/alice"),
+		ldapmodel.Replace(attributes.GIDNumber, 1200),
+		ldapmodel.Replace(attributes.UIDNumber, 1201),
+		ldapmodel.Replace(attributes.CommonName, "Alice Example"),
+	); err != nil {
+		t.Fatalf("Modify: %v", err)
 	}
 	if len(operations) != 1 {
 		t.Fatalf("got %d operations, want one Modify", len(operations))
@@ -162,13 +164,17 @@ func TestGenericDAOUpdate(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []arden.Change{
-		arden.Replace("cn", "Alice Example"),
-		arden.Replace("uidNumber", "1201"),
-		arden.Replace("gidNumber", "1200"),
-		arden.Replace("homeDirectory", "/home/alice"),
-		arden.Replace("gecos"),
-		arden.Replace("loginShell", "/bin/zsh"),
+		arden.AddValues("mail", "old@example.test"),
+		arden.DeleteValues("mail", "old@example.test", "another@example.test"),
 		arden.Replace("mail", "alice@example.test", "other@example.test"),
+		arden.Replace("loginShell", "/bin/bash"),
+		arden.DeleteValues("loginShell"),
+		arden.Replace("loginShell", "/bin/zsh"),
+		arden.Replace("gecos"),
+		arden.Replace("homeDirectory", "/home/alice"),
+		arden.Replace("gidNumber", "1200"),
+		arden.Replace("uidNumber", "1201"),
+		arden.Replace("cn", "Alice Example"),
 	}
 	// Compare wire encodings so nil and empty value slices are equivalent.
 	if !bytes.Equal(request.BERPacket().Encode(), (&rfc4511.ModifyRequest{
@@ -177,11 +183,11 @@ func TestGenericDAOUpdate(t *testing.T) {
 		t.Fatalf("unexpected Modify request: %#v", request)
 	}
 
-	if err := dao.Update("uid=alice,"+usersBaseDN, posixaccount.UserPatch{}); !errors.Is(err, ldapmodel.ErrEmptyPatch) {
-		t.Fatalf("empty patch: got %v, want ErrEmptyPatch", err)
+	if err := dao.Modify("uid=alice," + usersBaseDN); !errors.Is(err, ldapmodel.ErrEmptyChanges) {
+		t.Fatalf("empty changes: got %v, want ErrEmptyChanges", err)
 	}
 	if len(operations) != 1 {
-		t.Fatal("empty patch issued an operation")
+		t.Fatal("empty changes issued an operation")
 	}
 }
 

@@ -85,8 +85,7 @@ go test -tags=gssapi ./...
 [`posixaccount/user.go`](posixaccount/user.go) is a hand-written, tested,
 single-file prototype of eventual generated model output. The
 [design notes](posixaccount/DESIGN.md) explain its boundary with the reusable
-`schema` and `ldapmodel` libraries. It
-covers fluent indexed queries, materialized and streaming result paths, fixed
-entry projection, schema cardinality validation, and explicit patch-based
-updates. It intentionally does not add a generator or generator input format
-yet.
+`ldapmodel` library. It covers fluent indexed queries, materialized and streaming
+result paths, fixed entry projection, schema cardinality validation, and updates
+using ordered, typed changes. It intentionally does not add a generator or
+generator input format yet.

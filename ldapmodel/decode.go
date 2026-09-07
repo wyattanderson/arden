@@ -4,12 +4,11 @@ import (
 	"fmt"
 
 	"github.com/wyattanderson/arden"
-	"github.com/wyattanderson/arden/schema"
 )
 
 // RequiredOne decodes an attribute that must have exactly one value. It checks
 // cardinality before invoking the codec and allocates no temporary value slice.
-func RequiredOne[T any](attribute schema.Attribute[T], entry arden.Entry) (T, error) {
+func RequiredOne[M, T any](attribute Attribute[M, T], entry arden.Entry) (T, error) {
 	raw, _ := entry.Attributes.LookupKey(attribute.Key())
 	values := raw.Values
 	if len(values) != 1 {
@@ -26,7 +25,7 @@ func RequiredOne[T any](attribute schema.Attribute[T], entry arden.Entry) (T, er
 // OptionalOne decodes an attribute that may have zero or one value. Absence is
 // represented by nil. Cardinality is checked before decoding, without a
 // temporary value slice.
-func OptionalOne[T any](attribute schema.Attribute[T], entry arden.Entry) (*T, error) {
+func OptionalOne[M, T any](attribute Attribute[M, T], entry arden.Entry) (*T, error) {
 	raw, _ := entry.Attributes.LookupKey(attribute.Key())
 	values := raw.Values
 	if len(values) > 1 {

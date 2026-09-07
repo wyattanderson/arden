@@ -6,8 +6,9 @@ import (
 	"fmt"
 
 	"github.com/wyattanderson/arden"
-	"github.com/wyattanderson/arden/freeipa/posixaccount"
 	"github.com/wyattanderson/arden/ldapmodel"
+
+	"github.com/wyattanderson/arden/freeipa/posixaccount"
 )
 
 func Example() {
@@ -36,12 +37,12 @@ func Example() {
 		fmt.Println(user.AccountName)
 	}
 
-	var patch posixaccount.UserPatch
-	patch.SetLoginShell("/bin/zsh")
-	patch.SetGECOS("Alice Example")
-	patch.ReplaceEmailAddresses("alice@example.test")
 	if user.DN != "" {
-		if err := dao.Update(user.DN, patch); err != nil {
+		if err := dao.Modify(user.DN,
+			ldapmodel.Replace(posixaccount.UserAttributes.LoginShell, "/bin/zsh"),
+			ldapmodel.Replace(posixaccount.UserAttributes.GECOS, "Alice Example"),
+			ldapmodel.Replace(posixaccount.UserAttributes.EmailAddresses, "alice@example.test"),
+		); err != nil {
 			panic(err)
 		}
 	}

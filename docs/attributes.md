@@ -67,10 +67,11 @@ reads are supported while the collection and its shared values remain unchanged.
 
 ## Typed reads
 
-`schema.NewAttribute` prepares an immutable name and key together:
+`ldapmodel.NewAttribute[User]` binds a value codec to the model type and prepares
+an immutable name and key together:
 
 ```go
-homeDirectory := schema.NewAttribute("homeDirectory", schema.StringCodec)
+homeDirectory := ldapmodel.NewAttribute[User]("homeDirectory", ldapmodel.StringCodec)
 name := homeDirectory.Name()
 key := homeDirectory.Key()
 
@@ -124,8 +125,13 @@ still owns retained bytes independently of the source BER input buffer.
 - `range entry.Attributes` becomes `range entry.Attributes.All()`.
 - `entry.RawValues(name)` is removed; use `entry.Attributes.Lookup(name)` and
   the returned attribute's `Values`. This shares the outer values slice too.
-- `schema.Attribute.Name` becomes `Name()`; construct descriptors with
-  `schema.NewAttribute` so the name and prepared key remain consistent.
+- Typed descriptors and codecs have moved from `schema` into `ldapmodel`.
+  `Attribute[T]` becomes `Attribute[Model, T]`; use
+  `ldapmodel.NewAttribute[Model](name, codec)` to bind the model type and prepare
+  the immutable name and key together. Access the name with `Name()`.
+- Replace `UserPatch` and `DAO.Update` with `DAO.Modify(dn, changes...)`, using
+  `ldapmodel.Add`, `Delete`, and `Replace` with typed attributes. Changes execute
+  in caller order; repeated operations on an attribute are retained.
 - Copy an entry's collection with `Clone` when independent mutation is needed.
 
 ## Verification

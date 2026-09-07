@@ -9,20 +9,19 @@ generated yet.
 [`user.go`](user.go) is the complete, single-file prototype of generated output.
 It contains only model declarations and wiring: `User`, attribute-to-codec
 mappings, the projection and object-class constraint, decoding cardinalities,
-indexed predicates, and the allowed `UserPatch` methods in schema field order.
+indexed predicates, and model-specific typed attribute descriptors.
 Tests and usage examples remain in separate `_test.go` files.
 
 Reusable implementation belongs to Arden:
 
-- `schema` owns value codecs (including `Uint32Codec`), attribute descriptors,
-  and equality encoding. `Attribute.MustEqual` supports predicates whose
+- `ldapmodel` owns `Attribute[M, T]`, value codecs (including `Uint32Codec`),
+  equality encoding, cardinality helpers, typed changes, and the generic DAO
+  and result-set lifecycle. `Attribute.MustEqual` supports predicates whose
   codecs cannot fail to encode; fallible codecs use `Attribute.Equal`.
-- `ldapmodel` owns cardinality helpers, `Replacement[T]` state, value-slice
-  copying, clearing and replacement encoding, and the generic DAO, mutation,
-  and result-set lifecycle.
 
-For another model, a generator emits different mappings and field methods in
-the same shape as `user.go`; it does not emit codecs or replacement machinery.
+For another model, a generator emits different attribute mappings, predicates,
+and a decoder in the same shape as `user.go`; it does not emit codecs, change
+encoding, patch types, or field-specific mutation methods.
 
 The intended caller-level shape is:
 
@@ -49,17 +48,19 @@ for stream.Next() {
 }
 err = stream.Err()
 
-var patch posixaccount.UserPatch
-patch.SetLoginShell("/bin/zsh")
-patch.ClearGECOS()
-patch.ReplaceEmailAddresses("alice@example.test")
-err = users.Update(alice.DN, patch)
+err = users.Modify(alice.DN,
+    ldapmodel.Replace(posixaccount.UserAttributes.LoginShell, "/bin/zsh"),
+    ldapmodel.Delete(posixaccount.UserAttributes.GECOS),
+    ldapmodel.Add(posixaccount.UserAttributes.EmailAddresses, "other@example.test"),
+    ldapmodel.Delete(posixaccount.UserAttributes.EmailAddresses, "old@example.test"),
+    ldapmodel.Replace(posixaccount.UserAttributes.UIDNumber, 1201),
+)
 ```
 
 ## Contracts being tested
 
 - `ldapmodel.DAO[T]` is generic infrastructure. Generated packages publish a
-  `Model[T]`, criteria, decoder, and patch rather than a type-specific DAO.
+  `Model[T]`, criteria, decoder, and attributes rather than a type-specific DAO.
 - A DAO borrows an `*arden.Client` and does not own or close its connection or
   pool. `WithContext` returns a request-scoped copy in the style of GORM.
 - A model is a fixed projection, not a live object. Required single-valued
@@ -75,14 +76,27 @@ err = users.Update(alice.DN, patch)
 - `All`, `One`, and `First` always close the underlying LDAP search before they
   return. `Stream` is the opt-in lifecycle path and returns its close function
   separately so ownership is visible at the call site.
-- Updates are explicit patches. A patch sends one Modify, never performs an
-  implicit read or retry, and rejects an empty change set.
-- `DAO[T].Update[P Patch[T]]` uses Go 1.27 generic methods, so a concrete patch
-  type is inferred while its model type must still match the DAO.
-- Required fields can be replaced but not cleared. Optional fields can be set
-  or cleared. Multi-valued fields are replaced as a set in this first sketch.
-- `uid` is absent from `UserPatch`: an account rename can affect the RDN and
-  needs a separate contract around ModifyDN.
+- `Attribute[M, T]` carries both model and value types. `Add`, `Delete`, and
+  `Replace` infer both from the descriptor and accept only values of T. They
+  return opaque `Change[M]` values, so `DAO[M].Modify` accepts mixed value types
+  while rejecting changes belonging to another model at compile time.
+- Changes encode immediately and retain any encoding error until `Modify`.
+  All changes are checked before sending one request. Empty change sets,
+  zero changes, missing attribute names, and encoding errors send no request.
+- Changes retain codec-produced bytes. String values are encoded into fresh
+  bytes; `BytesCodec` shares the supplied bytes, which callers must keep
+  unchanged until `Modify` returns. The caller's outer values slice is not
+  retained. There is no implicit read or retry.
+- Modify preserves every operation in caller order, including repeated
+  operations on the same attribute. It does not coalesce replacements or sort
+  changes into generated field order.
+- `Delete` with no values deletes the entire attribute; `Replace` with no
+  values also removes it. The mutation API leaves requiredness, cardinality,
+  and operation validity to the LDAP server. It does not restrict `AccountName`,
+  but changing an RDN still requires an explicit ModifyDN operation.
+- The variadic API uses generic functions and needs no separate patch or
+  changeset builder. Callers can accumulate a `[]ldapmodel.Change[User]` and
+  pass it to `Modify` with `changes...`.
 
 ## Provisional choices
 
@@ -97,7 +111,7 @@ err = users.Update(alice.DN, patch)
 - POSIX numeric identifiers use `uint32`. This is an application mapping, not a
   general representation of LDAP's unbounded Integer syntax.
 - Optimistic concurrency is not present. A future version assertion or other
-  assertion control should be explicit on `Update`, rather than hidden inside
+  assertion control should be explicit on `Modify`, rather than hidden inside
   the DAO.
 
 ## Questions to answer with the next model
@@ -107,7 +121,7 @@ err = users.Update(alice.DN, patch)
    them internal?
 2. Should search predicates support only conjunction, or is a generated
    expression type for controlled AND/OR grouping worth the extra API?
-3. Should update keep taking a DN, or should a small immutable `Ref[T]` carry
+3. Should Modify keep taking a DN, or should a small immutable `Ref[T]` carry
    identity and an optional concurrency token?
 4. Do callers need partial projections, and if so should the result type encode
    which fields were loaded rather than putting pointers on every field?
