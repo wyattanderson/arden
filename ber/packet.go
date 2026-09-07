@@ -1,5 +1,7 @@
 package ber
 
+import "slices"
+
 type integer interface {
 	~int | ~int8 | ~int16 | ~int32 | ~int64 |
 		~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64 | ~uintptr
@@ -157,6 +159,7 @@ func Set() *Envelope {
 
 // Add appends children to e in wire order.
 func (e *Envelope) Add[T Packeter](children ...T) *Envelope {
+	e.packet.children = slices.Grow(e.packet.children, len(children))
 	for _, child := range children {
 		e.packet.children = append(e.packet.children, child.BERPacket())
 	}

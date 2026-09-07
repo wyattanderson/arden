@@ -1,6 +1,7 @@
 package schema
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -9,6 +10,35 @@ import (
 	"github.com/wyattanderson/arden"
 	"github.com/wyattanderson/arden/rfc4511"
 )
+
+func TestAttributePreparedKeyAndAtomicSet(t *testing.T) {
+	encoded := []byte("new")
+	encodeError := errors.New("cannot encode")
+	attribute := NewAttribute("CN;LANG-EN;lang-de", Codec[string]{
+		EncodeFunc: func(value string) ([]byte, error) {
+			if value == "bad" {
+				return nil, encodeError
+			}
+			return encoded, nil
+		},
+		DecodeFunc: func(raw []byte) (string, error) { return string(raw), nil },
+	})
+	assert.Equal(t, "CN;LANG-EN;lang-de", attribute.Name())
+	assert.Equal(t, rfc4511.AttributeDescription("cn;lang-de;lang-en").Key(), attribute.Key())
+	entry := arden.NewEntry("cn=Alice")
+	entry.Set("cn;lang-de;lang-en", "old")
+	require.ErrorIs(t, attribute.Set(entry, "ok", "bad"), encodeError)
+	assert.Equal(t, "old", entry.Value("cn;lang-de;lang-en"))
+	require.NoError(t, attribute.Set(entry, "ok"))
+	raw, ok := entry.Attributes.LookupKey(attribute.Key())
+	require.True(t, ok)
+	assert.Equal(t, attribute.Name(), string(raw.Type))
+	assert.Same(t, &encoded[0], &raw.Values[0][0])
+	encoded[0] = 'N'
+	values, err := attribute.Values(*entry)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"New"}, values)
+}
 
 func TestTypedAttributeRoundTripAndFilter(t *testing.T) {
 	uid := NewAttribute("uid", StringCodec)

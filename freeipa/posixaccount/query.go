@@ -7,17 +7,17 @@ import (
 
 // AccountNameIs matches the POSIX uid index.
 func AccountNameIs(value string) ldapmodel.Criterion[User] {
-	return ldapmodel.NewCriterion[User](arden.Equal(UserAttributes.AccountName.Name, value))
+	return ldapmodel.NewCriterion[User](arden.Equal(UserAttributes.AccountName.Name(), value))
 }
 
 // UIDNumberIs matches the POSIX uidNumber index.
 func UIDNumberIs(value uint32) ldapmodel.Criterion[User] {
-	return ldapmodel.NewCriterion[User](equalUint32(UserAttributes.UIDNumber.Name, value))
+	return ldapmodel.NewCriterion[User](equalUint32(UserAttributes.UIDNumber.Name(), value))
 }
 
 // GIDNumberIs matches the POSIX gidNumber index.
 func GIDNumberIs(value uint32) ldapmodel.Criterion[User] {
-	return ldapmodel.NewCriterion[User](equalUint32(UserAttributes.GIDNumber.Name, value))
+	return ldapmodel.NewCriterion[User](equalUint32(UserAttributes.GIDNumber.Name(), value))
 }
 
 func equalUint32(attribute string, value uint32) arden.Filter {

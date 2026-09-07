@@ -12,6 +12,15 @@ type RelativeLDAPDN = rfc4511.RelativeLDAPDN
 // Attribute is a schema-neutral LDAP attribute.
 type Attribute = rfc4511.Attribute
 
+// Attributes is an ordered collection with normalized attribute lookup.
+// Its zero value is ready for use; initialized copies share storage.
+type Attributes = rfc4511.Attributes
+
+// NewAttributes constructs a collection, sharing attribute values and extensions.
+func NewAttributes(attributes ...Attribute) Attributes {
+	return rfc4511.NewAttributes(attributes...)
+}
+
 // AttributeSelectors is an immutable search attribute selection with a cached
 // BER encoding. Its zero value requests all user attributes.
 type AttributeSelectors = rfc4511.AttributeSelectors

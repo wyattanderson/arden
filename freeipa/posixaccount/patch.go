@@ -132,9 +132,9 @@ func appendReplacement[T any](
 	for i, value := range replacement.values {
 		wire, err := attribute.Codec.Encode(value)
 		if err != nil {
-			return nil, fmt.Errorf("encode replacement for %s value %d: %w", attribute.Name, i, err)
+			return nil, fmt.Errorf("encode replacement for %s value %d: %w", attribute.Name(), i, err)
 		}
 		encoded[i] = wire
 	}
-	return append(changes, arden.ReplaceBytes(attribute.Name, encoded...)), nil
+	return append(changes, arden.ReplaceBytes(attribute.Name(), encoded...)), nil
 }

@@ -6,10 +6,16 @@ The remaining seven production calls establish independent decoded storage,
 protect validated opaque data, or implement an explicitly requested copy.
 
 Mutable request and entry values share byte storage. Copying in convenience
-helpers did not make those objects immutable: callers already have direct
-access to their exported slices. Callers who reuse a scratch buffer while
+helpers did not make those objects immutable: callers have direct access to
+attribute value slices. Callers who reuse a scratch buffer while
 retaining a request, filter, or entry must explicitly copy that buffer. Inputs
 must not be mutated concurrently with encoding or other reads.
+
+The subsequent [attribute collection refactor](attributes.md) removes
+`Entry.RawValues` and the intermediate value containers in scalar model decoding
+and typed writes. `Attributes.Lookup` returns shared values directly; `Clone`
+explicitly detaches mutable storage. The table below records the earlier audit,
+not the current API surface.
 
 ## Removed copies
 

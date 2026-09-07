@@ -97,7 +97,9 @@ func (e *ResultError) Is(target error) bool {
 	return target == ErrNotFound && e.Result.ResultCode == rfc4511.ResultNoSuchObject
 }
 
-// Add creates entry.
+// Add creates entry. The request shares the entry's attribute collection and
+// values; keep them unchanged until Add returns. Encoding writes the final BER
+// output without first copying attributes or constructing another values slice.
 func (c *Client) Add(ctx context.Context, entry *Entry, options ...RequestOption) error {
 	if entry == nil {
 		return errors.New("arden: nil Add entry")

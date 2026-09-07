@@ -42,9 +42,10 @@ func TestEntryByteStorageIsSharedButTextValuesAreSnapshots(t *testing.T) {
 	assert.Equal(t, "Alice", text)
 	assert.Equal(t, []string{"Alice", "Bob"}, texts)
 
-	raw := entry.RawValues("CN")
-	raw[1][0] = 'b'
-	raw[0] = nil
+	raw, ok := entry.Attributes.Lookup("CN")
+	require.True(t, ok)
+	raw.Values[1][0] = 'b'
+	raw.Type = "renamed"
 	assert.Equal(t, []string{"alice", "bob"}, entry.Values("cn"))
 	assert.Nil(t, entry.RawValue("missing"))
 	entry.SetBytes("cn")
@@ -75,6 +76,28 @@ func TestClientAddReturnsTypedLDAPResultError(t *testing.T) {
 	require.Len(t, executor.operations, 1)
 	request := executor.operations[0].Protocol.(*rfc4511.AddRequest)
 	assert.Equal(t, entry.DN, request.Entry)
+	stored, ok := entry.Attributes.Lookup("objectClass")
+	require.True(t, ok)
+	requested, ok := request.Attributes.Lookup("OBJECTCLASS")
+	require.True(t, ok)
+	assert.Same(t, &stored.Values[0], &requested.Values[0])
+	assert.Same(t, &stored.Values[0][0], &requested.Values[0][0])
+}
+
+func TestEntryFromSearchResultSharesCollection(t *testing.T) {
+	wire := rfc4511.SearchResultEntry{ObjectName: "cn=Alice", Attributes: NewAttributes(
+		Attribute{Type: "cn", Values: []rfc4511.AttributeValue{[]byte("Alice")}},
+	)}
+	entry := entryFromSearchResult(wire)
+	assert.Equal(t, wire.ObjectName, entry.DN)
+	wireAttribute, ok := wire.Attributes.Lookup("cn")
+	require.True(t, ok)
+	entryAttribute, ok := entry.Attributes.Lookup("cn")
+	require.True(t, ok)
+	assert.Same(t, &wireAttribute.Values[0], &entryAttribute.Values[0])
+	entry.Set("mail", "alice@example.test")
+	_, ok = wire.Attributes.Lookup("MAIL")
+	assert.True(t, ok)
 }
 
 func TestClientExecuteSingleReturnsTypedPointerAndControls(t *testing.T) {
@@ -192,14 +215,14 @@ func TestClientSearchFollowsPagedResultsCookies(t *testing.T) {
 		{
 			protocolResponse(t, rfc4511.SearchResultEntryIdentifier(), rfc4511.SearchResultEntry{
 				ObjectName: "uid=one,dc=example",
-				Attributes: []rfc4511.Attribute{{Type: "uid", Values: []rfc4511.AttributeValue{rfc4511.AttributeValue("one")}}},
+				Attributes: rfc4511.NewAttributes([]rfc4511.Attribute{{Type: "uid", Values: []rfc4511.AttributeValue{rfc4511.AttributeValue("one")}}}...),
 			}),
 			protocolResponseWithControls(t, rfc4511.SearchResultDoneIdentifier(), rfc4511.SearchResultDone{Result: rfc4511.LDAPResult{ResultCode: rfc4511.ResultSuccess}}, firstControl),
 		},
 		{
 			protocolResponse(t, rfc4511.SearchResultEntryIdentifier(), rfc4511.SearchResultEntry{
 				ObjectName: "uid=two,dc=example",
-				Attributes: []rfc4511.Attribute{{Type: "uid", Values: []rfc4511.AttributeValue{rfc4511.AttributeValue("two")}}},
+				Attributes: rfc4511.NewAttributes([]rfc4511.Attribute{{Type: "uid", Values: []rfc4511.AttributeValue{rfc4511.AttributeValue("two")}}}...),
 			}),
 			protocolResponseWithControls(t, rfc4511.SearchResultDoneIdentifier(), rfc4511.SearchResultDone{Result: rfc4511.LDAPResult{ResultCode: rfc4511.ResultSuccess}}, secondControl),
 		},

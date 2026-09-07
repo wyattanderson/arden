@@ -38,7 +38,7 @@ func AddResponseIdentifier() ber.Identifier { return addResponseIdentifier }
 // RFC 4511 section 4.7.
 type AddRequest struct {
 	Entry      LDAPDN
-	Attributes []Attribute
+	Attributes Attributes
 	Extensions []UnknownField
 }
 
@@ -50,8 +50,7 @@ func (*AddRequest) ProtocolIdentifier() ber.Identifier { return addRequestIdenti
 // BERPacket returns the add-request packet.
 func (v *AddRequest) BERPacket() ber.Packet {
 	return ber.Constructed(addRequestIdentifier).
-		Add(ber.OctetString(v.Entry)).
-		Add(ber.Sequence().Add(v.Attributes...)).
+		Add(ber.OctetString(v.Entry), v.Attributes.BERPacket()).
 		Add(v.Extensions...).
 		BERPacket()
 }
@@ -64,17 +63,11 @@ func (v *AddRequest) UnmarshalBER(r *ber.Reader) error {
 	d := ber.NewDecoder(r).Constructed(addRequestIdentifier)
 	decoded := AddRequest{
 		Entry:      d.Read[LDAPDN](),
-		Attributes: d.Sequence().All[Attribute](),
+		Attributes: d.Read[Attributes](),
 		Extensions: d.Extensions[UnknownField](),
 	}
 	if err := d.End(); err != nil {
 		return err
-	}
-	// RFC 4511 section 4.7 requires at least one value per added attribute.
-	for _, attribute := range decoded.Attributes {
-		if len(attribute.Values) == 0 {
-			return errors.New("arden: AddRequest attribute requires at least one value")
-		}
 	}
 	*v = decoded
 	return nil

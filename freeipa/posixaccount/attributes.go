@@ -45,12 +45,12 @@ var UserAttributes = struct {
 }
 
 var userProjection = arden.NewAttributeSelectors(
-	UserAttributes.AccountName.Name,
-	UserAttributes.CommonName.Name,
-	UserAttributes.UIDNumber.Name,
-	UserAttributes.GIDNumber.Name,
-	UserAttributes.HomeDirectory.Name,
-	UserAttributes.GECOS.Name,
-	UserAttributes.LoginShell.Name,
-	UserAttributes.EmailAddresses.Name,
+	UserAttributes.AccountName.Name(),
+	UserAttributes.CommonName.Name(),
+	UserAttributes.UIDNumber.Name(),
+	UserAttributes.GIDNumber.Name(),
+	UserAttributes.HomeDirectory.Name(),
+	UserAttributes.GECOS.Name(),
+	UserAttributes.LoginShell.Name(),
+	UserAttributes.EmailAddresses.Name(),
 )

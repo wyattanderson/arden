@@ -27,7 +27,9 @@ standard-library-only.
 
 Byte sharing and the rationale for retained copies are documented in the
 [byte ownership audit](byte-ownership.md). Request and entry byte helpers share
-their backing data; typed decoding produces independent retained values.
+their backing data; typed decoding follows each value codec's ownership contract.
+The [attribute collection contract](attributes.md) covers normalized lookup,
+prepared schema keys, iteration, and shared storage on the read and write paths.
 
 The compile-checked definitions live in `ber/packet.go`, `ber/identifier.go`,
 `operation.go`, `endpoint.go`, `errors.go`, `trace.go`, and

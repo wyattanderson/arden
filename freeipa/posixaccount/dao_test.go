@@ -9,9 +9,10 @@ import (
 
 	"github.com/wyattanderson/arden"
 	"github.com/wyattanderson/arden/ber"
-	"github.com/wyattanderson/arden/freeipa/posixaccount"
 	"github.com/wyattanderson/arden/ldapmodel"
 	"github.com/wyattanderson/arden/rfc4511"
+
+	"github.com/wyattanderson/arden/freeipa/posixaccount"
 )
 
 const usersBaseDN = "cn=users,cn=accounts,dc=arden,dc=test"
@@ -177,17 +178,9 @@ func (*scriptedStream) Close() error { return nil }
 
 func searchEntryResponse(t *testing.T, entry arden.Entry) arden.Response {
 	t.Helper()
-	attributes := make([]rfc4511.Attribute, len(entry.Attributes))
-	for i, attribute := range entry.Attributes {
-		attributes[i] = rfc4511.Attribute{
-			Type:       attribute.Type,
-			Values:     attribute.Values,
-			Extensions: attribute.Extensions,
-		}
-	}
 	return protocolResponse(t, rfc4511.SearchResultEntryIdentifier(), rfc4511.SearchResultEntry{
 		ObjectName: entry.DN,
-		Attributes: attributes,
+		Attributes: entry.Attributes,
 	})
 }
 

@@ -2,9 +2,8 @@ package rfc4511
 
 import "github.com/wyattanderson/arden/ber"
 
-// Attribute is an RFC 4511 attribute whose value set may be empty, as allowed
-// in search results and modifications. AddRequest.UnmarshalBER requires at
-// least one value per attribute.
+// Attribute is an RFC 4511 attribute whose value set may be empty. Value-count
+// constraints for particular operations are left to the caller or server.
 // Extensions preserves any allowed unknown trailing SEQUENCE components in
 // their original order.
 //
@@ -18,8 +17,7 @@ type Attribute struct {
 // BERPacket returns the attribute packet.
 func (a Attribute) BERPacket() ber.Packet {
 	return ber.Sequence().
-		Add(ber.OctetString(a.Type)).
-		Add(ber.Set().Add(a.Values...)).
+		Add(ber.OctetString(a.Type), ber.Set().Add(a.Values...).BERPacket()).
 		Add(a.Extensions...).
 		BERPacket()
 }

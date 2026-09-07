@@ -454,8 +454,8 @@ type Attribute struct {
 ```
 
 Empty value sets are allowed for search results and modifications.
-`AddRequest.UnmarshalBER` enforces at least one value per attribute, as
-required by the RFC's constrained Attribute form. The decoder cannot
+`AddRequest.UnmarshalBER` preserves empty value sets, leaving operation-specific
+value-count constraints to the caller or server. The decoder cannot
 generically decide schema equivalence between values or whether an attribute
 is NO-USER-MODIFICATION; schema-aware application code owns those checks.
 

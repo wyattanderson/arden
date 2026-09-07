@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/wyattanderson/arden"
+	"github.com/wyattanderson/arden/rfc4511"
 )
 
 // ValueCodec converts one schema value to and from its LDAP wire bytes.
@@ -39,28 +40,52 @@ func (c Codec[T]) Decode(value []byte) (T, error) {
 	return c.DecodeFunc(value)
 }
 
-// Attribute is a generated or handwritten typed attribute descriptor.
+// Attribute is a generated or handwritten typed attribute descriptor. Its name
+// and normalized key are prepared together by NewAttribute and cannot diverge.
 type Attribute[T any] struct {
-	Name  string
+	name  string
+	key   rfc4511.AttributeKey
 	Codec ValueCodec[T]
 }
 
 // NewAttribute constructs a typed attribute descriptor.
 func NewAttribute[T any](name string, codec ValueCodec[T]) Attribute[T] {
-	return Attribute[T]{Name: name, Codec: codec}
+	return Attribute[T]{name: name, key: rfc4511.AttributeDescription(name).Key(), Codec: codec}
+}
+
+// Name returns the original, immutable attribute description.
+func (a Attribute[T]) Name() string { return a.name }
+
+// Key returns the prepared lookup key, shared by every use of this descriptor.
+func (a Attribute[T]) Key() rfc4511.AttributeKey { return a.key }
+
+// Decode decodes one raw value without constructing a temporary value slice.
+func (a Attribute[T]) Decode(raw []byte) (T, error) { return a.decodeAt(raw, 0) }
+
+func (a Attribute[T]) decodeAt(raw []byte, index int) (T, error) {
+	var zero T
+	if a.Codec == nil {
+		return zero, fmt.Errorf("schema: attribute %q has no codec", a.name)
+	}
+	value, err := a.Codec.Decode(raw)
+	if err != nil {
+		return zero, fmt.Errorf("schema: decode %s value %d: %w", a.name, index, err)
+	}
+	return value, nil
 }
 
 // Values decodes every value present on entry.
 func (a Attribute[T]) Values(entry arden.Entry) ([]T, error) {
 	if a.Codec == nil {
-		return nil, fmt.Errorf("schema: attribute %q has no codec", a.Name)
+		return nil, fmt.Errorf("schema: attribute %q has no codec", a.name)
 	}
-	raw := entry.RawValues(a.Name)
+	attribute, _ := entry.Attributes.LookupKey(a.key)
+	raw := attribute.Values
 	values := make([]T, len(raw))
 	for i := range raw {
-		value, err := a.Codec.Decode(raw[i])
+		value, err := a.decodeAt(raw[i], i)
 		if err != nil {
-			return nil, fmt.Errorf("schema: decode %s value %d: %w", a.Name, i, err)
+			return nil, err
 		}
 		values[i] = value
 	}
@@ -70,32 +95,34 @@ func (a Attribute[T]) Values(entry arden.Entry) ([]T, error) {
 // Equal constructs a typed equality filter.
 func (a Attribute[T]) Equal(value T) (arden.Filter, error) {
 	if a.Codec == nil {
-		return nil, fmt.Errorf("schema: attribute %q has no codec", a.Name)
+		return nil, fmt.Errorf("schema: attribute %q has no codec", a.name)
 	}
 	encoded, err := a.Codec.Encode(value)
 	if err != nil {
-		return nil, fmt.Errorf("schema: encode %s assertion: %w", a.Name, err)
+		return nil, fmt.Errorf("schema: encode %s assertion: %w", a.name, err)
 	}
-	return arden.EqualBytes(a.Name, encoded), nil
+	return arden.EqualBytes(a.name, encoded), nil
 }
 
-// Set encodes values onto entry.
+// Set encodes values directly into the entry's final wire-value slice. Bytes
+// returned by the codec are retained without copying. A failed encoding leaves
+// the entry unchanged.
 func (a Attribute[T]) Set(entry *arden.Entry, values ...T) error {
 	if entry == nil {
 		return errors.New("schema: nil entry")
 	}
 	if a.Codec == nil {
-		return fmt.Errorf("schema: attribute %q has no codec", a.Name)
+		return fmt.Errorf("schema: attribute %q has no codec", a.name)
 	}
-	raw := make([][]byte, len(values))
+	raw := make([]rfc4511.AttributeValue, len(values))
 	for i, value := range values {
 		encoded, err := a.Codec.Encode(value)
 		if err != nil {
-			return fmt.Errorf("schema: encode %s value %d: %w", a.Name, i, err)
+			return fmt.Errorf("schema: encode %s value %d: %w", a.name, i, err)
 		}
 		raw[i] = encoded
 	}
-	entry.SetBytes(a.Name, raw...)
+	entry.Attributes.Set(arden.Attribute{Type: rfc4511.AttributeDescription(a.name), Values: raw})
 	return nil
 }
 

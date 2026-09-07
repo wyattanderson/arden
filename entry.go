@@ -2,94 +2,70 @@ package arden
 
 import (
 	"bytes"
-	"strings"
 
 	"github.com/wyattanderson/arden/rfc4511"
 )
 
 // Entry is a schema-neutral LDAP entry. Text helpers are the ordinary API;
-// raw byte helpers preserve binary attribute syntaxes without conversion.
+// Attributes provides direct access to shared raw values. Copies of an entry
+// share its initialized attribute collection; use Attributes.Clone to detach.
 type Entry struct {
 	DN         LDAPDN
-	Attributes []Attribute
+	Attributes Attributes
 }
 
 // NewEntry constructs an entry suitable for Add.
 func NewEntry(dn LDAPDN) *Entry { return &Entry{DN: dn} }
 
-// Set replaces name with text values.
+// Set replaces name with text values, allocating only the final value slice
+// and the bytes for each string.
 func (e *Entry) Set(name string, values ...string) {
-	raw := make([][]byte, len(values))
+	raw := make([]rfc4511.AttributeValue, len(values))
 	for i, value := range values {
 		raw[i] = []byte(value)
 	}
-	e.setRaw(name, raw)
+	e.Attributes.Set(Attribute{Type: rfc4511.AttributeDescription(name), Values: raw})
 }
 
-// SetBytes replaces name with raw values. The entry shares the supplied value
-// bytes; callers may copy them first when they need independent storage.
-func (e *Entry) SetBytes(name string, values ...[]byte) { e.setRaw(name, values) }
-
-func (e *Entry) setRaw(name string, values [][]byte) {
-	attribute := Attribute{Type: rfc4511.AttributeDescription(name), Values: attributeValues(values)}
-	for i := range e.Attributes {
-		if strings.EqualFold(string(e.Attributes[i].Type), name) {
-			e.Attributes[i] = attribute
-			return
-		}
+// SetBytes replaces name with raw values. It copies the outer value slice to
+// the wire value type but shares the supplied bytes. Callers with an existing
+// []rfc4511.AttributeValue can use Attributes.Set to share that slice too.
+func (e *Entry) SetBytes(name string, values ...[]byte) {
+	raw := make([]rfc4511.AttributeValue, len(values))
+	for i, value := range values {
+		raw[i] = value
 	}
-	e.Attributes = append(e.Attributes, attribute)
+	e.Attributes.Set(Attribute{Type: rfc4511.AttributeDescription(name), Values: raw})
 }
 
 // Value returns the first value as a string, or an empty string when absent.
 // Go strings preserve arbitrary bytes; use RawValue when the syntax is binary.
-func (e Entry) Value(name string) string {
-	value := e.RawValue(name)
-	return string(value)
-}
+func (e Entry) Value(name string) string { return string(e.RawValue(name)) }
 
-// Values returns all values converted to strings.
+// Values returns all values converted to independent strings.
 func (e Entry) Values(name string) []string {
-	raw := e.RawValues(name)
-	values := make([]string, len(raw))
-	for i := range raw {
-		values[i] = string(raw[i])
+	attribute, _ := e.Attributes.Lookup(rfc4511.AttributeDescription(name))
+	values := make([]string, len(attribute.Values))
+	for i, value := range attribute.Values {
+		values[i] = string(value)
 	}
 	return values
 }
 
 // RawValue returns the first value's bytes, or nil when absent. Mutating the
-// returned bytes changes the entry.
+// returned bytes changes the entry. Use Attributes.Lookup for all raw values.
 func (e Entry) RawValue(name string) []byte {
-	for _, attribute := range e.Attributes {
-		if strings.EqualFold(string(attribute.Type), name) {
-			if len(attribute.Values) > 0 {
-				return attribute.Values[0]
-			}
-			return nil
-		}
+	attribute, _ := e.Attributes.Lookup(rfc4511.AttributeDescription(name))
+	if len(attribute.Values) == 0 {
+		return nil
 	}
-	return nil
-}
-
-// RawValues returns a new slice containing the value slices for name.
-// Mutating their bytes changes the entry; replacing a slice does not.
-func (e Entry) RawValues(name string) [][]byte {
-	for _, attribute := range e.Attributes {
-		if strings.EqualFold(string(attribute.Type), name) {
-			values := make([][]byte, len(attribute.Values))
-			for i := range attribute.Values {
-				values[i] = attribute.Values[i]
-			}
-			return values
-		}
-	}
-	return nil
+	return attribute.Values[0]
 }
 
 // Contains reports whether name has the exact text value.
 func (e Entry) Contains(name, value string) bool {
-	for _, candidate := range e.RawValues(name) {
+	attribute, _ := e.Attributes.Lookup(rfc4511.AttributeDescription(name))
+	for _, candidate := range attribute.Values {
 		if bytes.Equal(candidate, []byte(value)) {
 			return true
 		}
@@ -97,18 +73,6 @@ func (e Entry) Contains(name, value string) bool {
 	return false
 }
 
-func attributeValues[T ~[]byte](values []T) []rfc4511.AttributeValue {
-	converted := make([]rfc4511.AttributeValue, len(values))
-	for i := range values {
-		converted[i] = rfc4511.AttributeValue(values[i])
-	}
-	return converted
-}
-
 func entryFromSearchResult(wire rfc4511.SearchResultEntry) Entry {
-	attributes := make([]Attribute, len(wire.Attributes))
-	for i, attribute := range wire.Attributes {
-		attributes[i] = Attribute(attribute)
-	}
-	return Entry{DN: wire.ObjectName, Attributes: attributes}
+	return Entry{DN: wire.ObjectName, Attributes: wire.Attributes}
 }
