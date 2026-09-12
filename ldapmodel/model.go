@@ -55,6 +55,14 @@ func NewModel[T any](
 // prevents criteria generated for different projections from being mixed.
 type Criterion[T any] struct {
 	filter arden.Filter
+	err    error
+}
+
+// EqualCriterion encodes a typed equality predicate, retaining encoding errors
+// for the query's terminal method. Generated predicates never need to panic.
+func EqualCriterion[M, T any](attribute Attribute[M, T], value T) Criterion[M] {
+	filter, err := attribute.Equal(value)
+	return Criterion[M]{filter: filter, err: err}
 }
 
 // NewCriterion constructs a typed criterion for model query helpers.

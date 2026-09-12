@@ -134,6 +134,9 @@ func (r ResultSet[T]) open(sizeLimit, pageSize uint32) (Stream[T], func() error,
 	filters := make([]arden.Filter, 1, len(r.criteria)+1)
 	filters[0] = r.dao.model.filter
 	for _, criterion := range r.criteria {
+		if criterion.err != nil {
+			return nil, nil, criterion.err
+		}
 		filters = append(filters, criterion.filter)
 	}
 	entries, err := r.dao.client.Search(r.dao.ctx, arden.SearchRequest{

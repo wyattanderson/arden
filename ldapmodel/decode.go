@@ -6,6 +6,15 @@ import (
 	"github.com/wyattanderson/arden"
 )
 
+// RequiredMany decodes a multivalued attribute requiring at least one value.
+func RequiredMany[M, T any](attribute Attribute[M, T], entry arden.Entry) ([]T, error) {
+	raw, _ := entry.Attributes.LookupKey(attribute.Key())
+	if len(raw.Values) == 0 {
+		return nil, fmt.Errorf("ldapmodel: required attribute %q has no values", attribute.Name())
+	}
+	return attribute.Values(entry)
+}
+
 // RequiredOne decodes an attribute that must have exactly one value. It checks
 // cardinality before invoking the codec and allocates no temporary value slice.
 func RequiredOne[M, T any](attribute Attribute[M, T], entry arden.Entry) (T, error) {

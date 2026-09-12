@@ -173,6 +173,10 @@ if err := rows.Err(); err != nil {
 }
 ```
 
+The [YAML model generator](gen/README.md) emits LDAP schema and Go model packages
+with inferred types, cardinality, naming, and explicit application overrides.
+Use `go run ./cmd/gen -help` for generation and drift-check options.
+
 `ldapmodel.Attribute[M, T]` is the reflection-free seam for generated models. A
 generator can publish typed descriptors and ordinary model methods while using
 the same entries, filters, and client underneath:
